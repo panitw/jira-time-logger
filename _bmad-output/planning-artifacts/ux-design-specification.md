@@ -1,5 +1,8 @@
 ---
-stepsCompleted: ['step-01-init', 'step-02-discovery', 'step-03-core-experience', 'step-04-emotional-response', 'step-05-inspiration', 'step-06-design-system', 'step-07-defining-experience', 'step-08-visual-foundation']
+stepsCompleted: ['step-01-init', 'step-02-discovery', 'step-03-core-experience', 'step-04-emotional-response', 'step-05-inspiration', 'step-06-design-system', 'step-07-defining-experience', 'step-08-visual-foundation', 'step-09-design-directions', 'step-10-user-journeys', 'step-11-component-strategy', 'step-12-ux-patterns', 'step-13-responsive-accessibility', 'step-14-complete']
+status: 'complete'
+completedAt: 2026-05-11
+lastStep: 14
 inputDocuments:
   - '{project-root}/_bmad-output/planning-artifacts/prd.md'
   - '{project-root}/_bmad-output/planning-artifacts/architecture.md'
@@ -847,3 +850,1112 @@ Per principle #6 (Tasteful motion that earns its weight). Allowed transitions:
 | Notification icon | Same as brand logo | PNG | 96 px (Chrome notification standard) |
 
 **Note for implementation:** the WXT build can auto-generate the icon set from a single source PNG via `wxt.config.ts` icon configuration. Provide the highest-resolution logo source available; WXT handles per-size optimization.
+
+## Design Direction Decision
+
+### Approach
+
+The visual constraints established in Steps 6–8 (shadcn/ui + Tailwind v4 + neutral-first palette + brand purple + Linear-calm register + 14 px body + 360 px popup) leave a narrow band of visual variation. Rather than generate ceremonial alternatives, we commit to **one direction** documented concretely below, with ASCII mockups for the surfaces that matter. Variations explored later in implementation are micro-tweaks, not different visions.
+
+### Chosen Direction: "Quiet Density"
+
+A single-direction visual approach that leans into the project's real constraints rather than fighting them:
+
+- **Dense lists, generous whitespace between sections.** Within a list, items are tight (8 px vertical padding). Between sections, generous (24 px). Information density is high; visual breathing is concentrated where it matters.
+- **Flat hierarchy, no shadows on lists or cards.** Borders and background tints carry hierarchy. Shadows only on overlays (popovers, dialogs, tooltips).
+- **Brand purple appears only at primary action moments.** CTAs ("Connect to Jira", "Approve [Person]"), active tab indicators, selected row tints, the brand-gradient hero on first-run and options page header. Everywhere else: grayscale.
+- **State is communicated by icon + label + color, never just color.** Per NFR12.
+- **Mono-typed numerics.** Hours, ticket keys, totals — all monospace so they align in tabular displays without manual spacing.
+
+### Surface Mockups
+
+#### Popup: Today view (default surface)
+
+```
+╔═══════════════════════════════════════╗  ← 360 px wide
+║  ╭─────────────────────────────────╮  ║  ← popup outer p-4
+║  │ [Today] [Week] [Manager] ⚙ ⓘ    │  ║  ← tabs; Manager hidden if no reports
+║  ╰─────────────────────────────────╯  ║
+║                                       ║
+║  Today · Mon, May 12        7h / 8h   ║  ← view title + total
+║  ───────────────────────────────────  ║
+║                                       ║
+║  Logged today                         ║  ← section label, text-base, neutral.500
+║  ┌─────────────────────────────────┐  ║
+║  │ PROJ-456 Client portal redesign │  ║
+║  │ 2.0h                       ⋯    │  ║  ← row hover reveals ⋯ menu
+║  ├─────────────────────────────────┤  ║
+║  │ KNP-12   Standup                │  ║
+║  │ 0.5h                       ⋯    │  ║
+║  └─────────────────────────────────┘  ║
+║                                       ║
+║  Pick a ticket to log                 ║  ← section label
+║  ┌─────────────────────────────────┐  ║
+║  │ Search or pick…             🔍 │  ║  ← input, focused on open
+║  └─────────────────────────────────┘  ║
+║                                       ║
+║  ▾ Tasks (4)                          ║  ← collapsible groups
+║    PROJ-455 Settings page             ║
+║    PROJ-789 Auth review               ║
+║    TEAM-12  Onboarding doc            ║
+║    TEAM-44  Sprint planning           ║
+║                                       ║
+║  ▾ Catch-all (KNP)                    ║
+║    KNP-12   Standup                   ║
+║    KNP-99   PTO                       ║
+║                                       ║
+║  + Search Jira for a ticket…          ║  ← challenge #8 affordance
+║                                       ║
+╚═══════════════════════════════════════╝
+```
+
+After clicking a ticket from the picker:
+
+```
+║  ┌─────────────────────────────────┐  ║
+║  │ PROJ-455 Settings page          │  ║
+║  │ Hours: [_____]            [Log] │  ║  ← cursor in hours; Log btn = brand purple
+║  └─────────────────────────────────┘  ║
+```
+
+After successful submit (popup stays open per Q4 in Step 7):
+
+```
+║  Logged today                         ║
+║  ┌─────────────────────────────────┐  ║
+║  │ PROJ-455 Settings page          │  ║  ← new entry, slide-in 200 ms
+║  │ 1.5h                       ⋯    │  ║
+║  ├─────────────────────────────────┤  ║
+║  │ PROJ-456 Client portal redesign │  ║
+║  │ 2.0h                       ⋯    │  ║
+║  ...
+```
+
+Total updates from `7h / 8h` → `8.5h / 8h` (now over target — green outline on total).
+
+#### Popup: Week view
+
+```
+╔═══════════════════════════════════════╗
+║  [Today] [Week] [Manager] ⚙ ⓘ         ║
+║                                       ║
+║  Week of May 12              28 / 40h ║  ← total + target for the week
+║  ───────────────────────────────────  ║
+║                                       ║
+║       Mon  Tue  Wed  Thu  Fri  Sa Su  ║  ← header row, click for popover
+║       8.0  8.0  8.0  4.0  ──  ── ──   ║  ← totals; ── = no entry
+║       ✓    ✓    ✓    ⚠   PTO          ║  ← per-day status icons
+║                                       ║
+║  PROJ-455 Settings page               ║  ← row 1 (subtask)
+║       4.0  3.0  ──   2.0  ──  ── ──   ║
+║                                       ║
+║  PROJ-789 Auth review                 ║  ← row 2
+║       2.0  ──   4.0  ──   ──  ── ──   ║
+║                                       ║
+║  KNP-12   Standup                     ║  ← row 3 (catch-all)
+║       0.5  0.5  0.5  ──   ──  ── ──   ║
+║                                       ║
+║  KNP-99   PTO                         ║  ← row 4 (PTO)
+║       ──   ──   ──   ──   8.0 ── ──   ║  ← if Friday were full PTO
+║                                       ║
+║  + Add a subtask to this week         ║
+║                                       ║
+║  ───────────────────────────────────  ║
+║              [Mark week as done]      ║  ← brand purple primary CTA
+╚═══════════════════════════════════════╝
+```
+
+Per-day cell color via background tint:
+- Cells in green columns: `state.success_subtle` background, `✓` icon
+- Cells in red columns: `state.danger_subtle` background, `⚠` icon
+- Cells with hour numbers but in red columns: still red (the column's status carries through)
+- PTO column: green with PTO label and icon
+
+Click on a column header (e.g., "Thu") opens the PTO popover:
+
+```
+                ┌──────────────────────┐
+                │ Thursday              │
+                │ ─────────────────────│
+                │ ▸ Mark full-day PTO  │
+                │ ▸ Mark half-day PTO  │
+                │ ▸ Add a worklog…     │
+                │                      │
+                │ Currently: 4h logged │
+                └──────────────────────┘
+```
+
+#### Popup: Manager view (only visible if user has reports)
+
+```
+╔═══════════════════════════════════════╗
+║  [Today] [Week] [Manager] ⚙ ⓘ         ║
+║                                       ║
+║  Manager · May 2026     1 of 7 done   ║  ← cycle title + progress
+║  ───────────────────────────────────  ║
+║                                       ║
+║   Person     PROJ-A  PROJ-B  PROJ-C   ║  ← Epic columns; horizontal scroll if > 4
+║                                       ║
+║   Sarah     ┌────┐  ┌────┐  ┌────┐    ║
+║             │ 64 │  │ 12 │  │ ── │    ║  ← cell = total hours per Epic
+║             │ ⚠  │  │ ✓  │  │ ── │    ║  ← icon shows status; ⚠ red, ✓ green
+║             └────┘  └────┘  └────┘    ║
+║                          [Approve →]  ║  ← row-end action; brand purple
+║                                       ║
+║   Vinod     ┌────┐  ┌────┐  ┌────┐    ║
+║             │ 80 │  │ 24 │  │ 16 │    ║
+║             │ ✓  │  │ ✓  │  │ 🔒 │    ║  ← lock icon: visibility-restricted
+║             └────┘  └────┘  └────┘    ║
+║                              ✓ Done   ║  ← already approved
+║                                       ║
+║   Priya     ┌────┐  ┌────┐  ┌────┐    ║
+║             │ 56 │  │ ▒▒ │  │ ── │    ║  ← striped: dirty (re-approval needed)
+║             │ ✓  │  │ ↻  │  │ ── │    ║
+║             └────┘  └────┘  └────┘    ║
+║                          [Re-approve] ║
+║                                       ║
+║   ...                                 ║  ← rows render progressively
+║                                       ║
+╚═══════════════════════════════════════╝
+```
+
+Click a cell to open drill-down panel (slides in from right):
+
+```
+                         ╔═══════════════════════════╗
+                         ║ Sarah · PROJ-A · May      ║
+                         ║ 64 hours                  ║
+                         ║ ─────────────────────────║
+                         ║                           ║
+                         ║ PROJ-A-101  Epic planning ║
+                         ║ 12.0h                     ║
+                         ║                           ║
+                         ║ PROJ-A-102  Backend impl  ║
+                         ║ 32.0h                     ║
+                         ║                           ║
+                         ║ PROJ-A-103  Bug fix       ║
+                         ║ 20.0h                     ║
+                         ║                           ║
+                         ║ ⚠ 1 worklog with restricted║  ← visibility warning
+                         ║   visibility was excluded ║
+                         ║                           ║
+                         ║              [Close]      ║
+                         ╚═══════════════════════════╝
+```
+
+#### Inline Jira banner (collapsed)
+
+When the worker visits any `*.atlassian.net` page:
+
+```
+╔════════════════════════════════════════════════════════════════════╗
+║  ● 6h unlogged this week.  [Log time on PROJ-455]            ✕    ║
+╚════════════════════════════════════════════════════════════════════╝
+[Jira's normal page content begins below]
+```
+
+- `●` is a small brand-purple dot — the only brand mark in the banner (no logo intrusion into Jira's UI)
+- Banner background: `accent.subtle` (light purple tint that harmonizes with Jira's blue-leaning palette)
+- Text color: `neutral.700` for primary; brand purple for the CTA
+- Right-side `✕` dismisses for the day
+- Banner uses inline `style` attributes (CSP constraint, see Design System step)
+
+When expanded with quick-log form:
+
+```
+╔════════════════════════════════════════════════════════════════════╗
+║  ● Log time on PROJ-455 Settings page                              ║
+║    Hours: [_____]   [Log]                                    ✕    ║
+╚════════════════════════════════════════════════════════════════════╝
+```
+
+#### First-run Connect screen (brand moment)
+
+```
+╔══════════════════════════════════════════════════════════╗
+║                                                          ║
+║   ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓   ║
+║   ▓▓▓▓▓▓▓▓▓▓▓▓▓ brand gradient bg ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓   ║
+║   ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓   ║
+║   ▓▓▓                                              ▓▓▓   ║
+║   ▓▓▓                  [LOGO 64px]                 ▓▓▓   ║
+║   ▓▓▓                                              ▓▓▓   ║
+║   ▓▓▓        Welcome to jira-time-logger           ▓▓▓   ║  ← text-3xl, white
+║   ▓▓▓                                              ▓▓▓   ║
+║   ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓   ║
+║                                                          ║
+║   Connect to Jira to get started                         ║
+║   The extension will read your assigned tickets and      ║
+║   help you log time without leaving Chrome.              ║
+║                                                          ║
+║              [Connect to Jira]                           ║  ← brand purple CTA
+║                                                          ║
+║   (You can disconnect any time from Settings.)           ║
+║                                                          ║
+╚══════════════════════════════════════════════════════════╝
+```
+
+After connect, settings form fills in below.
+
+#### Options page (settings)
+
+```
+╔═══════════════════════════════════════════════════════════╗
+║  ▓▓▓▓ brand-gradient header ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓   ║
+║  [LOGO 32]  jira-time-logger                              ║  ← wordmark
+║                                              [⚙ Settings] ║
+║  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓   ║
+║                                                           ║
+║                    [content max-w-2xl, p-8]               ║
+║                                                           ║
+║  Connection                                               ║  ← text-2xl section heading
+║  ─────────────────────────────                            ║
+║   Jira Cloud account                                      ║
+║   ✓ Connected as note@company.com (acme.atlassian.net)    ║
+║                              [Disconnect]                 ║
+║                                                           ║
+║  Reporting line                                           ║
+║  ─────────────────────────────                            ║
+║   Manager (read from Jira)                                ║
+║   Marco Lee                                               ║
+║                                                           ║
+║   Skip-level (read from Jira)                             ║
+║   Alex Chen                                               ║
+║                                                           ║
+║  Catch-all project                                        ║
+║  ─────────────────────────────                            ║
+║   Project key                                             ║
+║   ┌─────────┐                                             ║
+║   │ KNP     │     (default)                               ║
+║   └─────────┘                                             ║
+║                                                           ║
+║   PTO subtask                                             ║
+║   ┌──────────────────────────────────┐                    ║
+║   │ KNP-99 · PTO                  ▼  │                    ║
+║   └──────────────────────────────────┘                    ║
+║                                                           ║
+║  Cadence                                                  ║
+║  ─────────────────────────────                            ║
+║   Daily reminder time                                     ║
+║   ┌────────┐                                              ║
+║   │ 17:00  │                                              ║
+║   └────────┘                                              ║
+║                                                           ║
+║   Work-day target (hours)                                 ║
+║   ┌────┐                                                  ║
+║   │ 8  │                                                  ║
+║   └────┘                                                  ║
+║                                                           ║
+║   Approval cycle                                          ║
+║   ┌──────────────────┐                                    ║
+║   │ Calendar month ▼ │                                    ║
+║   └──────────────────┘                                    ║
+║                                                           ║
+║  Diagnostics                                              ║
+║  ─────────────────────────────                            ║
+║   Last sync: 2 minutes ago                                ║
+║   Local storage used: 1.2 MB / 10 MB                      ║
+║                                  [Clear local cache]      ║
+║                                                           ║
+╚═══════════════════════════════════════════════════════════╝
+```
+
+### Design Rationale
+
+1. **One direction commits us.** Multiple parallel directions would be ceremony; the visual constraints from Steps 6–8 already chose 90% of the visual decisions. This step locks the remaining 10%.
+2. **Density beats sparseness for the popup.** A 360 px popup that wastes vertical space forces users to scroll, breaking the "30-second worklog" target. Tight rows + generous between-section spacing solves both density and breathability.
+3. **The brand purple is rationed.** It appears only on: First-run hero (full gradient), Options page header (full gradient), Primary CTAs (Connect, Approve, Mark-as-Done, Log), Active tab indicator (underline), Selected row tint (very subtle), Banner brand dot. This rationing keeps the purple meaningful — it always signals "primary action" or "the product is here."
+4. **The extension icon and notification icon use the logo directly.** The brand identity lives at the OS level so users recognize the tool in their browser toolbar and in their notification tray.
+5. **No logo in the popup or banner.** The popup is too dense to spend pixels on branding; the banner is a guest in Jira's UI and shouldn't impose. A small brand-purple dot in the banner is the maximum brand presence those surfaces can carry without feeling intrusive.
+
+### Implementation Approach
+
+Build the surfaces in this order (matches the Architecture's implementation sequence):
+
+1. **shadcn/ui scaffolding + Tailwind config with the design tokens defined in the Visual Foundation step.**
+2. **Today view** (the most-used surface; validates the visual direction in real use first).
+3. **Week view** (extends Today's grid pattern to a 7-day layout).
+4. **Manager view** (introduces the matrix density + drill-down).
+5. **Banner** (separate styling system; harmonize visually despite CSP constraint).
+6. **Options page** (patient context; brand gradient header is the showcase moment).
+7. **First-run Connect screen** (last because it's the rarest surface; validate after the rest is stable).
+
+A single visual QA pass after surface 4 catches any drift before the banner and options page, since those surfaces use slightly different styling systems.
+
+## User Journey Flows
+
+These flow diagrams turn the PRD's narrative journeys into the mechanical decision trees the implementation needs to honor. Each one captures entry points, decision branches, success/failure paths, and recovery flows.
+
+### Flow 1 — First Install + OAuth Connect (Priya J1)
+
+The new-user onboarding path. Goal: from `chrome://extensions` install to first successful worklog in under 60 seconds.
+
+```mermaid
+flowchart TD
+    A[User installs extension via .crx in Microsoft Teams] --> B{First run?}
+    B -- Yes --> C[Service worker fires onInstalled]
+    C --> D[Open options page in new tab]
+    D --> E[Brand-gradient hero<br/>'Welcome to jira-time-logger']
+    E --> F[User clicks 'Connect to Jira']
+    F --> G[chrome.identity.launchWebAuthFlow with PKCE]
+    G --> H[User logs into Atlassian]
+    H --> I[User approves scopes]
+    I --> J{accessible-resources<br/>returns >1 site?}
+    J -- One site --> K[Auto-select cloudId]
+    J -- Multi-site --> L[Show site picker]
+    L --> K
+    K --> M[Persist tokens to chrome.storage.local]
+    M --> N[Read manager from Jira user-directory field]
+    N --> O{Manager set in Jira?}
+    O -- Yes --> P[Read skip-level recursively]
+    O -- No --> Q[Show 'Manager not set' notice<br/>NON-BLOCKING]
+    P --> R[Show settings form: catch-all project default 'KNP', notification time, target hours]
+    Q --> R
+    R --> S[User accepts defaults or edits]
+    S --> T[Settings saved to chrome.storage.local]
+    T --> U[Show 'You're set up' notification]
+    U --> V[User clicks notification]
+    V --> W[Popup opens to Today view, pre-warmed]
+    W --> X[User logs first worklog]
+    X --> Y[Badge updates; user closes popup]
+
+    G -- User cancels OAuth --> Z[Options page shows 'Connect to Jira' state]
+    H -- Atlassian login fails --> Z
+    I -- User denies scopes --> Z
+```
+
+**Critical timing:** From step F (user clicks Connect) to step W (popup opens with data) target is **<30 seconds** assuming a typical Jira Cloud response. From W to X (first worklog posted) target is **<30 seconds** more. Total install-to-success window: **<60 seconds.**
+
+**Failure recovery:** Any step in the OAuth chain that fails returns to the Options page with the "Connect to Jira" CTA still visible. No partial state; no error messages that confuse a new user. The user can simply click Connect again.
+
+### Flow 2 — Banner-Driven Contextual Log (Priya J2)
+
+The discovery-of-gap → instant-relief loop. Goal: from "user arrives on a Jira ticket page" to "worklog posted" in <30 seconds.
+
+```mermaid
+flowchart TD
+    A[User navigates to Jira ticket page<br/>e.g., /browse/PROJ-455] --> B[Content script wakes;<br/>checks dismissal state]
+    B --> C{Banner dismissed today?}
+    C -- Yes --> D[No banner; user continues normally]
+    C -- No --> E{Hours unlogged this week?}
+    E -- No (badge=0) --> D
+    E -- Yes --> F[Slide banner in from top<br/>'Xh unlogged this week.<br/>Log time on PROJ-455?']
+    F --> G{User action}
+    G -- Clicks ✕ --> H[Dismiss for today;<br/>persist date in chrome.storage.local]
+    G -- Ignores --> I[Banner stays visible until page change]
+    G -- Clicks 'Log time on PROJ-455' --> J[Banner expands inline<br/>with hours field, focused]
+    J --> K[User types hours<br/>e.g., '1.5' or '2h 30m']
+    K --> L[User presses Enter]
+    L --> M{Hours parseable<br/>and ≤ 24?}
+    M -- No --> N[Inline error: 'Use formats like 2.5h, 2h 30m']
+    N --> K
+    M -- Yes --> O[POST worklog via service worker;<br/>scheduler.acquire then fetch]
+    O --> P{Result}
+    P -- Success --> Q[Banner shows ✓ briefly;<br/>collapses 200 ms]
+    P -- Network/auth error --> R[Outbox enqueue;<br/>banner shows 'Pending — will retry']
+    P -- Rate-limited --> S[Scheduler waits per Retry-After;<br/>auto-retry up to 3×]
+    S --> O
+
+    Q --> T[Badge counter decrements within 30s<br/>NFR4]
+    R --> T
+    H --> D
+    I --> D
+```
+
+**SPA navigation note:** when Jira's router navigates to a different page in-tab (no full page reload), the content script's MutationObserver re-evaluates: re-injects banner if dismissal state allows; updates the contextual ticket key if the new page is a different subtask.
+
+### Flow 3 — Friday Weekly Review + Mark-as-Done (Priya J3)
+
+End-of-week ritual. Goal: from notification fire to Mark-as-Done in <2 minutes.
+
+```mermaid
+flowchart TD
+    A[Friday 17:00 — chrome.alarm fires<br/>daily reminder] --> B{User logged today?}
+    B -- Yes & week complete --> C[No notification]
+    B -- Otherwise --> D[Show notification: 'Log today's time'<br/>'Xh / 8h logged today']
+    D --> E{User action}
+    E -- Dismiss --> F[Notification cleared;<br/>badge persists]
+    E -- Click --> G[Popup opens to Today view, pre-warmed<br/>NFR1: TTI ≤ 400ms]
+    G --> H[User logs today's hours]
+    H --> I[User switches to Week tab]
+    I --> J[Week view loads:<br/>7-day grid with per-day status]
+    J --> K{Any day < target<br/>and not PTO?}
+    K -- No (all green) --> L[User clicks 'Mark week as done']
+    L --> M[Local flag set in chrome.storage.local;<br/>week visually marked done;<br/>badge → 0]
+    K -- Yes --> N[User reviews red days]
+    N --> O{User action per day}
+    O -- Knows hours --> P[Click cell to add worklog inline]
+    P --> J
+    O -- Was PTO --> Q[Click cell-header → popover]
+    Q --> R[Pick 'Mark full-day PTO'<br/>or 'Mark half-day PTO']
+    R --> S[Posts PTO worklog<br/>to configured PTO subtask]
+    S --> J
+    O -- Forgot, leave gap --> T[User clicks 'Mark week as done'<br/>with red days remaining]
+    T --> U[Gap acknowledgment dialog opens]
+    U --> V['Friday is 1h below target and not PTO.<br/>Submit anyway?']
+    V --> W{User decision}
+    W -- Yes, submit anyway --> M
+    W -- Cancel --> J
+
+    F --> X[Banner persists on Jira pages until dismissed-today]
+```
+
+**Key mechanic — the popover (per Q3 in Discovery):** clicking the day-cell column header (e.g., "Thu") opens a popover with three actions: Mark full-day PTO / Mark half-day PTO / Add a worklog. This replaces the right-click pattern (which is harder to discover and conflicts with the system context menu).
+
+### Flow 4 — Manager Monthly Approval + Drill-Down (Marco J4 + J5)
+
+Beginning-of-month manager task. Goal: from "Marco opens Manager view" to "all reports approved" in <15 minutes total for a 7-report team.
+
+```mermaid
+flowchart TD
+    A[Day 1 of month — Marco opens popup] --> B[Switches to Manager tab]
+    B --> C[Manager view begins loading]
+    C --> D[Skeleton rows render immediately;<br/>NFR2: first row in 2s, full in 15s]
+    D --> E[Service worker fans out per-report queries:<br/>worklogs by report in cycle]
+    E --> F[Per-row data resolves; row staggers in]
+    F --> G[Marco scans matrix:<br/>most cells green]
+    G --> H{Any anomaly?}
+    H -- No --> I[Click 'Approve' on each row in turn]
+    H -- Yes (red, yellow-stripe, lock) --> J{What kind?}
+    J -- Red cell (gap) --> K[Click cell → drill-down panel slides in]
+    K --> L[Marco sees per-ticket evidence;<br/>partial day visible]
+    L --> M{Investigate further?}
+    M -- Yes — Slack the report --> N[Slack ping;<br/>report fixes & marks PTO]
+    N --> O[Marco refreshes; cell turns green]
+    M -- Acceptable as-is --> P[Close drill-down]
+    O --> Q
+    P --> Q
+    J -- Yellow-stripe (dirty) --> R[Click cell → drill-down panel]
+    R --> S[Marco sees worklog updated after prior approval]
+    S --> T[Click 'Re-approve' → posts new approval comment;<br/>supersedes prior 'newest wins per (user, cycle)']
+    T --> Q
+    J -- Lock icon (visibility-restricted) --> U[Hover → tooltip explains restriction]
+    U --> V{Approve anyway?}
+    V -- Yes --> W[Approval comment metadata captures<br/>visibility-warning count]
+    V -- No, investigate --> X[Marco contacts the report or admin]
+    X --> Q
+    W --> Q
+    Q[Click 'Approve [Report]'s [Cycle]'] --> Y[Service worker fans out:<br/>posts versioned-checksum approval comment<br/>to each Epic the report touched]
+    Y --> Z{All comments posted?}
+    Z -- Yes --> AA[Row visually marked '✓ Done';<br/>matrix progress chip updates 'X of 7 done']
+    Z -- Some failed --> AB[Show error chip on row:<br/>'Approval partial — N of M Epics confirmed'<br/>Outbox retries failed posts]
+    AA --> AC{More reports remaining?}
+    AB --> AC
+    AC -- Yes --> G
+    AC -- No --> AD[All rows marked Done;<br/>cycle complete for this manager]
+```
+
+**Critical mechanic — the drill-down panel slides in from the right** rather than navigating away. The matrix stays visible behind the panel; closing the panel returns instantly to the matrix. No back button needed.
+
+### Other Critical Flows (covered by patterns above)
+
+These are not separately diagrammed because they reuse the patterns already established:
+
+- **Daily push notification → log:** identical to Flow 3 path A→D→E→G→H, then user closes popup at H.
+- **Worklog edit / delete from Today view:** identical to Flow 2's POST/Result/Outbox structure, with PUT/DELETE verbs.
+- **Disconnect / clear local cache:** identical to Flow 1 reverse — user clicks Disconnect, all `chrome.storage.local` cleared, popup falls back to "Connect to Jira" CTA, content script removes any pending banner state.
+- **Outbox retry on connectivity recovery:** background flow, no UI surface beyond a brief toast: "Synced N pending worklogs."
+- **Token refresh:** entirely transparent. No UI flow at all unless refresh fails (then fall back to "Connect to Jira" CTA per Flow 1).
+
+### Journey Patterns
+
+Across the four critical flows, these patterns recur and should be implemented consistently:
+
+**Navigation patterns:**
+
+- **Single-popup, tab-based navigation.** No nested back-button navigation inside the popup. Tabs at the top are the only primary navigation; everything else is in-place state changes.
+- **Drill-down via overlay, not navigation.** When detail is needed (manager drill-down, drill-into-error), use a slide-in panel or popover. Never navigate away from the parent context.
+- **First-run uses the options page tab, not the popup.** The popup is too small for the welcome-and-OAuth flow; the patient context of a full browser tab fits better.
+
+**Decision patterns:**
+
+- **Default-on with one-click dismiss.** Banner default-shows; ✕ dismisses for today. Notification default-fires; user can dismiss the day's prompt. This pattern respects the "tool reaches the user" principle while honoring "polite but persistent."
+- **Hard block at the data-integrity boundary.** Hours > 24, unparseable input — these block submission entirely. Soft warnings everywhere else (gap acknowledgment, visibility restriction).
+- **Defer-and-retry over fail-and-show-error.** Network and rate-limit errors enqueue to the outbox; user sees a benign "pending" indicator instead of a failed-action error. Real failures (revoked OAuth, schema corruption) are the only cases that surface as user-actionable errors.
+
+**Feedback patterns:**
+
+- **Skeleton loading, never spinners** (per inspiration). Skeletons in matrix, weekly grid, drill-down panels. Spinners reserved for ≤ 200 ms button-press contexts.
+- **State change as success signal.** Worklog posted? List re-renders with new row + total updates. Cell turns green? That's the success. No toast, no modal, no celebration.
+- **Per-row staggered render.** Matrix rows fade in one at a time as their data resolves (~100 ms per row). This honors NFR2 (progressive render) and gives the manager something to scan immediately.
+- **Honest error chips.** When something fails, the chip describes what — "Approval partial — 2 of 5 Epics confirmed" — never "Something went wrong, please try again."
+
+### Flow Optimization Principles
+
+These guide every flow design and should hold across future flows too:
+
+1. **Minimize steps to value.** First Install → first worklog in 60 s. Banner appearance → log posted in 30 s. Manager matrix open → first approve in 5 min.
+2. **Pre-warm everything you can.** Service worker pre-fetches worker's Today data on alarm fire so the popup opens with data ready. Same for Manager view at the start of the cycle period.
+3. **Defer everything you can.** Outbox queues writes that can't post immediately. Drill-down data fetches only on click, not on row render.
+4. **Recover invisibly when you can; surface honestly when you can't.** Token refresh is invisible. Network retry is invisible (with a pending indicator). Revoked OAuth is visible because the user must re-act.
+5. **Respect the popup's life.** The popup closes when the user clicks outside; we don't fight that. Critical state (mark-as-done, settings) persists to chrome.storage.local immediately so we don't lose it on accidental close.
+
+## Component Strategy
+
+### Foundation Components (from shadcn/ui)
+
+These ship via `pnpm dlx shadcn@latest add` (Step 6) and are not re-specified here:
+
+`button` · `input` · `label` · `dialog` · `popover` · `select` · `tooltip` · `toast` · `skeleton` · `tabs` · `table`
+
+All shadcn primitives are Radix-based: keyboard navigation, focus trapping, ARIA semantics, screen-reader compatibility ship by default. Custom domain components compose these primitives rather than reaching for raw HTML form elements.
+
+### Load-Bearing Custom Components (full specs)
+
+#### 1. `TicketPicker` — Pre-fill ticket browse tree
+
+**File:** `components/today/TicketPicker.tsx`
+**Purpose:** Surface the candidate tickets a worker is likely to log against, organized as a 2-level browse tree (Task → Subtask) plus a flat catch-all section. Includes search-and-add for tickets outside the hierarchy walk (Challenge #8).
+
+**Anatomy:**
+
+```
+┌─ Search input (with 🔍 icon) ─────────────────┐
+│ ▾ Tasks (4)                                    │
+│   ▸ Task A                                     │
+│     ▸ My subtask under Task A                  │
+│   ▸ Task B (no subtask yet — shows '+ Create') │
+│ ▾ Catch-all (KNP)                              │
+│   ▸ Standup                                    │
+│   ▸ PTO                                        │
+│ ─────────────────────────────────────────────  │
+│ + Search Jira for a ticket…                    │
+└────────────────────────────────────────────────┘
+```
+
+**Composition:** uses shadcn `Input` for search; native `<details>/<summary>` for collapsible groups (lighter than a component); `Button` for "+ Search Jira" affordance.
+
+**States:** Default (full hierarchy + catch-all expanded) · Searching (real-time filter) · Loading (skeleton rows) · Empty (no results) · Search-Jira active · Subtask-creation needed.
+
+**Accessibility:** Search input has `aria-label="Search or pick a ticket"`. Each row is a `<button>` with `aria-label="Pick TICKET-KEY: summary"`. Native `<details>` for groups. Keyboard: Tab/Enter/Esc/arrow keys.
+
+**Interaction:** On open, focus is in search. Typing filters real-time (100 ms debounce). Clicking a ticket replaces picker UI with selected ticket + hours field (handed off to `QuickLogForm`).
+
+#### 2. `WeeklyGrid` — 7-day per-subtask grid
+
+**File:** `components/week/WeeklyGrid.tsx`
+**Purpose:** Render the current week as a grid of subtasks × days, with per-day status header, per-cell hours, and inline edit/PTO marking.
+
+**Composition:** shadcn `Table` for the underlying grid; custom `DayCellHeader`, `DayCell`, `MarkAsDoneButton`, `PtoPopover` sub-components.
+
+**States:** Loading (skeleton rows) · Loaded · Editing-cell (inline hours input) · Submitting · Marked-done (week grayed out; "Week done · Undo" affordance).
+
+**Accessibility:** Semantic `<table>` with `<th scope="col">` for day headers and `<th scope="row">` for subtask names. Day-cell editing input has `aria-label="Hours for [day], [subtask]"`. Color-coded headers carry `aria-label="Wednesday, complete"` / "below target" / "PTO" — not just visual color.
+
+**Interaction:** Click day-cell to edit hours inline (Tab to next cell). Click day-cell-header to open `PtoPopover`. Click "+ Add a subtask" opens compact `TicketPicker`. Click "Mark week as done" triggers gap-check; opens `GapAcknowledgmentDialog` if any red day.
+
+#### 3. `ManagerMatrix` — Person × Epic grid
+
+**File:** `components/manager/ManagerMatrix.tsx`
+**Purpose:** Render the manager's direct reports as rows, Epics they touched as columns, with cell-level hour totals and status indicators. Progressive row render (NFR2).
+
+**Composition:** shadcn `Table` for grid structure (sticky first column for person name; horizontal scroll for Epic columns when > 4); custom `MatrixCell`, `ApproveButton`, `ReApproveButton` sub-components.
+
+**States:** Initial loading (skeleton placeholders) · Per-row loading (rows stagger in ~100 ms apart) · Loaded · Approving · Approved (✓ Done badge; cells dark green) · Dirty (yellow-stripe; Re-approve button) · Empty (no reports configured).
+
+**Accessibility:** Semantic `<table>` with `<th scope="row">` for person name and `<th scope="col">` for Epic key. Each cell carries `aria-label="Sarah, PROJ-A, 64 hours, below target"`. Lock icon (visibility-restricted) carries `aria-label` and `<title>` with the explanatory text. Sticky first column uses CSS `position: sticky`.
+
+**Interaction:** Click cell → opens `DrillDownPanel` (slides in from right). Click Approve → opens approve-confirm dialog. Hover lock icon → `Tooltip` explains visibility restriction.
+
+#### 4. Inline Jira Banner (`Banner` in `entrypoints/content.ts`)
+
+**Purpose:** Surface the unlogged-hours signal inside Jira pages, with optional contextual quick-log when on a subtask page.
+
+**Composition:** Vanilla DOM (not React) inside the content script. Inline styles only (CSP constraint). Style tokens sourced from `lib/banner-styles.ts` which mirrors Tailwind theme values as literal CSS.
+
+**States:** Hidden · Visible-collapsed · Visible-expanded · Posting · Posted (brief ✓, then 200 ms slide-up collapse) · Pending (offline) · Error (brief honest message; revert to collapsed after 3 s).
+
+**Accessibility:** Banner is `<div role="region" aria-label="Time-tracking banner">`. Hours input has `aria-label="Hours to log on PROJ-455"`. Dismiss ✕ has `aria-label="Dismiss for today"`. Banner does not auto-grab focus; respects Jira's own focus management.
+
+**Interaction:** Slides in 200 ms after `DOMContentLoaded`. Detects subtask page via URL pattern; surfaces contextual log CTA. ✕ persists date to `chrome.storage.local`. SPA-aware: MutationObserver re-evaluates on in-tab navigation.
+
+#### 5. `PtoPopover` — One-click PTO marking
+
+**File:** `components/week/PtoPopover.tsx`
+**Purpose:** Allow the worker to mark any day in the weekly grid as full-day or half-day PTO with a single click.
+
+**Composition:** shadcn `Popover` primitive + custom button list inside.
+
+**States:** Open (first action focused) · Posting (clicked action shows spinner) · Closed.
+
+**Accessibility:** `Popover` Radix primitive handles focus trap + Esc-to-close. Each action is a `Button` with `aria-label="Mark Thursday May 15 as full-day PTO"`. Currently-logged hours announced via `aria-describedby`.
+
+**Interaction:** Triggered by clicking a day-cell-header in `WeeklyGrid`. After successful action, popover closes; cell turns green; weekly grid re-renders. "Add a worklog" hands off to inline `TicketPicker`.
+
+#### 6. `GapAcknowledgmentDialog` — Gap-check on Mark-as-Done
+
+**File:** `components/week/GapAcknowledgmentDialog.tsx`
+**Purpose:** When the worker tries to Mark-as-Done a week with days below target and not PTO, force an honest acknowledgment before proceeding (principle "honest, not preachy").
+
+**Composition:** shadcn `Dialog` primitive + plain layout inside.
+
+**States:** Open (focus on "Submit anyway" — see Implementation Strategy note) · Submitting · Closed.
+
+**Accessibility:** `Dialog` Radix primitive handles focus trap + Esc-to-close + ARIA modal semantics. The list of gap days is a semantic `<ul>` so screen readers announce count and items.
+
+**Interaction:** Triggered by clicking Mark-as-Done with red days remaining. "Cancel" closes; user can fix the gap and try again. "Submit anyway" proceeds with the local mark-as-done flag set; dialog closes; week visually marks done; badge → 0. Default focus on "Submit anyway" (worker has already seen the gap on the grid; this dialog confirms intent).
+
+### Supporting Custom Components (brief specs)
+
+These follow the patterns of the load-bearing components above:
+
+| Component | File | Purpose | Key states |
+|---|---|---|---|
+| `QuickLogForm` | `components/today/QuickLogForm.tsx` | Hours input + Log button shown after picking a ticket | empty / filled / submitting / posted |
+| `DayCell` | `components/week/DayCell.tsx` | One cell in `WeeklyGrid`; shows hours or `──` | empty / filled / editing / red / green / pending |
+| `DayCellHeader` | `components/week/DayCellHeader.tsx` | Column header for one day in `WeeklyGrid`; status icon + total | green / red / PTO; click to open `PtoPopover` |
+| `MarkAsDoneButton` | `components/week/MarkAsDoneButton.tsx` | Primary CTA at the bottom of `WeeklyGrid` | enabled / disabled / submitting / done |
+| `MatrixCell` | `components/manager/MatrixCell.tsx` | One cell in `ManagerMatrix`; hours + status icon | green / red / yellow-stripe / locked / approved |
+| `DrillDownPanel` | `components/manager/DrillDownPanel.tsx` | Slide-in panel showing ticket-level evidence | loading / loaded / has-visibility-warning |
+| `ApproveButton` | `components/manager/ApproveButton.tsx` | "Approve [Person]'s [Cycle]" CTA at row end | ready / approving / done / dirty (re-approve) |
+| `ReApproveButton` | `components/manager/ReApproveButton.tsx` | Re-approve variant when row is dirty | similar to ApproveButton |
+| `VisibilityWarning` | `components/manager/VisibilityWarning.tsx` | Warning chip + tooltip in drill-down panel | always shown when restricted entries detected |
+| `ApproveDisabledTooltip` | `components/manager/ApproveDisabledTooltip.tsx` | Tooltip on Approve button for non-canonical managers | hover-revealed |
+| `ConnectButton` | `components/settings/ConnectButton.tsx` | OAuth Connect CTA | idle / connecting / connected |
+| `DisconnectAction` | `components/settings/DisconnectAction.tsx` | "Disconnect and clear local data" with confirmation | idle / confirming / clearing |
+| `ManagerDisplay` | `components/settings/ManagerDisplay.tsx` | Read-only display of Jira-derived manager + skip-level | loaded / not-set |
+| `CatchAllProjectField` | `components/settings/CatchAllProjectField.tsx` | Editable project key with default `KNP` | default / customized / validating |
+| `PtoSubtaskField` | `components/settings/PtoSubtaskField.tsx` | Dropdown of subtasks within catch-all project | unset / loaded / saving |
+| `ReminderTimeField` | `components/settings/ReminderTimeField.tsx` | Time input for daily push notification | default 17:00 / customized |
+| `TargetHoursField` | `components/settings/TargetHoursField.tsx` | Number input for work-day target hours | default 8 / customized |
+| `CycleField` | `components/settings/CycleField.tsx` | Dropdown for approval cycle | default monthly / customized |
+| `DiagnosticsBlock` | `components/settings/DiagnosticsBlock.tsx` | Last sync time + storage usage | always shown |
+| `ErrorBoundary` | `components/shared/ErrorBoundary.tsx` | React error boundary; catches uncaught errors | normal / error |
+| `ErrorState` | `components/shared/ErrorState.tsx` | User-facing error UI | rendered when triggered |
+| `LoadingSkeleton` | `components/shared/LoadingSkeleton.tsx` | Skeleton placeholder rows | always shown when loading |
+| `DirtyIndicator` | `components/shared/DirtyIndicator.tsx` | Yellow-stripe pattern for re-approval-needed cells | always shown when dirty |
+| `ModeToggle` | `components/shared/ModeToggle.tsx` | Worker ↔ Manager mode switch in popup tabs | worker-default / manager (only if reports exist) |
+
+### Component Implementation Strategy
+
+1. **Foundation first.** Install shadcn primitives (Step 6 command) before any custom component is built.
+2. **Tokens before components.** `tailwind.config.ts` has the complete design-token set before any component is built. No hardcoded colors, sizes, or spacings inside components.
+3. **Build in order of journey criticality.** Today view first → Week view → Manager view → Banner → Options page.
+4. **Each component owns its loading and error states.** No global "loading…" overlay.
+5. **Compose, don't extend.** Custom components compose shadcn primitives.
+
+### Implementation Roadmap
+
+**Phase 1 — Today view:** `TicketPicker`, `QuickLogForm`, `CatchAllPicker`, `PtoQuickAction`. Validates the 30-second worklog.
+
+**Phase 2 — Weekly review:** `WeeklyGrid`, `DayCell`, `DayCellHeader`, `PtoPopover`, `MarkAsDoneButton`, `GapAcknowledgmentDialog`. Validates Friday review flow.
+
+**Phase 3 — Manager view:** `ManagerMatrix`, `MatrixCell`, `DrillDownPanel`, `ApproveButton`, `ReApproveButton`, `VisibilityWarning`, `ApproveDisabledTooltip`, `ModeToggle`. Validates monthly approval flow.
+
+**Phase 4 — Content-script banner:** Vanilla `Banner` in `entrypoints/content.ts` (separate styling system; visual-QA pass).
+
+**Phase 5 — Options page + first-run:** `ConnectButton`, `DisconnectAction`, `ManagerDisplay`, `CatchAllProjectField`, `PtoSubtaskField`, `ReminderTimeField`, `TargetHoursField`, `CycleField`, `DiagnosticsBlock`. Brand-gradient hero on first-run.
+
+**Phase 6 — Cross-cutting / polish:** `ErrorBoundary`, `ErrorState`, `LoadingSkeleton`, `DirtyIndicator` wired into all relevant surfaces. Accessibility audit + Edge browser validation pass.
+
+## UX Consistency Patterns
+
+These patterns govern how the product behaves in common UX situations. They are the binding rules — any new component or flow inherits them by default. Deviations require justification in the relevant component spec.
+
+### Button Hierarchy
+
+Three button tiers, used consistently across all surfaces:
+
+| Tier | Visual | When to use |
+|---|---|---|
+| **Primary** | Brand-purple (`accent.DEFAULT`) bg, white text, `font-semibold` | The single most-likely action in a context: Connect to Jira · Log · Approve · Mark as Done · Submit anyway |
+| **Secondary** | Transparent bg, `neutral.700` text, 1 px `neutral.200` border | Alternative actions: Cancel · Disconnect · Re-approve |
+| **Tertiary / Ghost** | Transparent bg, `neutral.500` text, no border | Inline / hover-revealed actions: Edit · Delete · Dismiss · Re-fetch |
+
+**Rules:**
+
+- **At most one primary button per visible surface.** If you find two, one is wrong — promote the more-likely or demote the other.
+- **Destructive actions never get the primary tier in default state.** "Disconnect" is always secondary; if confirmation is needed, it's primary inside the confirmation dialog only.
+- **Disabled buttons** keep the same tier visual but use `neutral.300` text and `cursor-not-allowed`. Always paired with an explanation (tooltip, helper text, or inline error) — never a mystery-disabled button.
+- **Loading state:** primary buttons replace label with a small spinner (≤ 200 ms typical); spinner inherits `currentColor`.
+- **Success state (transient):** primary buttons briefly show a ✓ icon (200 ms) before resetting.
+
+### Feedback Patterns
+
+The product communicates state via four channels, each with a specific use:
+
+#### 1. Inline state on the affected element
+
+Use when the feedback applies to a specific item the user is looking at.
+
+- Cell color change (red → green) when day completes
+- Worklog row appearing in "Logged today" list after submit
+- Input border color (default → red on validation error)
+- Skeleton row replaced by data row on fetch resolve
+
+This is the **default and preferred** feedback channel. Most actions get this and nothing else.
+
+#### 2. Status chips next to actions
+
+Use when the user needs durable info about the action's status.
+
+- "Pending — will retry" chip on a queued worklog row
+- "Approval partial — 2 of 5 Epics confirmed" chip on a manager matrix row after partial fan-out failure
+- "Manager not set in Jira" chip in settings
+
+Chips persist until the underlying state changes; they don't auto-dismiss. Each chip has a small `Tooltip` explaining what to do about it.
+
+#### 3. Toast for delayed or background actions
+
+Use only when the affected element is no longer visible to the user. Sparingly.
+
+- "Synced N pending worklogs" after outbox drain on reconnect
+- "Can't reach Jira" once per session, when connectivity drops
+
+Toasts auto-dismiss after 4 s. Maximum one toast on screen at a time. Tone: factual past-tense, no "Success!" or "Error!" prefixes.
+
+#### 4. Honest error UI when the user must act
+
+Use only when the user's intended action cannot proceed and the user must do something (re-auth, fix invalid input, etc.).
+
+- "Connect to Jira" CTA replacing normal popup content when OAuth grant is revoked
+- Inline validation message under an invalid input
+- Comment-corrupted warning in manager view drill-down
+
+This is the most disruptive channel; reserved for situations where invisible recovery isn't possible.
+
+#### What we never use
+
+- Sad-face icons or apology theatre
+- Confetti or success animations
+- Persistent toast piles
+- Color alone (always paired with icon + text)
+
+### Form Patterns
+
+Forms follow Linear/Raycast conventions: tight, focused, no ceremony.
+
+| Pattern | Rule |
+|---|---|
+| Label placement | Above the input, `font-medium`, `text-sm`, `neutral.700` |
+| Input default | 1 px `neutral.200` border, `neutral.700` text, white bg |
+| Input focused | 2 px `accent.DEFAULT` ring, `outline-offset: 2px` |
+| Input invalid | 1 px `state.danger` border, helper text below in `state.danger` color |
+| Helper text | Below input, `text-xs`, `neutral.500` |
+| Required fields | Visual asterisk only when there's a clear distinction (rare in our forms — most fields are required) |
+| Submit on Enter | Always for single-input forms (e.g., hours field); for multi-input forms, Enter from any field submits |
+| Esc behavior | Closes the surface (popup, dialog, popover); never destructive |
+| Default focus | First input field, on surface mount |
+| Tab order | Left-to-right, top-to-bottom, native DOM order |
+| Save button label | Verb + object: "Log", "Approve", "Save settings" — never just "Save" or "Submit" |
+| Cancel placement | Always to the left of the primary action; never both at the end |
+
+**Validation timing:**
+
+- **On blur** for normalization (e.g., trim whitespace from a ticket key)
+- **On submit** for completeness and parsing (e.g., hours field parsed only on Enter / Log click)
+- **Live (on input)** only when delaying feedback would harm UX (e.g., a real-time search-filter)
+
+### Navigation Patterns
+
+| Pattern | Where |
+|---|---|
+| Tab navigation at top of popup | Today / Week / Manager (Manager hidden if no reports) |
+| Active tab indicator | Underline in `accent.DEFAULT`, 2 px |
+| No back button anywhere | Drill-down panels overlay; closing returns to parent |
+| Settings opened in new tab | Opening options page = `chrome.runtime.openOptionsPage()`, opens in browser tab; popup can stay open |
+| First-run = options page (not popup) | Patient context for OAuth + setup |
+| Notification → popup | Click on push notification opens popup pre-warmed |
+| Banner click → popup OR inline | Default-context CTA opens inline form in banner; "Open extension" affordance opens the popup |
+
+**View persistence:** the popup remembers the last view across opens (Today / Week / Manager). User who was last on the Manager view sees Manager view next time; Today is the default for new users only.
+
+### Modal & Overlay Patterns
+
+| Surface type | Use | Behavior |
+|---|---|---|
+| **Dialog** (modal) | Confirmations that need full attention: gap acknowledgment, approve confirmation, disconnect confirmation | Backdrop dims background, focus trapped, Esc closes (cancels), one primary action |
+| **Popover** | Action menus tied to a specific element: PTO popover on day-cell, hover info on icons | No backdrop, focus moves into popover, Esc closes; opens adjacent to trigger |
+| **Tooltip** | Hover-revealed explanation: visibility-warning, approve-disabled, icon meanings | No focus stealing, hover/focus reveal, never carries actionable content |
+| **Slide-in panel** (drill-down) | Detail view for matrix cell: per-ticket evidence | Slides in from right, parent context stays visible behind, Esc closes |
+| **Toast** | Background action notifications | Bottom-right corner, auto-dismiss 4 s, max one at a time |
+
+**Universal rules for overlays:**
+
+- Always dismissable via Esc
+- Always have a visible close affordance (✕ or Cancel button)
+- Backdrop click closes non-destructive overlays (popovers, drill-downs); destructive overlays (dialogs) require explicit cancel
+- Focus management via Radix primitives (already correct by default)
+
+### Empty States
+
+Every list / data surface has a designed empty state. Generic "No data" never appears.
+
+| Surface | Empty-state content |
+|---|---|
+| TicketPicker (no hierarchy results, no search match) | "No matching tickets. [Search Jira] for a specific key." |
+| TicketPicker (manager not set; only own subtasks visible) | (No empty state — list shows what's there; settings nudge appears separately) |
+| WeeklyGrid (week is empty Monday morning) | Grid renders with all `──` cells; no "no entries" message — the empty grid IS the empty state |
+| ManagerMatrix (no reports configured) | "You're not configured as anyone's manager in Jira. Switch to Worker view." with link to ModeToggle |
+| ManagerMatrix (reports exist, none have hours yet this cycle) | Rows render with all-empty cells + "(no hours logged this cycle)" placeholder per row |
+| DrillDownPanel (no tickets in this Epic for this person) | "No tickets in PROJ-A for Sarah this cycle." |
+| Logged today list (nothing logged yet) | "Nothing logged today yet. Pick a ticket below to start." |
+
+**Empty-state copy rules:**
+
+- Past-tense or descriptive, not aspirational ("Nothing logged today" not "Start logging your time!")
+- Always offer the next action when possible (link to settings, to TicketPicker, etc.)
+- No illustrations, no big icons — `text-sm`, `neutral.500`, centered
+
+### Loading States
+
+Skeletons over spinners (per inspiration; per "no spinning loading wheels" anti-pattern).
+
+| Surface | Loading treatment |
+|---|---|
+| Initial popup mount | Brief 120 ms fade-in; no skeleton needed if data is pre-warmed |
+| TicketPicker (cold cache) | 5–8 skeleton rows (gray bars) during hierarchy fetch |
+| WeeklyGrid (cold cache) | Skeleton grid (4–6 row skeletons + 7-day header) |
+| ManagerMatrix (per-row) | Skeleton row per known direct report; staggers in as data resolves |
+| DrillDownPanel (on open) | Skeleton list of 3–5 ticket-row placeholders |
+| Button-press (≤ 200 ms typical) | Spinner inside button, replacing label briefly |
+| Async non-blocking action (outbox retry) | No UI; status chip on the affected row |
+
+**Skeleton rules:**
+
+- `1500 ms` shimmer loop, linear easing
+- `state.warning_subtle` to `neutral.100` gradient (subtle, not distracting)
+- Disabled when `prefers-reduced-motion: reduce` (becomes static neutral fill)
+
+### Search & Filtering
+
+Used in:
+
+- TicketPicker filter (real-time text filter against hierarchy results)
+- TicketPicker "Search Jira" (full Jira-key / text search outside hierarchy)
+
+| Pattern | Rule |
+|---|---|
+| Real-time filter | Debounce 100 ms; show results as user types; case-insensitive substring match against ticket key + summary |
+| "No matches" feedback | Empty-state message replaces the list; doesn't shift surrounding UI |
+| Search-Jira mode | Triggered by clicking the explicit affordance; input changes placeholder to "Type a ticket key (e.g., OTHER-789)"; results render below; user can add a found ticket to their personal pinned list |
+| Recent / pinned tickets | Persisted in `chrome.storage.local`; shown at the top of the picker after the hierarchy walk results |
+| Clearing search | Esc clears search input and returns to default picker view; ✕ icon appears in input when there's content |
+
+### Date & Time Display
+
+| Context | Format | Example |
+|---|---|---|
+| Today header | `EEE, MMM d` | "Mon, May 12" |
+| Week header | `'Week of ' MMM d` | "Week of May 12" |
+| Approval cycle | `MMMM yyyy` | "May 2026" |
+| Worklog timestamp (in drill-down) | `MMM d, yyyy h:mm a` | "May 14, 2026 2:30 PM" |
+| Last sync (settings) | Relative: "2 minutes ago" / "5 hours ago" | (date-fns `formatDistanceToNow`) |
+| Ticket key | Always uppercase, monospace | "PROJ-455" |
+
+All dates are displayed in the user's local timezone. Per the Architecture, dates are passed between modules as ISO strings and only formatted at the render layer.
+
+### Hours Display
+
+Per Step 7 (Defining Experience):
+
+| Context | Format | Example |
+|---|---|---|
+| Input field (user typing) | Whatever the user types — Jira-flexible parser accepts any format | `2.5h`, `2h 30m`, `2:30`, `150m`, `2.5` |
+| Display in lists / cells | Decimal with `h` suffix | `2.5h`, `0.5h`, `8.0h` |
+| Display when zero | `──` (em dash, monospace) | not `0h` or empty |
+| Display in totals | Same as cells | `28 / 40h` |
+
+### Mobile / Responsive
+
+**Not applicable in v1.0.** The extension is desktop-only (Chrome / Edge on Mac / Windows / Linux). The popup is fixed at 360 px wide; the options page is a full browser tab with `max-w-2xl` content.
+
+If the extension ever needs a mobile companion (post-MVP — see PRD's Vision section), a separate PWA would be built with its own responsive design pass. The current spec does not need mobile patterns.
+
+### Pattern Conformance Checklist
+
+For any new component or surface added, verify:
+
+- [ ] At most one primary button visible
+- [ ] All disabled elements have an explanation (tooltip / helper)
+- [ ] All state colors paired with an icon and text label
+- [ ] Loading state uses skeleton, not spinner (unless ≤ 200 ms)
+- [ ] Empty state designed (not generic "No data")
+- [ ] Esc closes the surface
+- [ ] First focusable element receives focus on mount
+- [ ] Visible focus ring on all keyboard-focusable elements
+- [ ] Date / time formatted per the table above
+- [ ] Hours displayed as `Xh` decimal with `──` for zero
+- [ ] Error feedback uses one of the four channels (no apology theatre)
+- [ ] Submit on Enter for forms
+
+## Responsive Design & Accessibility
+
+### Responsive Strategy
+
+**The product is desktop-only.** This is a deliberate scope decision (Step 3, Platform Strategy), not an oversight.
+
+| Surface | Sizing strategy |
+|---|---|
+| Toolbar popup | Fixed `360 px` width × auto-grow height (max `600 px`, scrolls past). No responsive variation. |
+| Inline Jira banner | `100% width` of Jira's content area (whatever Jira renders). Content within banner uses fixed pixel sizes for inline-style CSP-safety. |
+| Options page | Browser tab; content `max-w-2xl` (672 px) centered with auto side margins. Page background fills viewport; content stays bounded. |
+| First-run hero | Same as options page (it lives on the options page tab). Brand-gradient header is full-viewport-width. |
+
+**Why no mobile / responsive variations:**
+
+- Chrome / Edge mobile do not support extensions in the same way; the extension simply doesn't run there.
+- The popup mental model (toolbar dialog) doesn't translate to mobile.
+- The user base (small dev team) is desktop-only by job nature.
+- Adding responsive complexity now serves zero users.
+
+If a mobile companion becomes necessary post-MVP, it would be a separate PWA project with its own design pass — not a responsive adaptation of the extension.
+
+### Browser Zoom Behavior
+
+The extension respects browser zoom. Type sizes are in `rem` (via Tailwind defaults), so user zoom (Ctrl/Cmd +/-) scales the entire UI proportionally without breaking layout.
+
+- 100% zoom: design as specified above
+- 125%–200% zoom: layout remains intact; popup may need vertical scroll at extreme zoom levels (acceptable)
+- Below 100%: not commonly used; layout remains intact
+
+### Accessibility Strategy
+
+**Compliance target: WCAG 2.1 AA** for the popup, options page, and content-script banner. Per NFR12 and NFR13.
+
+**Why AA, not AAA:** AAA requires audio descriptions, sign-language interpretation for video, and other surface-area we don't have. AA is the right floor for a productivity tool.
+
+#### What's covered by shadcn/Radix primitives (free)
+
+These accessibility properties ship by default — we just have to use the primitives correctly:
+
+- **Focus management** in dialogs, popovers, dropdowns
+- **Focus trapping** in modal dialogs
+- **Esc-to-close** on overlays
+- **Keyboard navigation** in select, popover content, table rows
+- **ARIA roles** on dialog, tooltip, popover, table
+- **Screen-reader semantics** including announcing modal open/close
+- **Disabled state** semantics (`aria-disabled` on disabled buttons)
+
+If we use a Radix primitive, we get these for free. If we hand-roll a custom interaction, we lose them and must reproduce them manually — which we strongly avoid.
+
+#### What we have to do ourselves
+
+| Concern | What we must do |
+|---|---|
+| **Color contrast** | Verify all text/background pairings meet 4.5:1 (normal text) or 3:1 (large text ≥ 18 px) in design tokens. Already verified in Visual Foundation step. |
+| **Color not sole signal** | Every state color paired with an icon (`Check`, `AlertCircle`, `Lock`, etc.) and a text label or `aria-label`. Already specified per-component. |
+| **Visible focus indicator** | 2 px `accent.DEFAULT` ring with 2 px `outline-offset`. Never suppress the browser's default focus ring without providing this equivalent. Per Visual Foundation. |
+| **Keyboard reachability of all actions** | Every clickable element is `<button>` or `<a>` (never a clickable `<div>`). Tab order follows DOM order. |
+| **Tap target size** | Minimum `32 × 32 px` in popup; `44 × 44 px` on options page (we have the room). Per Visual Foundation. |
+| **`aria-label` for icon-only buttons** | Every icon-only affordance (✕ dismiss, ⋯ menu, hover-revealed Edit/Delete) has a descriptive `aria-label`. |
+| **Live region announcements** | Badge updates use `aria-live="polite"`; errors use `aria-live="assertive"`. Per Visual Foundation. |
+| **Reduced motion** | Respect `prefers-reduced-motion: reduce`: replace transitions ≥ 100 ms with instant changes; replace skeleton shimmer with static neutral fill. Per Visual Foundation. |
+| **Banner accessibility** (CSP-special-case) | Even though banner uses inline styles, ARIA semantics (`role="region"`, `aria-label`) and keyboard handling (Esc to dismiss, focus management) work normally. |
+
+### Testing Strategy
+
+#### Responsive Testing — N/A
+
+No responsive variations to test. Desktop-only.
+
+#### Browser Testing
+
+**Required pre-release validation on:**
+
+| Browser | Frequency | What to verify |
+|---|---|---|
+| Chrome stable | Every release | All flows work; all surfaces render correctly |
+| Edge stable (Chromium) | Every release | Same as Chrome; verify no Edge-specific regressions |
+| Chrome Beta | Best-effort, before stable releases | Catch upcoming Chrome changes early |
+| Firefox / Safari | Out of scope for v1.0 | No testing required; not supported |
+
+#### Accessibility Testing
+
+| Test type | How | Frequency |
+|---|---|---|
+| **Automated a11y scan** | `@axe-core/playwright` or `eslint-plugin-jsx-a11y` (lint-time) | Lint-time + per release |
+| **Keyboard-only navigation** | Manual: unplug mouse, navigate every flow with Tab/Enter/Esc/arrow keys | Every release |
+| **Screen reader** | Manual: NVDA on Windows / VoiceOver on macOS for the major flows (Today log, Week submit, Manager approve) | Once per major release; spot-check on minor releases |
+| **Color blindness simulation** | Chrome DevTools "Emulate vision deficiencies" → verify all status signaling still works without color | Once per major release; whenever color tokens change |
+| **High contrast mode** | macOS "Increase contrast" / Windows "High contrast" — verify focus indicators remain visible and text remains readable | Once per major release |
+| **Reduced motion** | DevTools rendering settings → emulate `prefers-reduced-motion: reduce` → verify all animations replaced with instant changes | Once per major release |
+| **WCAG AA contrast audit** | `@axe-core` automated check + Chrome DevTools color-picker contrast meter on any non-token color usage | Lint-time + per release |
+| **Browser zoom 200%** | Manual: set browser zoom to 200% → verify no layout breaks, all content reachable | Once per major release |
+
+**The accessibility audit before v1.0 release is non-negotiable.** This is Phase 6 in the implementation roadmap (Component Strategy step) and gates the release.
+
+### Implementation Guidelines
+
+For developers (or AI agents) building components, these are the binding rules:
+
+#### Semantic HTML
+
+- **Use the right element for the job.** Buttons are `<button>`, links are `<a>`, headings are `<h1>`–`<h6>`, lists are `<ul>`/`<ol>`.
+- **Never make a clickable `<div>`.** It loses keyboard semantics and screen-reader semantics by default.
+- **Use `<table>` for tabular data** (manager matrix, weekly grid, drill-down ticket list). Includes proper `<th scope>` attributes.
+- **Use `<form>` and `<fieldset>` where appropriate** — particularly the options page settings sections.
+
+#### ARIA — only what's needed
+
+- **Don't add ARIA where semantic HTML already does the job.** `<button>` doesn't need `role="button"`.
+- **Add `aria-label` for icon-only buttons.** ✕, ⋯, hover-revealed action icons all need text labels for screen readers.
+- **Add `aria-live` regions for dynamic content updates.** Badge counter changes use `aria-live="polite"`. Errors that appear inline use `aria-live="assertive"`.
+- **Add `aria-current="page"` to the active tab.** Already handled by Radix `Tabs`; verify.
+- **Add `aria-describedby`** to link helper text or error messages to their input.
+
+#### Focus management
+
+- **First interactive element gets focus on surface mount.** Today view: search input. Week view: first day-cell. Manager view: first row's Approve button (or whatever the first meaningful action is).
+- **After dismissing a popover/dialog, return focus to the triggering element.** Radix handles this automatically; don't override.
+- **Never `tabIndex={-1}`** on a focusable element unless programmatically managing focus through scripts (rare).
+- **Skip links not needed** — the popup is small enough that a Tab to first interactive is fast.
+
+#### Keyboard shortcuts (v1.0 = none beyond defaults)
+
+- Tab / Shift+Tab — navigation
+- Enter — submit forms, activate buttons
+- Esc — close overlays, clear search
+- Arrow keys — navigate within Radix primitives (tabs, select, popover content)
+
+No custom shortcuts (no Cmd+K, no power-user palette) in v1.0 — deferred to post-MVP gamification / power-features as part of the broader gamification deferral.
+
+#### Color accessibility
+
+- **All design tokens passed WCAG AA contrast checks** at design time (Visual Foundation step). Use the tokens; don't introduce hardcoded hex colors.
+- **Status colors always paired with icons.** A red cell isn't a red cell — it's a red cell with `<AlertCircle>` and an `aria-label`. Same for yellow, green, blue.
+- **No information conveyed by color alone, anywhere.** Verify this in component review.
+
+#### Motion accessibility
+
+- **Honor `prefers-reduced-motion: reduce`.** Implementation: use Tailwind's `motion-safe:` and `motion-reduce:` variants:
+
+```html
+<div class="motion-safe:animate-pulse motion-reduce:bg-neutral-200">
+```
+
+- **Test reduced-motion mode** as part of the accessibility checklist.
+
+#### Localization (forward-compat note)
+
+v1.0 is **English only**. No `i18next` setup. But UI strings should still be **co-located in component files as named string constants** rather than hardcoded inline, so a future i18n pass is mechanical.
+
+```tsx
+// good — easy to extract later
+const STRINGS = {
+  emptyToday: "Nothing logged today yet. Pick a ticket below to start.",
+  loadingMatrix: "Loading manager view…",
+};
+
+// bad — hardcoded inline, hard to extract
+return <div>Nothing logged today yet…</div>;
+```
+
+### Accessibility Review Checklist (Phase 6 release gate)
+
+Before v1.0 release, verify:
+
+- [ ] All interactive elements reachable via keyboard alone
+- [ ] All interactive elements show visible focus ring
+- [ ] All icon-only buttons have `aria-label`
+- [ ] All status colors paired with icon + text label
+- [ ] All design-token text/background pairs pass 4.5:1 contrast
+- [ ] No information conveyed by color alone
+- [ ] All forms submit on Enter from any field
+- [ ] All overlays dismiss on Esc
+- [ ] All dynamic updates announced via `aria-live`
+- [ ] `prefers-reduced-motion: reduce` replaces animations
+- [ ] Screen reader announces popup open/close, dialog open/close, navigation between tabs
+- [ ] Color-blindness simulation: all flows still understandable
+- [ ] Browser zoom 200%: no layout breaks
+- [ ] High-contrast OS mode: focus indicators remain visible
