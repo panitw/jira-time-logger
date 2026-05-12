@@ -1,0 +1,101 @@
+# generated: 2026-05-11 22:45:02
+# last_updated: 2026-05-11 23:25:00
+# project: jira-time-logger
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: {project-root}/_bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-05-11 22:45:02
+last_updated: 2026-05-11 23:25:00
+project: jira-time-logger
+project_key: NOKEY
+tracking_system: file-system
+story_location: "{project-root}/_bmad-output/implementation-artifacts"
+
+development_status:
+  # Epic 1: Foundation, Connect & Configure
+  epic-1: in-progress
+  1-1-project-scaffold-design-system-first-run-oauth-connect: review
+  1-2-silent-token-refresh-30-day-auth-survival: backlog
+  1-3-disconnect-clear-local-data: backlog
+  1-4-manager-skip-level-auto-detection-from-jira: backlog
+  1-5-catch-all-project-pto-subtask-configuration: backlog
+  1-6-daily-reminder-target-hours-approval-cycle-configuration: backlog
+  1-7-diagnostics-block-cache-clear-action: backlog
+  epic-1-retrospective: optional
+
+  # Epic 2: Log Time (Today View)
+  epic-2: backlog
+  2-1-popup-shell-view-router-tanstack-query-setup: backlog
+  2-2-hierarchy-walk-build-pre-fill-ticket-source: backlog
+  2-3-ticketpicker-2-level-browse-tree-with-search-create-subtask: backlog
+  2-4-quicklogform-hours-input-with-jira-flexible-parser: backlog
+  2-5-catch-all-picker-one-click-pto-action: backlog
+  2-6-edit-delete-worklogs-from-logged-today: backlog
+  2-7-outbox-queue-failed-writes-retry-on-reconnect: backlog
+  epic-2-retrospective: optional
+
+  # Epic 3: Daily Awareness — Badge, Reminder, Banner
+  epic-3: backlog
+  3-1-toolbar-badge-counter: backlog
+  3-2-daily-push-notification: backlog
+  3-3-inline-jira-banner-with-daily-dismiss-contextual-quick-log: backlog
+  epic-3-retrospective: optional
+
+  # Epic 4: Weekly Review & Mark-as-Done
+  epic-4: backlog
+  4-1-week-view-shell-7-day-grid-with-subtask-rows: backlog
+  4-2-per-day-color-coding-status-icons: backlog
+  4-3-inline-cell-editing-add-remove-edit-hours: backlog
+  4-4-click-cell-header-pto-popover: backlog
+  4-5-mark-as-done-button-with-gap-acknowledgment-dialog: backlog
+  epic-4-retrospective: optional
+
+  # Epic 5: Manager Approval & Approval Protocol
+  epic-5: backlog
+  5-1-approval-comment-schema-checksum-parser: backlog
+  5-2-modetoggle-worker-manager-tab-in-popup: backlog
+  5-3-manager-matrix-person-epic-grid-with-progressive-per-row-render: backlog
+  5-4-cell-coloring-dirty-detection-visibility-warnings: backlog
+  5-5-drill-down-panel-per-ticket-evidence-with-visibility-warning: backlog
+  5-6-approve-cycle-per-epic-fan-out-posting-of-versioned-comments: backlog
+  5-7-re-approve-dirty-cycles: backlog
+  5-8-non-canonical-manager-read-only-mode: backlog
+  epic-5-retrospective: optional
+
+  # Epic 6: Release Polish — Accessibility Audit, Edge Validation, Distribution
+  epic-6: backlog
+  6-1-accessibility-audit-gate-wcag-2-1-aa-end-to-end: backlog
+  6-2-edge-browser-validation: backlog
+  6-3-crx-packaging-script-signing-key-vault: backlog
+  6-4-readme-release-documentation-finalization: backlog
+  epic-6-retrospective: optional

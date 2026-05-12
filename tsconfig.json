@@ -1,0 +1,17 @@
+{
+  "extends": "./.wxt/tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
+    "types": ["chrome", "node", "vitest/globals"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx", ".wxt/wxt.d.ts", ".wxt/types/**/*.d.ts"],
+  "exclude": ["node_modules", "output", ".output"]
+}
