@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { z } from 'zod';
 import { ConnectButton } from '@/components/settings/ConnectButton';
-import { Button } from '@/components/ui/button';
+import { DisconnectAction } from '@/components/settings/DisconnectAction';
 import {
   ATLASSIAN_ACCESSIBLE_RESOURCES_URL,
   ATLASSIAN_MYSELF_URL_TEMPLATE,
@@ -10,7 +10,6 @@ import { log } from '@/lib/log';
 import {
   getAuth,
   hasValidAuth,
-  clearAuth,
   type AuthBundle,
 } from '@/lib/storage/tokens';
 
@@ -27,7 +26,6 @@ const AccessibleResourcesSchema = z.array(AccessibleResourceSchema);
 const STRINGS = {
   brandWordmark: 'jira-time-logger',
   connectionHeading: 'Connection',
-  disconnectLabel: 'Disconnect',
   loadingConnection: 'Checking connection…',
   connectedAs: 'Connected as',
   emailUnavailable: '(email unavailable)',
@@ -50,7 +48,6 @@ type ViewState =
 
 export function App(): React.ReactElement {
   const [view, setView] = useState<ViewState>({ kind: 'loading' });
-  const [disconnecting, setDisconnecting] = useState(false);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -89,12 +86,6 @@ export function App(): React.ReactElement {
     })();
   };
 
-  const handleDisconnectStub = async (): Promise<void> => {
-    log.info('disconnect.stub-clicked', { note: 'full handler in Story 1.3' });
-    await clearAuth();
-    setView({ kind: 'first-run' });
-  };
-
   return (
     <div className="min-h-screen">
       <header className="bg-brand-gradient px-8 py-6">
@@ -125,16 +116,7 @@ export function App(): React.ReactElement {
                   {view.authMethod === 'oauth' ? STRINGS.authMethodOAuth : STRINGS.authMethodApiToken}
                 </span>
               </p>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setDisconnecting(true);
-                  void handleDisconnectStub().finally(() => setDisconnecting(false));
-                }}
-                disabled={disconnecting}
-              >
-                {STRINGS.disconnectLabel}
-              </Button>
+              <DisconnectAction onDisconnected={() => setView({ kind: 'first-run' })} />
             </div>
 
             <p className="mt-12 text-sm text-neutral-500">

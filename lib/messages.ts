@@ -24,12 +24,14 @@ export const OAuthCompletedSchema = z.object({
   cloudId: z.string(),
   siteUrl: z.string().url(),
 });
+export const DisconnectRequestedSchema = z.object({});
 
 // ---- Registry (tagged union) ----
 
 export type MessageRegistry = {
   'oauth-connect-requested': z.infer<typeof OAuthConnectRequestedSchema>;
   'oauth-completed': z.infer<typeof OAuthCompletedSchema>;
+  'disconnect': z.infer<typeof DisconnectRequestedSchema>;
 };
 
 export type MessageKind = keyof MessageRegistry;
@@ -37,6 +39,7 @@ export type MessageKind = keyof MessageRegistry;
 const SCHEMAS: { [K in MessageKind]: z.ZodType<MessageRegistry[K]> } = {
   'oauth-connect-requested': OAuthConnectRequestedSchema,
   'oauth-completed': OAuthCompletedSchema,
+  'disconnect': DisconnectRequestedSchema,
 };
 
 type EnvelopeOf<K extends MessageKind> = { kind: K; payload: MessageRegistry[K] };
