@@ -47,7 +47,7 @@ development_status:
   1-1-project-scaffold-design-system-first-run-oauth-connect: done
   1-2-silent-token-refresh-30-day-auth-survival: done
   1-3-disconnect-clear-local-data: done
-  1-4-manager-skip-level-auto-detection-from-jira: backlog
+  1-4-manager-skip-level-auto-detection-from-jira: review
   1-5-catch-all-project-pto-subtask-configuration: backlog
   1-6-daily-reminder-target-hours-approval-cycle-configuration: backlog
   1-7-diagnostics-block-cache-clear-action: backlog

@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { z } from 'zod';
 import { ConnectButton } from '@/components/settings/ConnectButton';
 import { DisconnectAction } from '@/components/settings/DisconnectAction';
+import { ManagerDisplay, type ManagerNames } from '@/components/settings/ManagerDisplay';
 import {
   ATLASSIAN_ACCESSIBLE_RESOURCES_URL,
   ATLASSIAN_MYSELF_URL_TEMPLATE,
 } from '@/lib/env';
 import { log } from '@/lib/log';
+import { resolveReportingLine } from '@/lib/manager-resolution';
 import {
   getAuth,
   hasValidAuth,
@@ -30,8 +32,6 @@ const STRINGS = {
   connectedAs: 'Connected as',
   emailUnavailable: '(email unavailable)',
   siteUnknown: '(site unknown)',
-  managerSectionPlaceholder:
-    'Reporting line and other settings will appear here in upcoming releases.',
   authMethodOAuth: 'via OAuth',
   authMethodApiToken: 'via API token',
 };
@@ -48,6 +48,9 @@ type ViewState =
 
 export function App(): React.ReactElement {
   const [view, setView] = useState<ViewState>({ kind: 'loading' });
+  const [managerResolving, setManagerResolving] = useState(false);
+  const [managerError, setManagerError] = useState(false);
+  const [managerNames, setManagerNames] = useState<ManagerNames | null>(null);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -72,6 +75,22 @@ export function App(): React.ReactElement {
     })();
     return () => ac.abort();
   }, []);
+
+  useEffect(() => {
+    if (view.kind !== 'connected') return;
+    setManagerResolving(true);
+    setManagerError(false);
+    void (async () => {
+      const result = await resolveReportingLine();
+      if (result.kind === 'ok') {
+        setManagerNames(result.value);
+      } else {
+        log.warn('options.manager-resolution.failed', { kind: result.kind });
+        setManagerError(true);
+      }
+      setManagerResolving(false);
+    })();
+  }, [view.kind]);
 
   const handleConnected = (email: string, siteDomain: string): void => {
     // Read the auth kind from storage so the badge label is accurate.
@@ -119,9 +138,12 @@ export function App(): React.ReactElement {
               <DisconnectAction onDisconnected={() => setView({ kind: 'first-run' })} />
             </div>
 
-            <p className="mt-12 text-sm text-neutral-500">
-              {STRINGS.managerSectionPlaceholder}
-            </p>
+            <ManagerDisplay
+              managerDisplayName={managerNames?.managerDisplayName ?? null}
+              skipLevelDisplayName={managerNames?.skipLevelDisplayName ?? null}
+              loading={managerResolving}
+              error={managerError}
+            />
           </section>
         )}
       </main>
