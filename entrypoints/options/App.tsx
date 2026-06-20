@@ -1,8 +1,13 @@
 import { useEffect, useState } from 'react';
 import { z } from 'zod';
+import { CatchAllProjectField } from '@/components/settings/CatchAllProjectField';
 import { ConnectButton } from '@/components/settings/ConnectButton';
+import { CycleField } from '@/components/settings/CycleField';
+import { DiagnosticsBlock } from '@/components/settings/DiagnosticsBlock';
 import { DisconnectAction } from '@/components/settings/DisconnectAction';
 import { ManagerDisplay, type ManagerNames } from '@/components/settings/ManagerDisplay';
+import { ReminderTimeField } from '@/components/settings/ReminderTimeField';
+import { TargetHoursField } from '@/components/settings/TargetHoursField';
 import {
   ATLASSIAN_ACCESSIBLE_RESOURCES_URL,
   ATLASSIAN_MYSELF_URL_TEMPLATE,
@@ -149,6 +154,12 @@ export function App(): React.ReactElement {
               loading={managerResolving}
               error={managerError}
             />
+
+            <CatchAllProjectField />
+            <ReminderTimeField />
+            <TargetHoursField />
+            <CycleField />
+            <DiagnosticsBlock />
           </section>
         )}
       </main>

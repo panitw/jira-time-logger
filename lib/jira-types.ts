@@ -28,3 +28,17 @@ export const JiraUserSchema = z.object({
 });
 
 export type JiraUser = z.infer<typeof JiraUserSchema>;
+
+export const JiraIssueSchema = z.object({
+  id: z.string(),
+  key: z.string(),
+  fields: z.object({
+    summary: z.string(),
+  }),
+});
+
+export type JiraIssue = z.infer<typeof JiraIssueSchema>;
+
+export const JiraSearchSchema = z.object({
+  issues: z.array(JiraIssueSchema),
+});

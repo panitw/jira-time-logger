@@ -9,7 +9,7 @@
  * Per FR46: non-blocking notice, never blocks the core log-my-time flow.
  */
 import { jiraGet } from '@/lib/jira-client';
-import { JiraMyselfSchema, JiraUserSchema } from '@/lib/jira-types';
+import { JiraMyselfSchema, JiraUserSchema, type JiraUser } from '@/lib/jira-types';
 import { log } from '@/lib/log';
 import { type Result, type JiraError, ok } from '@/lib/result';
 import { setManagerNames, type ManagerNames } from '@/lib/storage/settings';
@@ -38,7 +38,7 @@ export async function resolveReportingLine(): Promise<Result<ManagerNames, JiraE
   }
 
   const managerNames: ManagerNames = { managerDisplayName: null, skipLevelDisplayName: null };
-  const user = userResult.value;
+  const user = userResult.value as JiraUser;
 
   if (!user.manager) {
     log.info('manager-resolution.manager-not-set', { accountId });
@@ -71,7 +71,7 @@ export async function resolveReportingLine(): Promise<Result<ManagerNames, JiraE
     return ok(managerNames);
   }
 
-  const skipLevelUser = skipLevelResult.value;
+  const skipLevelUser = skipLevelResult.value as JiraUser;
   if (skipLevelUser.manager) {
     managerNames.skipLevelDisplayName = skipLevelUser.manager.displayName;
     log.info('manager-resolution.skip-level-resolved', {

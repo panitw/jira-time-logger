@@ -10,6 +10,7 @@
  */
 import { log } from '@/lib/log';
 import { refreshTokens } from '@/lib/oauth/refresh';
+import { reminderTimeItem } from '@/lib/storage/settings';
 import { getAuth, hasValidAuth } from '@/lib/storage/tokens';
 
 async function handleTokenRefresh(): Promise<void> {
@@ -55,6 +56,24 @@ export default defineBackground(async () => {
       await handleTokenRefresh();
     }
   });
+
+  try {
+    const existing = await chrome.alarms.get('daily-reminder');
+    if (!existing) {
+      const time = await reminderTimeItem.getValue();
+      const [hours, minutes] = time.split(':').map(Number);
+      const now = new Date();
+      const next = new Date(now);
+      next.setHours(hours ?? 17, minutes ?? 0, 0, 0);
+      if (next <= now) next.setDate(next.getDate() + 1);
+      chrome.alarms.create('daily-reminder', {
+        when: next.getTime(),
+        periodInMinutes: 1440,
+      });
+    }
+  } catch (e) {
+    log.warn('alarms.create.daily-reminder.failed', { error: String(e) });
+  }
 
   chrome.runtime.onInstalled.addListener((details) => {
     log.info('runtime.installed', { reason: details.reason });
