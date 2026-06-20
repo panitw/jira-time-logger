@@ -1,5 +1,5 @@
 import { formatDistanceToNow } from 'date-fns';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { log } from '@/lib/log';
 import { getStorageUsedBytes, clearCache } from '@/lib/storage/quota';
@@ -21,24 +21,36 @@ export function DiagnosticsBlock(): React.ReactElement {
   const [cleared, setCleared] = useState(false);
 
   useEffect(() => {
-    void loadState();
+    const ac = new AbortController();
+    void (async () => {
+      const ts = await lastSyncTimestampItem.getValue();
+      if (ac.signal.aborted) return;
+      setSyncTs(ts);
+      const bytes = await getStorageUsedBytes();
+      if (!ac.signal.aborted) setStorageBytes(bytes);
+    })();
+    return () => ac.abort();
   }, []);
 
-  async function loadState(): Promise<void> {
-    const ts = await lastSyncTimestampItem.getValue();
-    setSyncTs(ts);
-    const bytes = await getStorageUsedBytes();
-    setStorageBytes(bytes);
-  }
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  const handleClearCache = async (): Promise<void> => {
-    await clearCache();
-    setCleared(true);
-    log.info('diagnostics.cache-cleared', {});
-    const bytes = await getStorageUsedBytes();
-    setStorageBytes(bytes);
-    setTimeout(() => setCleared(false), 3000);
-  };
+  useEffect(() => {
+    return () => { if (timeoutRef.current) clearTimeout(timeoutRef.current); };
+  }, []);
+
+  const handleClearCache = useCallback(async (): Promise<void> => {
+    try {
+      await clearCache();
+      setCleared(true);
+      log.info('diagnostics.cache-cleared', {});
+      const bytes = await getStorageUsedBytes();
+      setStorageBytes(bytes);
+      timeoutRef.current = setTimeout(() => setCleared(false), 3000);
+    } catch (e) {
+      log.error('diagnostics.clear-cache-failed', { cause: String(e) });
+      setCleared(false);
+    }
+  }, []);
 
   const lastSyncLabel = syncTs
     ? formatDistanceToNow(syncTs, { addSuffix: true })
