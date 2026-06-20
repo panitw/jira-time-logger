@@ -1,51 +1,97 @@
 import { useEffect, useState } from 'react';
+import { z } from 'zod';
 import { ConnectButton } from '@/components/settings/ConnectButton';
 import { Button } from '@/components/ui/button';
-import { ATLASSIAN_MYSELF_URL_TEMPLATE } from '@/lib/env';
+import {
+  ATLASSIAN_ACCESSIBLE_RESOURCES_URL,
+  ATLASSIAN_MYSELF_URL_TEMPLATE,
+} from '@/lib/env';
 import { log } from '@/lib/log';
-import { getTokens, hasValidTokens, clearTokens } from '@/lib/storage/tokens';
+import {
+  getAuth,
+  hasValidAuth,
+  clearAuth,
+  type AuthBundle,
+} from '@/lib/storage/tokens';
+
+const MyselfSchema = z.object({
+  emailAddress: z.string().optional(),
+  accountId: z.string().optional(),
+});
+const AccessibleResourceSchema = z.object({
+  id: z.string(),
+  url: z.string(),
+});
+const AccessibleResourcesSchema = z.array(AccessibleResourceSchema);
 
 const STRINGS = {
   brandWordmark: 'jira-time-logger',
   connectionHeading: 'Connection',
   disconnectLabel: 'Disconnect',
   loadingConnection: 'Checking connection…',
+  connectedAs: 'Connected as',
+  emailUnavailable: '(email unavailable)',
+  siteUnknown: '(site unknown)',
   managerSectionPlaceholder:
     'Reporting line and other settings will appear here in upcoming releases.',
+  authMethodOAuth: 'via OAuth',
+  authMethodApiToken: 'via API token',
 };
 
 type ViewState =
   | { kind: 'loading' }
   | { kind: 'first-run' }
-  | { kind: 'connected'; email: string; siteDomain: string };
+  | {
+      kind: 'connected';
+      email: string;
+      siteDomain: string;
+      authMethod: 'oauth' | 'api-token';
+    };
 
 export function App(): React.ReactElement {
   const [view, setView] = useState<ViewState>({ kind: 'loading' });
+  const [disconnecting, setDisconnecting] = useState(false);
 
   useEffect(() => {
+    const ac = new AbortController();
     void (async () => {
-      const bundle = await getTokens();
-      if (!hasValidTokens(bundle)) {
+      try {
+        const bundle = await getAuth();
+        if (!hasValidAuth(bundle)) {
+          setView({ kind: 'first-run' });
+          return;
+        }
+        const meta = await resolveConnectedMeta(bundle!);
+        setView({
+          kind: 'connected',
+          email: meta.email,
+          siteDomain: meta.siteDomain,
+          authMethod: bundle!.kind,
+        });
+      } catch (e) {
+        log.error('options.init.error', { cause: String(e) });
         setView({ kind: 'first-run' });
-        return;
       }
-      const meta = await fetchConnectedMeta(bundle!.access_token, bundle!.cloudId);
-      setView({
-        kind: 'connected',
-        email: meta.email,
-        siteDomain: meta.siteDomain,
-      });
     })();
+    return () => ac.abort();
   }, []);
 
   const handleConnected = (email: string, siteDomain: string): void => {
-    setView({ kind: 'connected', email, siteDomain });
+    // Read the auth kind from storage so the badge label is accurate.
+    void (async () => {
+      const bundle = await getAuth();
+      setView({
+        kind: 'connected',
+        email,
+        siteDomain,
+        authMethod: bundle?.kind ?? 'oauth',
+      });
+    })();
   };
 
-  // Story 1.1 ships a stub Disconnect — full handler is Story 1.3 (FR5).
   const handleDisconnectStub = async (): Promise<void> => {
     log.info('disconnect.stub-clicked', { note: 'full handler in Story 1.3' });
-    await clearTokens();
+    await clearAuth();
     setView({ kind: 'first-run' });
   };
 
@@ -73,10 +119,20 @@ export function App(): React.ReactElement {
             <hr className="my-3 border-neutral-200" />
             <div className="flex items-start justify-between gap-4">
               <p className="text-sm text-neutral-700">
-                <span className="font-medium text-state-success">✓</span> Connected as{' '}
-                <span className="font-mono">{view.email}</span> ({view.siteDomain})
+                <span className="font-medium text-state-success">✓</span> {STRINGS.connectedAs}{' '}
+                <span className="font-mono">{view.email}</span> ({view.siteDomain}){' '}
+                <span className="text-xs text-neutral-500">
+                  {view.authMethod === 'oauth' ? STRINGS.authMethodOAuth : STRINGS.authMethodApiToken}
+                </span>
               </p>
-              <Button variant="secondary" onClick={() => void handleDisconnectStub()}>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setDisconnecting(true);
+                  void handleDisconnectStub().finally(() => setDisconnecting(false));
+                }}
+                disabled={disconnecting}
+              >
                 {STRINGS.disconnectLabel}
               </Button>
             </div>
@@ -91,36 +147,67 @@ export function App(): React.ReactElement {
   );
 }
 
-async function fetchConnectedMeta(
+/**
+ * Resolve the email + site-domain to show on the Connection row, branching on
+ * the auth method:
+ *   - OAuth     → fetch /myself via api.atlassian.com/ex/jira/{cloudId}/... and
+ *                 derive the site URL from accessible-resources.
+ *   - API token → both values are already in the bundle.
+ */
+async function resolveConnectedMeta(
+  bundle: AuthBundle,
+): Promise<{ email: string; siteDomain: string }> {
+  if (bundle.kind === 'api-token') {
+    let siteDomain = bundle.siteUrl;
+    try {
+      siteDomain = new URL(bundle.siteUrl).host;
+    } catch {
+      // unchanged
+    }
+    return { email: bundle.email, siteDomain };
+  }
+  return fetchOAuthConnectedMeta(bundle.access_token, bundle.cloudId);
+}
+
+async function fetchOAuthConnectedMeta(
   accessToken: string,
   cloudId: string,
 ): Promise<{ email: string; siteDomain: string }> {
-  let email = '(email unavailable)';
-  let siteDomain = '(site unknown)';
+  let email = STRINGS.emailUnavailable;
+  let siteDomain = STRINGS.siteUnknown;
   try {
     const myselfUrl = ATLASSIAN_MYSELF_URL_TEMPLATE.replace('{cloudId}', cloudId);
     const res = await fetch(myselfUrl, {
       headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
     });
     if (res.ok) {
-      const me = (await res.json()) as { emailAddress?: string; accountId?: string };
-      email = me.emailAddress ?? me.accountId ?? email;
+      const json = await res.json();
+      const parsed = MyselfSchema.safeParse(json);
+      if (parsed.success) {
+        email = parsed.data.emailAddress ?? parsed.data.accountId ?? email;
+      } else {
+        log.warn('options.myself.schema-mismatch', { issues: parsed.error.issues });
+      }
     } else {
       log.warn('options.myself.failed', { status: res.status });
     }
-    // accessible-resources call: re-fetch site URL to derive domain.
-    const arRes = await fetch('https://api.atlassian.com/oauth/token/accessible-resources', {
+    const arRes = await fetch(ATLASSIAN_ACCESSIBLE_RESOURCES_URL, {
       headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
     });
     if (arRes.ok) {
-      const sites = (await arRes.json()) as Array<{ id: string; url: string }>;
-      const match = sites.find((s) => s.id === cloudId);
-      if (match) {
-        try {
-          siteDomain = new URL(match.url).host;
-        } catch {
-          siteDomain = match.url;
+      const json = await arRes.json();
+      const parsed = AccessibleResourcesSchema.safeParse(json);
+      if (parsed.success) {
+        const match = parsed.data.find((s) => s.id === cloudId);
+        if (match) {
+          try {
+            siteDomain = new URL(match.url).host;
+          } catch {
+            siteDomain = match.url;
+          }
         }
+      } else {
+        log.warn('options.accessible-resources.schema-mismatch', { issues: parsed.error.issues });
       }
     }
   } catch (e) {

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { OAuthBundle, ApiTokenBundle } from './tokens';
 
 // Mock chrome.storage.local in-memory before importing the module under test.
 const memoryStore: Record<string, unknown> = {};
@@ -53,7 +54,29 @@ vi.stubGlobal('chrome', {
 });
 
 const tokensModule = await import('./tokens');
-const { getTokens, setTokens, clearTokens, hasValidTokens } = tokensModule;
+const { getAuth, setAuth, clearAuth, hasValidAuth } = tokensModule;
+
+function oauthBundle(overrides?: Partial<OAuthBundle>): OAuthBundle {
+  return {
+    kind: 'oauth',
+    access_token: 'a',
+    refresh_token: 'r',
+    expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
+    cloudId: 'cloud-1',
+    ...overrides,
+  };
+}
+
+function apiTokenBundle(overrides?: Partial<ApiTokenBundle>): ApiTokenBundle {
+  return {
+    kind: 'api-token',
+    email: 'note@example.com',
+    apiToken: 'secret-token',
+    siteUrl: 'https://acme.atlassian.net',
+    accountId: '5fae...',
+    ...overrides,
+  };
+}
 
 describe('storage/tokens', () => {
   beforeEach(async () => {
@@ -63,79 +86,57 @@ describe('storage/tokens', () => {
   });
 
   it('returns null by default', async () => {
-    expect(await getTokens()).toBeNull();
+    expect(await getAuth()).toBeNull();
   });
 
-  it('round-trips a token bundle via set + get', async () => {
-    const bundle = {
-      access_token: 'a',
-      refresh_token: 'r',
-      expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
-      cloudId: 'cloud-1',
-    };
-    await setTokens(bundle);
-    expect(await getTokens()).toEqual(bundle);
+  it('round-trips an OAuth bundle', async () => {
+    const b = oauthBundle();
+    await setAuth(b);
+    expect(await getAuth()).toEqual(b);
   });
 
-  it('clearTokens restores null', async () => {
-    await setTokens({
-      access_token: 'a',
-      refresh_token: 'r',
-      expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
-      cloudId: 'cloud-1',
-    });
-    await clearTokens();
-    expect(await getTokens()).toBeNull();
+  it('round-trips an API-token bundle', async () => {
+    const b = apiTokenBundle();
+    await setAuth(b);
+    expect(await getAuth()).toEqual(b);
   });
 
-  it('setTokens makes exactly one underlying storage.set call (atomic write)', async () => {
+  it('clearAuth restores null', async () => {
+    await setAuth(oauthBundle());
+    await clearAuth();
+    expect(await getAuth()).toBeNull();
+  });
+
+  it('setAuth makes exactly one underlying storage.set call (atomic write)', async () => {
     const setSpy = chrome.storage.local.set as ReturnType<typeof vi.fn>;
     setSpy.mockClear();
-    await setTokens({
-      access_token: 'a',
-      refresh_token: 'r',
-      expires_at: new Date().toISOString(),
-      cloudId: 'cloud-1',
-    });
+    await setAuth(oauthBundle());
     expect(setSpy).toHaveBeenCalledTimes(1);
   });
 });
 
-describe('hasValidTokens', () => {
+describe('hasValidAuth', () => {
   it('returns false for null', () => {
-    expect(hasValidTokens(null)).toBe(false);
+    expect(hasValidAuth(null)).toBe(false);
   });
 
-  it('returns true when expires_at is in the future', () => {
+  it('returns true when OAuth expires_at is in the future', () => {
     expect(
-      hasValidTokens({
-        access_token: 'a',
-        refresh_token: 'r',
-        expires_at: new Date(Date.now() + 60_000).toISOString(),
-        cloudId: 'c',
-      }),
+      hasValidAuth(oauthBundle({ expires_at: new Date(Date.now() + 120_000).toISOString() })),
     ).toBe(true);
   });
 
-  it('returns false when expires_at is in the past', () => {
+  it('returns false when OAuth expires_at is in the past', () => {
     expect(
-      hasValidTokens({
-        access_token: 'a',
-        refresh_token: 'r',
-        expires_at: new Date(Date.now() - 60_000).toISOString(),
-        cloudId: 'c',
-      }),
+      hasValidAuth(oauthBundle({ expires_at: new Date(Date.now() - 60_000).toISOString() })),
     ).toBe(false);
   });
 
-  it('returns false for an invalid expires_at string', () => {
-    expect(
-      hasValidTokens({
-        access_token: 'a',
-        refresh_token: 'r',
-        expires_at: 'not-a-date',
-        cloudId: 'c',
-      }),
-    ).toBe(false);
+  it('returns false when OAuth expires_at is unparseable', () => {
+    expect(hasValidAuth(oauthBundle({ expires_at: 'not-a-date' }))).toBe(false);
+  });
+
+  it('returns true for an API-token bundle regardless of date (no expiry concept)', () => {
+    expect(hasValidAuth(apiTokenBundle())).toBe(true);
   });
 });

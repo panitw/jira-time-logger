@@ -47,14 +47,15 @@ export async function sendMessage<K extends MessageKind>(
   kind: K,
   payload: MessageRegistry[K],
 ): Promise<void> {
-  // Validate at send time so a malformed payload fails locally rather than
-  // propagating to a confused receiver.
-  SCHEMAS[kind].parse(payload);
-  const envelope: EnvelopeOf<K> = { kind, payload };
+  const parsed = SCHEMAS[kind].safeParse(payload);
+  if (!parsed.success) {
+    log.warn('messages.send.invalid', { kind, issues: parsed.error.issues });
+    return;
+  }
+  const envelope: EnvelopeOf<K> = { kind, payload: parsed.data };
   try {
     await chrome.runtime.sendMessage(envelope);
   } catch (err) {
-    // Receiver may not be alive (e.g., popup closed) — fire-and-forget pattern.
     log.debug('messages.send.no-receiver', { kind, err: String(err) });
   }
 }
@@ -74,7 +75,9 @@ export function onMessage<K extends MessageKind>(
       log.warn('messages.receive.invalid', { kind, issues: parsed.error.issues });
       return false;
     }
-    void Promise.resolve(handler(parsed.data as MessageRegistry[K]));
+    void Promise.resolve(handler(parsed.data as MessageRegistry[K])).catch((e) =>
+      log.error('messages.handler.error', { kind, error: String(e) }),
+    );
     return false; // not using sendResponse / not keeping channel open
   };
   chrome.runtime.onMessage.addListener(listener);

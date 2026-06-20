@@ -1,5 +1,5 @@
 # generated: 2026-05-11 22:45:02
-# last_updated: 2026-05-11 23:25:00
+# last_updated: 2026-06-20 21:00:00
 # project: jira-time-logger
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-11 22:45:02
-last_updated: 2026-05-11 23:25:00
+last_updated: 2026-06-20 21:00:00
 project: jira-time-logger
 project_key: NOKEY
 tracking_system: file-system
@@ -44,8 +44,8 @@ story_location: "{project-root}/_bmad-output/implementation-artifacts"
 development_status:
   # Epic 1: Foundation, Connect & Configure
   epic-1: in-progress
-  1-1-project-scaffold-design-system-first-run-oauth-connect: review
-  1-2-silent-token-refresh-30-day-auth-survival: backlog
+  1-1-project-scaffold-design-system-first-run-oauth-connect: done
+  1-2-silent-token-refresh-30-day-auth-survival: ready-for-dev
   1-3-disconnect-clear-local-data: backlog
   1-4-manager-skip-level-auto-detection-from-jira: backlog
   1-5-catch-all-project-pto-subtask-configuration: backlog

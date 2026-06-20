@@ -40,6 +40,25 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'error',
       'no-console': ['error', { allow: ['warn', 'error', 'debug', 'info'] }],
 
+      // === Naming conventions (architecture.md patterns) ===
+      '@typescript-eslint/naming-convention': [
+        'error',
+        { selector: 'typeLike', format: ['PascalCase'] },
+        { selector: 'interface', format: ['PascalCase'] },
+        { selector: 'function', format: ['camelCase', 'PascalCase'] },
+        { selector: 'variable', format: ['camelCase', 'PascalCase', 'UPPER_CASE'], leadingUnderscore: 'allow' },
+        {
+          selector: 'variable',
+          modifiers: ['const', 'global'],
+          format: ['camelCase', 'PascalCase', 'UPPER_CASE', 'snake_case'],
+        },
+        {
+          selector: 'variable',
+          modifiers: ['exported'],
+          format: ['camelCase', 'PascalCase', 'UPPER_CASE'],
+        },
+      ],
+
       // === Import order ===
       'import/order': [
         'warn',

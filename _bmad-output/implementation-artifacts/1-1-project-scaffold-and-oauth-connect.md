@@ -1,6 +1,6 @@
 # Story 1.1: Project Scaffold, Design System & First-Run OAuth Connect
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -425,6 +425,42 @@ E2E (Playwright) tests are **deferred to v1.x** per architecture.md — manual s
 
 ## Dev Agent Record
 
+### Review Findings (2026-06-20)
+
+- [x] [Review][Decision] **`tokensItem` public export vs encapsulation** — Resolved: extracted `onAuthChange(callback)` helper, removed public `authItem` export. `lib/storage/tokens.ts`
+- [x] [Review][Decision] **Hero heading hierarchy conflict (UX-DR32)** — Accepted current layout. Brand wordmark band as `<h1>`, hero title as `<h2>`. Deferred.
+
+- [x] [Review][Patch] **Missing `@typescript-eslint/naming-convention` rules (AC #1)** [eslint.config.js]
+- [x] [Review][Patch] **`launchWebAuthFlow` has no timeout** [lib/oauth/flow.ts] — Added 120s timeout via `Promise.race`.
+- [x] [Review][Patch] **`fetchConnectedMeta` silently fails with broken "Connected" state** [entrypoints/options/App.tsx] — Added Zod validation for /myself and accessible-resources responses, use `STRINGS` for fallback text, use `ATLASSIAN_ACCESSIBLE_RESOURCES_URL` constant.
+- [x] [Review][Patch] **`isProd()` uses `(import.meta as any)` bypassing no-`any` rule** [lib/log.ts] — Replaced with direct `import.meta.env?.PROD === true`.
+- [x] [Review][Patch] **OAuth redirect URI logged on every service-worker wake** [entrypoints/background.ts] — Now logged only on first install via `onInstalled`.
+- [x] [Review][Patch] **Auth URL (with `state`, `code_challenge`, `redirect_uri`) logged to production console** [lib/oauth/flow.ts] — Changed to `log.debug`.
+- [x] [Review][Patch] **`network()` returns `JiraError` but cast to `OAuthError` via `as`** [lib/oauth/flow.ts] — Narrowed return types to avoid casts.
+- [x] [Review][Patch] **No `chrome.runtime.lastError` check after `openOptionsPage()`** [entrypoints/background.ts] — Added error callback.
+- [x] [Review][Patch] **Hardcoded `accessible-resources` URL in `App.tsx`** [entrypoints/options/App.tsx] — Uses `ATLASSIAN_ACCESSIBLE_RESOURCES_URL` from `lib/env.ts`.
+- [x] [Review][Patch] **`sendMessage` throws `ZodError` via `.parse()` instead of returning Result** [lib/messages.ts] — Uses `.safeParse()`.
+- [x] [Review][Patch] **`useEffect` fetch has no `AbortController` cleanup** [entrypoints/options/App.tsx] — Added `AbortController`.
+- [x] [Review][Patch] **Site-picker buttons lack disabled state; double-click fires multiple `setTokens`** [components/settings/ConnectButton.tsx] — Added `pickingSite` disabled guard.
+- [x] [Review][Patch] **`useEffect` void async IIFE has no rejection handler** [entrypoints/options/App.tsx] — Added try/catch fallback to first-run state.
+- [x] [Review][Patch] **Disconnect double-click fires multiple `clearTokens`** [entrypoints/options/App.tsx] — Added `disconnecting` disabled guard.
+- [x] [Review][Patch] **`clearSession` failure in catch block breaks never-throws contract** [lib/oauth/flow.ts] — Wrapped in try/catch.
+- [x] [Review][Patch] **No bounds check on `expires_in` from token response** [lib/oauth/flow.ts] — Added finite/positive/max validation.
+- [x] [Review][Patch] **Message handler rejection uncaught** [lib/messages.ts] — Added `.catch()` handler.
+- [x] [Review][Patch] **`/myself` response uses `as` assertion, no Zod validation** [entrypoints/options/App.tsx] — Uses `MyselfSchema` Zod validation.
+- [x] [Review][Patch] **`setTokens` accepts empty-string fields, no validation** [lib/storage/tokens.ts] — Added `AuthBundleSchema` Zod validation.
+- [x] [Review][Patch] **First-run hero lacks `bg-brand-gradient` + white text (AC #5, UX-DR20)** [components/settings/ConnectButton.tsx] — Hero wrapped in `bg-brand-gradient` with white text.
+- [x] [Review][Patch] **Hardcoded "Connected as" string in JSX (UX-DR31)** [entrypoints/options/App.tsx] — Extracted to `STRINGS.connectedAs`.
+- [x] [Review][Patch] **Logo `<img>` has `alt=""` (UX-DR32)** [components/settings/ConnectButton.tsx] — Added "Jira Time Logger logo" alt.
+
+- [x] [Review][Defer] **shadcn/ui only shipped `Button` (10 primitives deferred)** — acknowledged in dev notes; add via `pnpm dlx shadcn@latest add` when needed.
+- [x] [Review][Defer] **Design tokens in CSS `@theme` vs `tailwind.config.ts`** — Tailwind v4 CSS-first pattern, functionally equivalent.
+- [x] [Review][Defer] **Disconnect clears tokens instead of no-op stub** — dev convenience, documented in completion notes.
+- [x] [Review][Defer] **Atlassian client ID committed to repo** — PKCE makes client_id public; story already addresses this.
+- [x] [Review][Defer] **`parseError` stores `issue: unknown`** — API design choice; consumers narrow via runtime checks.
+- [x] [Review][Defer] **`jsdom` environment set globally in Vitest** — performance optimization, not a bug.
+- [x] [Review][Defer] **`postinstall: "wxt prepare"` may fail in CI** — no CI configured yet; address when CI is set up.
+
 ### Agent Model Used
 
 claude-opus-4-7 (1M context) — Claude Code dev-story workflow
@@ -510,6 +546,7 @@ If any AC fails the manual smoke test, file a follow-up.
 **New files (35):**
 
 Source code:
+- [components/settings/ApiTokenSetup.tsx](../../components/settings/ApiTokenSetup.tsx) — added during review
 - [components/settings/ConnectButton.tsx](../../components/settings/ConnectButton.tsx)
 - [components/shared/ErrorBoundary.tsx](../../components/shared/ErrorBoundary.tsx)
 - [components/ui/button.tsx](../../components/ui/button.tsx)
@@ -518,6 +555,7 @@ Source code:
 - [entrypoints/options/App.tsx](../../entrypoints/options/App.tsx)
 - [entrypoints/options/index.html](../../entrypoints/options/index.html)
 - [entrypoints/options/main.tsx](../../entrypoints/options/main.tsx)
+- [lib/auth/api-token.ts](../../lib/auth/api-token.ts) — added during review
 - [lib/env.ts](../../lib/env.ts)
 - [lib/log.ts](../../lib/log.ts)
 - [lib/messages.ts](../../lib/messages.ts)
@@ -528,6 +566,7 @@ Source code:
 - [styles/globals.css](../../styles/globals.css)
 
 Co-located tests:
+- [lib/auth/api-token.test.ts](../../lib/auth/api-token.test.ts) — added during review
 - [lib/log.test.ts](../../lib/log.test.ts)
 - [lib/messages.test.ts](../../lib/messages.test.ts)
 - [lib/oauth/flow.test.ts](../../lib/oauth/flow.test.ts)
@@ -563,5 +602,32 @@ Public assets (placeholder — Note to replace with real brand logo):
 
 | Date | Change |
 |---|---|
-| 2026-05-11 | Initial implementation of Story 1.1 — Project Scaffold, Design System & First-Run OAuth Connect. WXT React + TS scaffold; cross-cutting foundation libs (`result`, `log`, `messages`, `storage/tokens`, `oauth/pkce`, `oauth/flow`) with 53 passing co-located tests; first-run hero options page with OAuth 3LO+PKCE flow; Atomic token persistence; minimum-scope manifest. |
+| 2026-05-11 | Initial implementation of Story 1.1 — Project Scaffold, Design System & First-Run OAuth Connect. WXT React + TS scaffold; cross-cutting foundation libs (`result`, `log`, `messages`, `storage/tokens`, `oauth/pkce`, `oauth/flow`) with 53 passing co-located tests; first-run hero options page with OAuth 3LO+PKCE flow; atomic token persistence; minimum-scope manifest. |
+| 2026-06-20 | Reviewer-driven fixes: (a) renamed WXT output directory `.output/ → output/` so Chrome's "Load unpacked" file picker can navigate to it without toggling hidden files; (b) added `<meta name="manifest.open_in_tab" content="true">` to the options HTML so the page opens in a real browser tab (was rendering inside `chrome://extensions` modal); (c) promoted the auth URL log to `info` level for production-build visibility; (d) `launchWebAuthFlow` wrapper now distinguishes user-cancelled from genuine `chrome.runtime.lastError` failures (e.g., "Authorization page could not be loaded"). |
+| 2026-06-20 | **Scope deviation — API token auth added as a secondary path** (originally deferred to v1.x per PRD > Growth Features). Driven by a real-world blocker: Jira admin approval for the OAuth app was unavailable. Implementation: new `lib/auth/api-token.ts` (validate via `GET <site>/rest/api/3/myself` with Basic auth) + `components/settings/ApiTokenSetup.tsx` form (site URL + email + API token fields). Refactored storage's `TokenBundle` into a discriminated `AuthBundle = OAuthBundle \| ApiTokenBundle`. First-run hero shows OAuth as primary CTA + small "Or set up with an API token" link below. Connected indicator reports auth method ("via OAuth" / "via API token"). All 18 new tests pass; total 71/71. The PRD's deferral language is now superseded for v1.0; recommend updating PRD Growth Features section to reflect that API-token support shipped in v1.0. |
+
+### Scope Note: API-Token Auth (added during review)
+
+**What:** Atlassian Cloud API token + email pair, sent as HTTP Basic auth (`Authorization: Basic base64(email:apiToken)`) directly against `https://<site>.atlassian.net/...`. Users generate tokens at https://id.atlassian.com/manage-profile/security/api-tokens.
+
+**Why:** OAuth 3LO requires the org's Jira admin to approve the registered OAuth app. Without that approval, the OAuth flow returns "Authorization page could not be loaded" inside `chrome.identity.launchWebAuthFlow`. API tokens are per-user credentials that don't require admin approval — unblocks the entire team.
+
+**Architectural impact:**
+- Storage now persists a discriminated `AuthBundle`. OAuth bundles carry `kind: 'oauth'` + tokens + cloudId. API-token bundles carry `kind: 'api-token'` + email + apiToken + siteUrl + accountId.
+- Future stories' `lib/jira-client.ts` (Story 1.4) must dispatch on `bundle.kind` to choose:
+  - **Base URL**: `https://api.atlassian.com/ex/jira/{cloudId}` (OAuth) vs `<siteUrl>` (API token)
+  - **Auth header**: `Bearer <access_token>` vs `Basic base64(email:apiToken)`
+- Story 1.2 (silent refresh) only applies to OAuth bundles. API-token bundles don't expire on a schedule — they're invalidated only when the user revokes them at id.atlassian.com. `hasValidAuth` for API-token bundles is trivially true.
+- Story 1.3 (disconnect) is unchanged — `clearAuth()` handles either kind.
+- Story 1.4 (manager auto-detection) needs `lib/jira-client.ts` to support both URL shapes; the implementation should be a single `getBaseUrl(auth)` + `getAuthHeader(auth)` helper called from the wrapper.
+
+**Manual smoke test for the new path:**
+1. Reload extension. Click "Or set up with an API token" under the Connect to Jira button.
+2. Fill in: site URL (e.g., `acme.atlassian.net`), your Atlassian login email, an API token from id.atlassian.com.
+3. Click "Connect". On success, the connected indicator shows: `✓ Connected as <email> (<site>) via API token`.
+4. Verify in DevTools → Application → Storage → Local: `tokens` key contains `{ kind: 'api-token', email, apiToken, siteUrl, accountId }`.
+5. Failure cases (separate tries):
+   - Bad token → "Couldn't sign in with those credentials…" inline error
+   - Bad site URL → "Can't reach the site…" inline error
+   - Click "Back" → returns to OAuth hero with no state loss
 

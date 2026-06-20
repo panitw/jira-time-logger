@@ -167,6 +167,14 @@ export async function startOAuthFlow(): Promise<Result<PendingConnection, OAuthE
     }
 
     const tokenData = tokenResult.value;
+    if (
+      !Number.isFinite(tokenData.expires_in) ||
+      tokenData.expires_in <= 0 ||
+      tokenData.expires_in > 31_536_000
+    ) {
+      await clearSession();
+      return parseError('invalid expires_in value');
+    }
     const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
 
     const sitesResult = await fetchAccessibleResources(tokenData.access_token);
@@ -187,7 +195,11 @@ export async function startOAuthFlow(): Promise<Result<PendingConnection, OAuthE
       sites: sitesResult.value,
     });
   } catch (e) {
-    await clearSession();
+    try {
+      await clearSession();
+    } catch {
+      // Session storage may have been torn down — best-effort cleanup.
+    }
     return oauthError(String(e));
   }
 }
@@ -235,18 +247,16 @@ type LaunchResult =
   | { kind: 'error'; message: string };
 
 async function launchWebAuthFlow(authUrl: string): Promise<LaunchResult> {
-  // Promoted to info so it's visible in production builds — the URL contains
-  // client_id + code_challenge (no secrets per PKCE), safe to log.
-  log.info('oauth.launch.url', { authUrl });
+  log.debug('oauth.launch.url', { authUrl });
   return new Promise((resolve) => {
+    const timeoutMs = 120_000;
+    const timer = setTimeout(() => {
+      resolve({ kind: 'error', message: 'OAuth flow timed out' });
+    }, timeoutMs);
     chrome.identity.launchWebAuthFlow({ url: authUrl, interactive: true }, (responseUrl) => {
       const lastError = chrome.runtime.lastError;
       if (lastError) {
-        // Examples:
-        //   "Authorization page could not be loaded." (bad client_id / redirect_uri mismatch)
-        //   "OAuth2 request failed: ..." (Atlassian rejected the request)
-        //   "User did not approve access."
-        //   "User did not approve OAuth access."
+        clearTimeout(timer);
         const message = lastError.message ?? 'unknown';
         const cancelled =
           /user did not approve|user(.+)cancel|cancelled/i.test(message) === true;
@@ -254,9 +264,11 @@ async function launchWebAuthFlow(authUrl: string): Promise<LaunchResult> {
         return;
       }
       if (!responseUrl) {
+        clearTimeout(timer);
         resolve({ kind: 'cancelled' });
         return;
       }
+      clearTimeout(timer);
       resolve({ kind: 'ok', url: responseUrl });
     });
   });
@@ -281,7 +293,7 @@ async function exchangeCodeForTokens(opts: {
       }),
     });
   } catch (e) {
-    return network(String(e)) as OAuthError;
+    return network(String(e));
   }
 
   if (!res.ok) {
@@ -291,11 +303,11 @@ async function exchangeCodeForTokens(opts: {
 
   const json = await safeReadJson(res);
   if (json === undefined) {
-    return parseError('token response not JSON') as OAuthError;
+    return parseError('token response not JSON');
   }
   const parsed = TokenResponseSchema.safeParse(json);
   if (!parsed.success) {
-    return parseError(parsed.error.issues[0]) as OAuthError;
+    return parseError(parsed.error.issues[0]);
   }
   return ok(parsed.data);
 }
@@ -309,7 +321,7 @@ async function fetchAccessibleResources(
       headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
     });
   } catch (e) {
-    return network(String(e)) as OAuthError;
+    return network(String(e));
   }
 
   if (!res.ok) {
@@ -318,11 +330,11 @@ async function fetchAccessibleResources(
 
   const json = await safeReadJson(res);
   if (json === undefined) {
-    return parseError('accessible-resources not JSON') as OAuthError;
+    return parseError('accessible-resources not JSON');
   }
   const parsed = AccessibleResourcesSchema.safeParse(json);
   if (!parsed.success) {
-    return parseError(parsed.error.issues[0]) as OAuthError;
+    return parseError(parsed.error.issues[0]);
   }
   return ok(parsed.data);
 }

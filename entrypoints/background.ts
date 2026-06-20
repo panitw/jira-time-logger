@@ -13,19 +13,22 @@ import { log } from '@/lib/log';
 export default defineBackground(() => {
   log.info('background.boot', {
     manifest: chrome.runtime.getManifest().version,
-    // Logged on every service-worker wake so the dev can copy this URL into
-    // the Atlassian Developer Console's OAuth callback list. It's tied to the
-    // extension ID and will change if you reinstall to a different path /
-    // repack with a different signing key.
-    oauthRedirectUri: chrome.identity.getRedirectURL(),
   });
 
   chrome.runtime.onInstalled.addListener((details) => {
     log.info('runtime.installed', { reason: details.reason });
     if (details.reason === 'install') {
-      // Open the options page on first install so the user sees the
-      // first-run hero and Connect to Jira CTA (UX-DR20, FR1).
-      void chrome.runtime.openOptionsPage();
+      const redirectUri = chrome.identity.getRedirectURL();
+      log.info('background.first-install', {
+        note: 'Register this URL in the Atlassian Developer Console OAuth callback list.',
+        redirectUri,
+      });
+      chrome.runtime.openOptionsPage(() => {
+        const err = chrome.runtime.lastError;
+        if (err) {
+          log.error('runtime.open-options.failed', { message: err.message });
+        }
+      });
     }
   });
 });

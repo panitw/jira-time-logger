@@ -39,33 +39,20 @@ export function redact(payload: LogPayload | undefined): LogPayload | undefined 
   return out;
 }
 
-const isProd = (): boolean => {
-  // import.meta.env is provided by Vite/WXT at build time; falls back to false
-  // in test runtime (vitest uses NODE_ENV=test).
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (import.meta as any).env?.PROD === true;
-  } catch {
-    return false;
-  }
-};
+const isProd = import.meta.env?.PROD === true;
 
 export const log = {
   debug(event: string, payload?: LogPayload): void {
-    if (isProd()) return;
-     
+    if (isProd) return;
     console.debug(event, redact(payload));
   },
   info(event: string, payload?: LogPayload): void {
-     
     console.info(event, redact(payload));
   },
   warn(event: string, payload?: LogPayload): void {
-     
     console.warn(event, redact(payload));
   },
   error(event: string, payload?: LogPayload): void {
-     
     console.error(event, redact(payload));
   },
 };

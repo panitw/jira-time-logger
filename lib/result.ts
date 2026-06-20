@@ -40,11 +40,11 @@ export function authExpired(): JiraError {
   return { kind: 'auth-expired' };
 }
 
-export function network(cause: string): JiraError {
+export function network(cause: string): { kind: 'network'; cause: string } {
   return { kind: 'network', cause };
 }
 
-export function parseError(issue: unknown): JiraError {
+export function parseError(issue: unknown): { kind: 'parse-error'; issue: unknown } {
   return { kind: 'parse-error', issue };
 }
 
