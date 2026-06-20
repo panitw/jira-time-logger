@@ -7,3 +7,11 @@
 - `parseError` stores `issue: unknown` — API design choice; consumers narrow via runtime checks.
 - `jsdom` environment set globally in Vitest — performance optimization, not a bug.
 - `postinstall: "wxt prepare"` may fail in CI — no CI configured yet; address when CI is set up.
+
+## Deferred from: code review of 1-2-silent-token-refresh-30-day-auth-survival (2026-06-20)
+
+- `handleTokenRefresh` ignores the rate-limit `Retry-After` backoff and emits no re-auth signal on `auth-expired` — UI fallback is out of scope per the story's UX-DR note; rate-limit-aware backoff scheduling belongs to a later story. [entrypoints/background.ts:28-36]
+- Expiry math depends on wall-clock `Date.now()`; a backward clock jump (sleep/resume, NTP correction) can misjudge token validity despite the 60s/120s buffers — inherent limitation, not introduced by this change. [lib/oauth/refresh.ts:69; lib/storage/tokens.ts:73-75]
+- (round 2) Waiter misclassifies a holder's terminal failure (auth-expired / network) as `lock-contention` and does not self-retry once the lock frees — best-effort contention path the spec treats as rare; next alarm retries within 1 min, UI re-auth signalling out of scope. [lib/oauth/refresh.ts:79-92]
+- (round 2) `chrome.alarms.get` rejection only logs with no fallback create; `onAlarm` listener registered after `await`s can miss an alarm firing in the SW-wake window — low likelihood, bounded by the 2-min pre-expiry margin. [entrypoints/background.ts:44-57]
+- (round 3) Storage mutex keys on `Date.now()`; two callers with an identical timestamp could both pass read→set→verify. Unreachable today (single-flight + single SW instance), but a `crypto.randomUUID()` nonce would harden it. [lib/storage/refresh-mutex.ts:6-26]
