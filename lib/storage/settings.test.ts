@@ -20,7 +20,7 @@ vi.stubGlobal('chrome', {
   runtime: { id: 'test-extension-id' },
 });
 
-const { setManagerNames, getManagerNames } = await import('./settings');
+const { setManagerNames, getManagerNames, catchAllProjectKeyItem, ptoSubtaskKeyItem, ptoSubtaskSummaryItem } = await import('./settings');
 
 describe('settings', () => {
   beforeEach(() => {
@@ -52,7 +52,34 @@ describe('settings', () => {
     const result = await getManagerNames();
     expect(result).toEqual({
       managerDisplayName: 'Marco Rivera',
-      skipLevelDisplayName: null,
+skipLevelDisplayName: null,
     });
   });
+
+describe('catchAllProjectKey', () => {
+  it('defaults to KNP when nothing stored', async () => {
+    const key = await catchAllProjectKeyItem.getValue();
+    expect(key).toBe('KNP');
+  });
+
+  it('stores and retrieves custom project key', async () => {
+    await catchAllProjectKeyItem.setValue('TST');
+    const key = await catchAllProjectKeyItem.getValue();
+    expect(key).toBe('TST');
+  });
+});
+
+describe('ptoSubtaskKey', () => {
+  it('defaults to null', async () => {
+    const key = await ptoSubtaskKeyItem.getValue();
+    expect(key).toBeNull();
+  });
+
+  it('stores and retrieves subtask key and summary', async () => {
+    await ptoSubtaskKeyItem.setValue('KNP-99');
+    await ptoSubtaskSummaryItem.setValue('PTO');
+    expect(await ptoSubtaskKeyItem.getValue()).toBe('KNP-99');
+    expect(await ptoSubtaskSummaryItem.getValue()).toBe('PTO');
+  });
+});
 });

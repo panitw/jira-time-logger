@@ -1,6 +1,6 @@
 # Story 1.5: Catch-All Project & PTO Subtask Configuration
 
-Status: review
+Status: done
 baseline_commit: e9b8a7d361a3759c217c1e0905fbf07871353164
 
 ## Story
@@ -243,6 +243,32 @@ export function CatchAllProjectField({ onSaved }: Props): React.ReactElement;
 7. **Do NOT import React in `lib/` files.** `jira-types.ts` and `settings.ts` are framework-agnostic.
 8. **Do NOT skip `aria-describedby` on inputs with error text.** The error helper must be linked to the input for screen readers.
 
+### Review Findings
+
+<!-- Appended by code-review workflow 2026-06-20 -->
+
+- [x] [Review][Patch] Default KNP never triggers subtask fetch on mount — `if (stored && stored !== 'KNP')` skips validation for the default project key. The dropdown never materializes on initial load; user must manually edit+blur to trigger. AC 1 unmet. (HIGH) [CatchAllProjectField.tsx:62]
+
+- [x] [Review][Patch] Missing `JiraIssueSchema`/`JiraSearchSchema` unit tests — Story Task 1 requires schema validation tests in `jira-types.test.ts`. Current test file only verifies JiraMyselfSchema and JiraUserSchema. (HIGH) [lib/jira-types.test.ts]
+
+- [x] [Review][Patch] Missing catch-all round-trip storage tests — Story Task 2 requires round-trip tests for `catchAllProjectKeyItem`, `ptoSubtaskKeyItem`, `ptoSubtaskSummaryItem`. Current settings.test.ts only has manager/skip-level tests. (MEDIUM) [lib/storage/settings.test.ts]
+
+- [x] [Review][Patch] Race condition in `validateAndFetch` on rapid blur — two rapid key changes produce interleaved async results. Old response can overwrite current error state. No abort signal or sequence counter. (HIGH) [CatchAllProjectField.tsx:35-51]
+
+- [x] [Review][Patch] `loadingSubtasks` not reset on early-error path — when the first `jiraGet` fails, `setLoadingSubtasks(true)` from a prior call may persist, showing a stale loading state alongside the error. (MEDIUM) [CatchAllProjectField.tsx:43]
+
+- [x] [Review][Patch] `onSaved()` fires on validation failure — `handleKeyBlur` calls `onSaved?.()` unconditionally, even when `validateAndFetch` sets `keyError=true`. Callers may act on false positive. (MEDIUM) [CatchAllProjectField.tsx:74]
+
+- [x] [Review][Patch] No error handling for storage read failure — `catchAllProjectKeyItem.getValue()` in useEffect has no try/catch. If storage fails (quota, corruption), the component hangs in `loaded=false` forever. (LOW) [CatchAllProjectField.tsx:56-63]
+
+- [x] [Review][Defer] `validateAndFetch` has empty dependency array — `useCallback(..., [])` freezes jiraGet reference. jiraGet is a stable module import, so this is safe. [CatchAllProjectField.tsx:52] — deferred, stable import
+
+- [x] [Review][Defer] No debounce on blur validation — UX-DR29 explicitly requires blur-triggered validation, not debounced. [CatchAllProjectField.tsx:68] — deferred, UX-DR29 compliant
+
+- [x] [Review][Defer] `selectedKey` not reset on project key change — old subtask selection persists when dropdown is hidden. Harmless — selection only applies to visible dropdown. [CatchAllProjectField.tsx:34] — deferred
+
+- [x] [Review][Defer] Monospace font missing on dropdown options — native `<select>`/`<option>` elements don't support mixed fonts within one option. HTML limitation. [CatchAllProjectField.tsx:115] — deferred
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -259,6 +285,7 @@ deepseek/deepseek-v4-pro
 - Task 4: Wired `<CatchAllProjectField>` into App.tsx after ManagerDisplay in connected view.
 - Task 5: Wrote `CatchAllProjectField.test.tsx` — 4 test scenarios covering rendering, default KNP, error state, (default) helper.
 - Task 6: All gates pass — lint: 0 issues, tests: 154 pass/0 fail, tsc: no errors, build: succeeds.
+- Code review follow-ups (2026-06-20): Applied 7 patches — validate KNP on mount (was skipping default key, AC 1 now satisfied), added JiraIssueSchema tests (4 scenarios), added catch-all round-trip storage tests, added sequence counter (useRef) to validateAndFetch for race prevention, reset loadingSubtasks on early error, fire onSaved only on validation success, added try/catch for storage read failure. Tests: 161 pass / 1 skipped (162 total).
 
 ### File List
 

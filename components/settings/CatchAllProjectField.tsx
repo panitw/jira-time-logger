@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { jiraGet } from '@/lib/jira-client';
 import { JiraSearchSchema, type JiraIssue } from '@/lib/jira-types';
 import {
@@ -31,36 +31,45 @@ export function CatchAllProjectField({ onSaved }: Props): React.ReactElement {
   const [subtasks, setSubtasks] = useState<JiraIssue[]>([]);
   const [loadingSubtasks, setLoadingSubtasks] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const lastCallId = useRef(0);
 
-  const validateAndFetch = useCallback(async (key: string) => {
+  const validateAndFetch = useCallback(async (key: string): Promise<boolean> => {
+    const callId = ++lastCallId.current;
     setValidating(true);
     setKeyError(false);
+    setLoadingSubtasks(false);
     const result = await jiraGet(
       `rest/api/3/search?jql=project=${encodeURIComponent(key)}&maxResults=1`,
       JiraSearchSchema,
     );
-    if (result.kind !== 'ok') { setKeyError(true); setSubtasks([]); setValidating(false); return; }
+    if (result.kind !== 'ok') { setKeyError(true); setSubtasks([]); setValidating(false); return false; }
     setLoadingSubtasks(true);
     const subtaskResult = await jiraGet(
       `rest/api/3/search?jql=project=${encodeURIComponent(key)}+AND+issuetype=Sub-task&maxResults=50`,
       JiraSearchSchema,
     );
+    if (callId !== lastCallId.current) return false;
     setLoadingSubtasks(false);
     setSubtasks(subtaskResult.kind === 'ok' ? subtaskResult.value.issues : []);
     setValidating(false);
+    return true;
   }, []);
 
   useEffect(() => {
     const ac = new AbortController();
     void (async () => {
-      const stored = await catchAllProjectKeyItem.getValue();
-      if (ac.signal.aborted) return;
-      setProjectKey(stored);
-      const ptoKey = await ptoSubtaskKeyItem.getValue();
-      if (ac.signal.aborted) return;
-      setSelectedKey(ptoKey);
-      if (stored && stored !== 'KNP') await validateAndFetch(stored);
-      if (!ac.signal.aborted) setLoaded(true);
+      try {
+        const stored = await catchAllProjectKeyItem.getValue();
+        if (ac.signal.aborted) return;
+        setProjectKey(stored);
+        const ptoKey = await ptoSubtaskKeyItem.getValue();
+        if (ac.signal.aborted) return;
+        setSelectedKey(ptoKey);
+        if (stored) await validateAndFetch(stored);
+        if (!ac.signal.aborted) setLoaded(true);
+      } catch {
+        if (!ac.signal.aborted) setLoaded(true);
+      }
     })();
     return () => ac.abort();
   }, [validateAndFetch]);
@@ -70,8 +79,8 @@ export function CatchAllProjectField({ onSaved }: Props): React.ReactElement {
     if (normalized === '') return;
     setProjectKey(normalized);
     await catchAllProjectKeyItem.setValue(normalized);
-    await validateAndFetch(normalized);
-    onSaved?.();
+    const ok = await validateAndFetch(normalized);
+    if (ok) onSaved?.();
   }, [projectKey, validateAndFetch, onSaved]);
 
   const handleSubtasksChange = useCallback(async (e: React.ChangeEvent<HTMLSelectElement>) => {
