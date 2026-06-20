@@ -46,6 +46,21 @@ describe('JiraUserSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('parses user response with manager field', () => {
+    const result = JiraUserSchema.safeParse({
+      accountId: 'manager-1',
+      displayName: 'Marco Rivera',
+      manager: {
+        accountId: 'skip-1',
+        displayName: 'Anika Patel',
+      },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.manager?.displayName).toBe('Anika Patel');
+    }
+  });
+
   it('rejects missing accountId', () => {
     const result = JiraUserSchema.safeParse({
       displayName: 'Marco Rivera',

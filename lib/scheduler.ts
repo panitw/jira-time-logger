@@ -7,7 +7,6 @@
  * Per architecture.md > Rate-Limit Governance: singleton owned by the service worker.
  * The scheduler is a best-effort throttle, not an exact enforcement boundary.
  */
-import { log } from '@/lib/log';
 
 export class TokenBucketScheduler {
   private tokens: number;
@@ -28,10 +27,7 @@ export class TokenBucketScheduler {
     try {
       return await fn();
     } finally {
-      this.tokens += 1;
-      if (this.tokens > this.maxTokens) {
-        this.tokens = this.maxTokens;
-      }
+      this.tokens = Math.min(this.maxTokens, this.tokens + 1);
     }
   }
 
@@ -41,8 +37,7 @@ export class TokenBucketScheduler {
     if (elapsed < this.refillIntervalMs) return;
     const newTokens = Math.floor(elapsed / this.refillIntervalMs);
     this.tokens = Math.min(this.maxTokens, this.tokens + newTokens);
-    this.lastRefill = now;
-    log.debug('scheduler.refill', { tokens: this.tokens, elapsed });
+    this.lastRefill += newTokens * this.refillIntervalMs;
   }
 
   private async waitForToken(): Promise<void> {

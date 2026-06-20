@@ -19,6 +19,12 @@ export type JiraMyself = z.infer<typeof JiraMyselfSchema>;
 export const JiraUserSchema = z.object({
   accountId: z.string(),
   displayName: z.string(),
+  manager: z
+    .object({
+      accountId: z.string(),
+      displayName: z.string(),
+    })
+    .optional(),
 });
 
 export type JiraUser = z.infer<typeof JiraUserSchema>;

@@ -78,18 +78,23 @@ export function App(): React.ReactElement {
 
   useEffect(() => {
     if (view.kind !== 'connected') return;
+    const ac = new AbortController();
     setManagerResolving(true);
     setManagerError(false);
     void (async () => {
       const result = await resolveReportingLine();
+      if (ac.signal.aborted) return;
       if (result.kind === 'ok') {
         setManagerNames(result.value);
       } else {
         log.warn('options.manager-resolution.failed', { kind: result.kind });
         setManagerError(true);
       }
-      setManagerResolving(false);
+      if (!ac.signal.aborted) {
+        setManagerResolving(false);
+      }
     })();
+    return () => ac.abort();
   }, [view.kind]);
 
   const handleConnected = (email: string, siteDomain: string): void => {

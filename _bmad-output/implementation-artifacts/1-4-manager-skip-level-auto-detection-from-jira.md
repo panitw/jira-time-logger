@@ -1,11 +1,33 @@
 # Story 1.4: Manager & Skip-Level Auto-Detection from Jira
 
-Status: review
+Status: done
 baseline_commit: HEAD
 
 ### Review Findings
 
 <!-- Appended by code-review workflow 2026-06-20 -->
+
+- [x] [Review][Patch] `JiraUserSchema` strips the `manager` field — Zod's default `.strip()` mode drops unrecognized keys. `jiraGet` returns only `{ accountId, displayName }` with no `manager` property. The `as JiraUserWithManager` cast masks this: `if (!user.manager)` is always true, every resolution shows "manager not set." Feature non-functional. Fix: add `manager: z.object({ accountId: z.string(), displayName: z.string() }).optional()` to `JiraUserSchema`. (CRITICAL) [lib/jira-types.ts:19-22, lib/manager-resolution.ts:41-42]
+
+- [x] [Review][Patch] Manager resolution effects have no abort cleanup — `App.tsx` effects that fire `resolveReportingLine()` have no `AbortController` or cleanup function. Rapid connect-disconnect-reconnect causes stale writes and state updates from old in-flight calls to survive. (HIGH) [entrypoints/options/App.tsx:79-93]
+
+- [x] [Review][Patch] `jiraGet` can throw instead of returning `Result` — `scheduler.acquire(fn)` is not wrapped in try/catch. If the callback throws (e.g., a runtime error in `getBaseUrl`), the throw propagates, bypassing the `Result<T, JiraError>` contract. (HIGH) [lib/jira-client.ts:45-101]
+
+- [x] [Review][Patch] Missing `lib/manager-resolution.test.ts` — AC 8 requires 5 test scenarios: manager-set+skip-set, manager-set+skip-unset, manager-unset, network-error, malformed-response. No test file exists. (HIGH)
+
+- [x] [Review][Patch] Missing `components/settings/ManagerDisplay.test.tsx` — AC 5 requires component test covering 4 display states: loading, error, manager-not-set, skip-level-not-set. No test file exists. (MEDIUM)
+
+- [x] [Review][Patch] Token bucket refill loses fractional timestamp credit — `lastRefill = now` discards reminder `elapsed % refillIntervalMs`, causing cumulative drift over many cycles. Fix: `lastRefill += newTokens * refillIntervalMs`. (MEDIUM) [lib/scheduler.ts:42-44]
+
+- [x] [Review][Patch] API-token `getBaseUrl` produces double-slash URLs — `siteUrl` ending in `/` combined with `getBaseUrl(bundle)}/${path}` creates `//`. Normalize trailing slash. (MEDIUM) [lib/jira-client.ts:22,43]
+
+- [x] [Review][Defer] Return type deviates from spec's discriminated `ManagerResult` union — implementation uses flat `ManagerNames` (`{ managerDisplayName: string | null, ... }`) which the UI dispatches on nullity. Functions correctly for all ACs, simpler than the aspirational discriminated union. [lib/manager-resolution.ts:40] — deferred, current pattern is functional and simpler
+
+- [x] [Review][Defer] Only 2 levels of reporting line — stops at skip-level; circular chains or 3+ levels unsupported. Spec requires manager + skip-level, which is satisfied. Deeper chains are a growth-feature concern. [lib/manager-resolution.ts:63-76] — deferred, spec scope is manager + skip-level only
+
+- [x] [Review][Defer] Refreshed-401 indistinguishable from stale-401 — on 401 retry after refresh, both cases return `auth-expired`. Both require re-login so UX is identical. [lib/jira-client.ts:72-74] — deferred, same UX outcome
+
+- [x] [Review][Defer] `Retry-After` HTTP-date format unhandled — `parseInt` returns NaN for date strings. Falls back to 1s default gracefully, no crash. [lib/jira-client.ts:68, lib/oauth/refresh.ts:136] — deferred, graceful fallback exists
 
 
 ## Story
@@ -359,6 +381,7 @@ deepseek/deepseek-v4-pro
 - Task 6: Built `components/settings/ManagerDisplay.tsx` with loading/error/normal states. Read-only rows for manager and skip-level. Non-blocking notices when unset.
 - Task 7: Wired into `entrypoints/options/App.tsx` — added `managerResolving`, `managerError`, `managerNames` state. Triggers `resolveReportingLine()` via `useEffect` when `view.kind === 'connected'`. Replaced placeholder paragraph with `<ManagerDisplay>`.
 - Task 8: All gates pass — lint: 0 issues, tests: 140 pass/0 fail, tsc: no errors, build: succeeds.
+- Code review follow-ups (2026-06-20): Applied 6 patches — added `manager` optional field to `JiraUserSchema` (Zod was stripping it, feature was non-functional), added AbortController cleanup to manager resolution useEffect in App.tsx, wrapped scheduler.acquire callback in try/catch to preserve Result contract, fixed token-bucket refill drift (additive lastRefill), normalized trailing slash in getBaseUrl for API-token, wrote missing manager-resolution.test.ts (5 scenarios) and ManagerDisplay.test.tsx (4 states). Tests: 150 pass/0 fail.
 
 ### File List
 

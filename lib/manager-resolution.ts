@@ -38,7 +38,7 @@ export async function resolveReportingLine(): Promise<Result<ManagerNames, JiraE
   }
 
   const managerNames: ManagerNames = { managerDisplayName: null, skipLevelDisplayName: null };
-  const user = userResult.value as JiraUserWithManager;
+  const user = userResult.value;
 
   if (!user.manager) {
     log.info('manager-resolution.manager-not-set', { accountId });
@@ -71,9 +71,9 @@ export async function resolveReportingLine(): Promise<Result<ManagerNames, JiraE
     return ok(managerNames);
   }
 
-  const skipLevelUser = skipLevelResult.value as JiraUserWithManager;
+  const skipLevelUser = skipLevelResult.value;
   if (skipLevelUser.manager) {
-    managerNames.skipLevelDisplayName = skipLevelUser.manager.displayName ?? null;
+    managerNames.skipLevelDisplayName = skipLevelUser.manager.displayName;
     log.info('manager-resolution.skip-level-resolved', {
       displayName: skipLevelUser.manager.displayName,
     });
@@ -82,13 +82,3 @@ export async function resolveReportingLine(): Promise<Result<ManagerNames, JiraE
   await setManagerNames(managerNames);
   return ok(managerNames);
 }
-
-/** Extended Jira user response that includes the optional manager sub-object. */
-type JiraUserWithManager = {
-  accountId: string;
-  displayName: string;
-  manager?: {
-    accountId?: string;
-    displayName?: string;
-  };
-};
