@@ -19,7 +19,11 @@ const STRINGS = {
   validating: 'Validating…',
 };
 
-export function CatchAllProjectField(): React.ReactElement {
+type Props = {
+  onSaved?: () => void;
+};
+
+export function CatchAllProjectField({ onSaved }: Props): React.ReactElement {
   const [projectKey, setProjectKey] = useState('KNP');
   const [loaded, setLoaded] = useState(false);
   const [validating, setValidating] = useState(false);
@@ -47,14 +51,18 @@ export function CatchAllProjectField(): React.ReactElement {
   }, []);
 
   useEffect(() => {
+    const ac = new AbortController();
     void (async () => {
       const stored = await catchAllProjectKeyItem.getValue();
+      if (ac.signal.aborted) return;
       setProjectKey(stored);
       const ptoKey = await ptoSubtaskKeyItem.getValue();
+      if (ac.signal.aborted) return;
       setSelectedKey(ptoKey);
       if (stored && stored !== 'KNP') await validateAndFetch(stored);
-      setLoaded(true);
+      if (!ac.signal.aborted) setLoaded(true);
     })();
+    return () => ac.abort();
   }, [validateAndFetch]);
 
   const handleKeyBlur = useCallback(async () => {
@@ -63,7 +71,8 @@ export function CatchAllProjectField(): React.ReactElement {
     setProjectKey(normalized);
     await catchAllProjectKeyItem.setValue(normalized);
     await validateAndFetch(normalized);
-  }, [projectKey, validateAndFetch]);
+    onSaved?.();
+  }, [projectKey, validateAndFetch, onSaved]);
 
   const handleSubtasksChange = useCallback(async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const idx = parseInt(e.target.value, 10);
@@ -91,11 +100,12 @@ export function CatchAllProjectField(): React.ReactElement {
               onBlur={() => void handleKeyBlur()}
               className={`block w-32 rounded-md border px-3 py-1.5 text-sm font-mono ${keyError ? 'border-state-danger focus:ring-state-danger' : 'border-neutral-200 focus:ring-accent'} focus:outline-none focus:ring-2 focus:ring-offset-1`}
               placeholder="KNP"
+            aria-describedby={keyError ? 'catchall-key-error' : undefined}
             />
             {!keyError && projectKey === 'KNP' && <span className="text-xs text-neutral-500">{STRINGS.projectKeyHelper}</span>}
             {validating && <span className="text-xs text-neutral-500">{STRINGS.validating}</span>}
           </div>
-          {keyError && <p className="mt-1 text-xs text-state-danger">{STRINGS.projectKeyNotFound}</p>}
+          {keyError && <p id="catchall-key-error" className="mt-1 text-xs text-state-danger">{STRINGS.projectKeyNotFound}</p>}
         </div>
         {!keyError && subtasks.length > 0 && (
           <div>
