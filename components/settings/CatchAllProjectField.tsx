@@ -39,13 +39,13 @@ export function CatchAllProjectField({ onSaved }: Props): React.ReactElement {
     setKeyError(false);
     setLoadingSubtasks(false);
     const result = await jiraGet(
-      `rest/api/3/search/jql?jql=project=${encodeURIComponent(key)}&maxResults=1`,
+      `rest/api/3/search/jql?jql=project=${encodeURIComponent(key)}&maxResults=1&fields=key,summary`,
       JiraSearchSchema,
     );
     if (result.kind !== 'ok') { setKeyError(true); setSubtasks([]); setValidating(false); return false; }
     setLoadingSubtasks(true);
     const subtaskResult = await jiraGet(
-      `rest/api/3/search/jql?jql=project=${encodeURIComponent(key)}+AND+issuetype=Sub-task&maxResults=50`,
+      `rest/api/3/search/jql?jql=project=${encodeURIComponent(key)}+AND+issuetype=Sub-task&maxResults=50&fields=key,summary`,
       JiraSearchSchema,
     );
     if (callId !== lastCallId.current) return false;
