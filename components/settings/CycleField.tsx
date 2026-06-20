@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { approvalCycleItem } from '@/lib/storage/settings';
 
 const STRINGS = {
@@ -14,12 +14,17 @@ export function CycleField({ onSaved }: Props): React.ReactElement {
   const [cycle, setCycle] = useState('calendar-month');
   const [loaded, setLoaded] = useState(false);
 
-  if (!loaded) {
+  useEffect(() => {
+    const ac = new AbortController();
     void (async () => {
-      setCycle(await approvalCycleItem.getValue());
-      setLoaded(true);
+      const stored = await approvalCycleItem.getValue();
+      if (!ac.signal.aborted) {
+        setCycle(stored);
+        setLoaded(true);
+      }
     })();
-  }
+    return () => ac.abort();
+  }, []);
 
   const handleChange = useCallback(
     async (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -30,6 +35,8 @@ export function CycleField({ onSaved }: Props): React.ReactElement {
     },
     [onSaved],
   );
+
+  if (!loaded) return <div><label className="block text-sm font-medium text-neutral-700">{STRINGS.label}</label><p className="mt-1 text-sm text-neutral-500">Loading…</p></div>;
 
   return (
     <div>

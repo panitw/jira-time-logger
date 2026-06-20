@@ -68,7 +68,6 @@ export default defineBackground(async () => {
       if (next <= now) next.setDate(next.getDate() + 1);
       chrome.alarms.create('daily-reminder', {
         when: next.getTime(),
-        periodInMinutes: 1440,
       });
     }
   } catch (e) {

@@ -1,8 +1,9 @@
-import { useState, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { reminderTimeItem } from '@/lib/storage/settings';
 
 const STRINGS = {
   label: 'Daily reminder time',
+  error: 'Use 24-hour format (e.g. 17:00)',
 };
 
 type Props = {
@@ -11,24 +12,48 @@ type Props = {
 
 export function ReminderTimeField({ onSaved }: Props): React.ReactElement {
   const [time, setTime] = useState('17:00');
+  const [error, setError] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
-  if (!loaded) {
+  useEffect(() => {
+    const ac = new AbortController();
     void (async () => {
-      setTime(await reminderTimeItem.getValue());
-      setLoaded(true);
+      const stored = await reminderTimeItem.getValue();
+      if (!ac.signal.aborted) {
+        setTime(stored);
+        setLoaded(true);
+      }
     })();
-  }
+    return () => ac.abort();
+  }, []);
 
   const handleBlur = useCallback(async () => {
-    if (!/^\d{2}:\d{2}$/.test(time)) return;
+    const match = time.match(/^(\d{2}):(\d{2})$/);
+    if (!match) { setError(true); return; }
+    const hh = parseInt(match[1]!, 10);
+    const mm = parseInt(match[2]!, 10);
+    if (hh < 0 || hh > 23 || mm < 0 || mm > 59) { setError(true); return; }
+    setError(false);
     await reminderTimeItem.setValue(time);
     onSaved?.();
   }, [time, onSaved]);
 
   const handleTimeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setTime(e.target.value);
+    setError(false);
   }, []);
+
+  const handleBlurWithRevert = useCallback(() => {
+    void handleBlur().then(() => { /* success */ }).catch(() => {
+      void (async () => {
+        const stored = await reminderTimeItem.getValue();
+        setTime(stored);
+        setError(false);
+      })();
+    });
+  }, [handleBlur]);
+
+  if (!loaded) return <div><label className="block text-sm font-medium text-neutral-700">{STRINGS.label}</label><p className="mt-1 text-sm text-neutral-500">Loading…</p></div>;
 
   return (
     <div>
@@ -37,9 +62,10 @@ export function ReminderTimeField({ onSaved }: Props): React.ReactElement {
         type="time"
         value={time}
         onChange={handleTimeChange}
-        onBlur={() => void handleBlur()}
-        className="mt-1 block w-32 rounded-md border border-neutral-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-1"
+        onBlur={handleBlurWithRevert}
+        className={`mt-1 block w-32 rounded-md border px-3 py-1.5 text-sm ${error ? 'border-state-danger focus:ring-state-danger' : 'border-neutral-200 focus:ring-accent'} focus:outline-none focus:ring-2 focus:ring-offset-1`}
       />
+      {error && <p className="mt-1 text-xs text-state-danger">{STRINGS.error}</p>}
     </div>
   );
 }
