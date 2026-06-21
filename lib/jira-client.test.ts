@@ -38,8 +38,20 @@ vi.mock('@/lib/oauth/refresh', () => ({
   refreshTokens: vi.fn(async () => ({ kind: 'ok' })),
 }));
 
-const { jiraPost, postWorklog } = await import('./jira-client');
+const { jiraPost, postWorklog, jiraPut, jiraDelete, updateWorklog, deleteWorklog } =
+  await import('./jira-client');
 const { z } = await import('zod');
+
+async function resetAuthBundle(): Promise<void> {
+  const { setAuth } = await import('@/lib/storage/tokens');
+  await setAuth({
+    kind: 'oauth',
+    access_token: 'access-token',
+    refresh_token: 'refresh-token',
+    expires_at: new Date(Date.now() + 3600_000).toISOString(),
+    cloudId: 'cloud-id-1',
+  } as never);
+}
 
 const TestSchema = z.object({ id: z.string(), name: z.string() });
 
@@ -232,5 +244,295 @@ describe('postWorklog', () => {
       started: '2026-06-21T09:00:00.000+0000',
     });
     expect(result.kind).toBe('parse-error');
+  });
+});
+
+describe('jiraPut', () => {
+  beforeEach(async () => {
+    fetchMock.mockReset();
+    await resetAuthBundle();
+  });
+
+  it('returns ok with parsed response and uses PUT', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      json: async () => ({ id: '1', name: 'updated' }),
+    });
+
+    const result = await jiraPut('rest/api/3/thing/1', { name: 'updated' }, TestSchema);
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value).toEqual({ id: '1', name: 'updated' });
+    }
+    const callArgs = fetchMock.mock.calls[0]!;
+    expect(callArgs[1].method).toBe('PUT');
+    expect(callArgs[1].headers['Content-Type']).toBe('application/json');
+    expect(callArgs[1].body).toBe(JSON.stringify({ name: 'updated' }));
+  });
+
+  it('refreshes OAuth token on 401 and retries', async () => {
+    const { refreshTokens } = await import('@/lib/oauth/refresh');
+    vi.mocked(refreshTokens).mockResolvedValueOnce({ kind: 'ok' } as never);
+
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        headers: { get: () => null },
+        json: async () => ({}),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        json: async () => ({ id: '2', name: 'after-refresh' }),
+      });
+
+    const result = await jiraPut('rest/api/3/thing/1', {}, TestSchema);
+    expect(result.kind).toBe('ok');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns rate-limited on 429', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 429,
+      headers: { get: () => '5' },
+      json: async () => ({}),
+    });
+    const result = await jiraPut('rest/api/3/thing/1', {}, TestSchema);
+    expect(result.kind).toBe('rate-limited');
+  });
+
+  it('returns forbidden on 403', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      headers: { get: () => null },
+      json: async () => ({}),
+    });
+    const result = await jiraPut('rest/api/3/thing/1', {}, TestSchema);
+    expect(result.kind).toBe('forbidden');
+  });
+
+  it('returns not-found on 404', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      headers: { get: () => null },
+      json: async () => ({}),
+    });
+    const result = await jiraPut('rest/api/3/thing/1', {}, TestSchema);
+    expect(result.kind).toBe('not-found');
+  });
+
+  it('returns parse-error on schema drift', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      json: async () => ({ wrong: 'shape' }),
+    });
+    const result = await jiraPut('rest/api/3/thing/1', {}, TestSchema);
+    expect(result.kind).toBe('parse-error');
+  });
+});
+
+describe('jiraDelete', () => {
+  beforeEach(async () => {
+    fetchMock.mockReset();
+    await resetAuthBundle();
+  });
+
+  it('returns ok with no body parse on 204', async () => {
+    const json = vi.fn(async () => ({}));
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 204,
+      headers: { get: () => null },
+      json,
+    });
+
+    const result = await jiraDelete('rest/api/3/issue/PROJ-1/worklog/10001');
+    expect(result.kind).toBe('ok');
+    expect(json).not.toHaveBeenCalled();
+
+    const callArgs = fetchMock.mock.calls[0]!;
+    const url = callArgs[0] as string;
+    expect(url).toContain('rest/api/3/issue/PROJ-1/worklog/10001');
+    expect(callArgs[1].method).toBe('DELETE');
+  });
+
+  it('refreshes OAuth token on 401 and retries', async () => {
+    const { refreshTokens } = await import('@/lib/oauth/refresh');
+    vi.mocked(refreshTokens).mockResolvedValueOnce({ kind: 'ok' } as never);
+
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        headers: { get: () => null },
+        json: async () => ({}),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 204,
+        headers: { get: () => null },
+        json: async () => ({}),
+      });
+
+    const result = await jiraDelete('rest/api/3/issue/PROJ-1/worklog/10001');
+    expect(result.kind).toBe('ok');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns rate-limited on 429', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 429,
+      headers: { get: () => '5' },
+      json: async () => ({}),
+    });
+    const result = await jiraDelete('rest/api/3/issue/PROJ-1/worklog/10001');
+    expect(result.kind).toBe('rate-limited');
+  });
+
+  it('returns forbidden on 403', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      headers: { get: () => null },
+      json: async () => ({}),
+    });
+    const result = await jiraDelete('rest/api/3/issue/PROJ-1/worklog/10001');
+    expect(result.kind).toBe('forbidden');
+  });
+
+  it('returns not-found on 404', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      headers: { get: () => null },
+      json: async () => ({}),
+    });
+    const result = await jiraDelete('rest/api/3/issue/PROJ-1/worklog/10001');
+    expect(result.kind).toBe('not-found');
+  });
+});
+
+describe('updateWorklog', () => {
+  beforeEach(async () => {
+    fetchMock.mockReset();
+    await resetAuthBundle();
+  });
+
+  it('PUTs to the worklog URL with a flat body and returns ok', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      json: async () => ({ id: '10001', timeSpentSeconds: 7200, started: 's' }),
+    });
+
+    const result = await updateWorklog('PROJ-1', '10001', {
+      timeSpentSeconds: 7200,
+      started: '2026-06-21T09:00:00.000Z',
+    });
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value.id).toBe('10001');
+      expect(result.value.timeSpentSeconds).toBe(7200);
+    }
+
+    const callArgs = fetchMock.mock.calls[0]!;
+    const url = callArgs[0] as string;
+    expect(url).toContain('rest/api/3/issue/PROJ-1/worklog/10001');
+    expect(callArgs[1].method).toBe('PUT');
+    const body = JSON.parse(callArgs[1].body);
+    expect(body.timeSpentSeconds).toBe(7200);
+    expect(body.started).toBe('2026-06-21T09:00:00.000Z');
+    // FLAT body — not wrapped in { fields }
+    expect(body.fields).toBeUndefined();
+  });
+
+  it('returns forbidden on 403', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      headers: { get: () => null },
+      json: async () => ({}),
+    });
+    const result = await updateWorklog('PROJ-1', '10001', {
+      timeSpentSeconds: 7200,
+      started: 's',
+    });
+    expect(result.kind).toBe('forbidden');
+  });
+
+  it('returns not-found on 404', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      headers: { get: () => null },
+      json: async () => ({}),
+    });
+    const result = await updateWorklog('PROJ-1', '10001', {
+      timeSpentSeconds: 7200,
+      started: 's',
+    });
+    expect(result.kind).toBe('not-found');
+  });
+
+  it('returns parse-error on schema drift', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      json: async () => ({ wrong: 'shape' }),
+    });
+    const result = await updateWorklog('PROJ-1', '10001', {
+      timeSpentSeconds: 7200,
+      started: 's',
+    });
+    expect(result.kind).toBe('parse-error');
+  });
+});
+
+describe('deleteWorklog', () => {
+  beforeEach(async () => {
+    fetchMock.mockReset();
+    await resetAuthBundle();
+  });
+
+  it('DELETEs the worklog URL and returns ok on 204', async () => {
+    const json = vi.fn(async () => ({}));
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 204,
+      headers: { get: () => null },
+      json,
+    });
+
+    const result = await deleteWorklog('PROJ-1', '10001');
+    expect(result.kind).toBe('ok');
+    expect(json).not.toHaveBeenCalled();
+
+    const callArgs = fetchMock.mock.calls[0]!;
+    const url = callArgs[0] as string;
+    expect(url).toContain('rest/api/3/issue/PROJ-1/worklog/10001');
+    expect(callArgs[1].method).toBe('DELETE');
+  });
+
+  it('returns not-found on 404 (already deleted server-side)', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      headers: { get: () => null },
+      json: async () => ({}),
+    });
+    const result = await deleteWorklog('PROJ-1', '10001');
+    expect(result.kind).toBe('not-found');
   });
 });

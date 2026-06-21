@@ -105,3 +105,19 @@ html {
 @utility animate-slide-in {
   animation: slide-in 200ms ease-out;
 }
+
+/* List-item slide-out for deletes per UX Motion (200ms ease-out). */
+@keyframes slide-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+}
+
+@utility animate-slide-out {
+  animation: slide-out 200ms ease-out;
+}

@@ -211,3 +211,199 @@ export async function jiraPost<T>(
 
   return result;
 }
+
+/**
+ * PUT a body to a Jira resource and parse the JSON response.
+ * Mirrors `jiraPost` exactly, only the HTTP method differs.
+ */
+export async function jiraPut<T>(
+  path: string,
+  body: unknown,
+  schema: z.ZodType<T>,
+): Promise<Result<T, JiraError>> {
+  const bundle = await getAuth();
+  if (!bundle) {
+    return authExpired();
+  }
+
+  const result = await scheduler.acquire(async () => {
+    try {
+      const url = `${getBaseUrl(bundle)}/${path}`;
+      const headers: Record<string, string> = {
+        Authorization: getAuthHeader(bundle),
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      };
+
+      log.debug('jira.put.request', { path });
+
+      let res = await fetch(url, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(body),
+      });
+
+      if (res.status === 401 && bundle.kind === 'oauth') {
+        log.info('jira.put.401-refreshing', { path });
+        const refreshResult = await refreshTokens();
+        if (refreshResult.kind === 'ok') {
+          const newBundle = await getAuth();
+          if (!newBundle) return authExpired();
+          headers.Authorization = getAuthHeader(newBundle);
+          res = await fetch(url, {
+            method: 'PUT',
+            headers,
+            body: JSON.stringify(body),
+          });
+        } else {
+          return authExpired();
+        }
+      }
+
+      if (res.status === 429) {
+        const retryAfter = res.headers.get('Retry-After');
+        const retryAfterMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : 1000;
+        return rateLimited(Number.isFinite(retryAfterMs) ? retryAfterMs : 1000);
+      }
+
+      if (res.status === 401) {
+        return authExpired();
+      }
+
+      if (res.status === 403) {
+        return forbidden();
+      }
+
+      if (res.status === 404) {
+        return notFound();
+      }
+
+      if (!res.ok) {
+        const resBody = await res.text().catch(() => '');
+        return network(`HTTP ${res.status}: ${resBody.slice(0, 200)}`);
+      }
+
+      const json: unknown = await res.json().catch(() => null);
+      if (json === null) {
+        return parseError('Response body is not valid JSON');
+      }
+
+      const parsed = schema.safeParse(json);
+      if (!parsed.success) {
+        return parseError(parsed.error.issues);
+      }
+
+      return ok(parsed.data);
+    } catch (e) {
+      log.error('jira.put.unexpected-error', { path, cause: String(e) });
+      return network(String(e));
+    }
+  });
+
+  return result;
+}
+
+/**
+ * DELETE a Jira resource.
+ *
+ * Jira returns 204 No Content (no JSON body) on success, so we do NOT call
+ * `res.json()` / schema-parse here. Mirrors the status-handling block of the
+ * other wrappers otherwise.
+ */
+export async function jiraDelete(path: string): Promise<Result<void, JiraError>> {
+  const bundle = await getAuth();
+  if (!bundle) {
+    return authExpired();
+  }
+
+  const result = await scheduler.acquire(async () => {
+    try {
+      const url = `${getBaseUrl(bundle)}/${path}`;
+      const headers: Record<string, string> = {
+        Authorization: getAuthHeader(bundle),
+        Accept: 'application/json',
+      };
+
+      log.debug('jira.delete.request', { path });
+
+      let res = await fetch(url, { method: 'DELETE', headers });
+
+      if (res.status === 401 && bundle.kind === 'oauth') {
+        log.info('jira.delete.401-refreshing', { path });
+        const refreshResult = await refreshTokens();
+        if (refreshResult.kind === 'ok') {
+          const newBundle = await getAuth();
+          if (!newBundle) return authExpired();
+          headers.Authorization = getAuthHeader(newBundle);
+          res = await fetch(url, { method: 'DELETE', headers });
+        } else {
+          return authExpired();
+        }
+      }
+
+      if (res.status === 429) {
+        const retryAfter = res.headers.get('Retry-After');
+        const retryAfterMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : 1000;
+        return rateLimited(Number.isFinite(retryAfterMs) ? retryAfterMs : 1000);
+      }
+
+      if (res.status === 401) {
+        return authExpired();
+      }
+
+      if (res.status === 403) {
+        return forbidden();
+      }
+
+      if (res.status === 404) {
+        return notFound();
+      }
+
+      if (!res.ok) {
+        const resBody = await res.text().catch(() => '');
+        return network(`HTTP ${res.status}: ${resBody.slice(0, 200)}`);
+      }
+
+      // 204 No Content — no body to parse.
+      return ok(undefined);
+    } catch (e) {
+      log.error('jira.delete.unexpected-error', { path, cause: String(e) });
+      return network(String(e));
+    }
+  });
+
+  return result;
+}
+
+/**
+ * Update an existing worklog on a Jira issue.
+ *
+ * PUT /rest/api/3/issue/{issueKey}/worklog/{worklogId}
+ * Body is FLAT (mirrors `postWorklog`). `comment`, when present, must already
+ * be an ADF document object (see lib/adf.ts), never a plain string.
+ */
+export async function updateWorklog(
+  issueKey: string,
+  worklogId: string,
+  body: { timeSpentSeconds: number; started: string; comment?: unknown },
+): Promise<Result<JiraWorklog, JiraError>> {
+  return jiraPut(
+    `rest/api/3/issue/${encodeURIComponent(issueKey)}/worklog/${encodeURIComponent(worklogId)}`,
+    body,
+    JiraWorklogSchema,
+  );
+}
+
+/**
+ * Delete a worklog from a Jira issue.
+ *
+ * DELETE /rest/api/3/issue/{issueKey}/worklog/{worklogId}
+ */
+export async function deleteWorklog(
+  issueKey: string,
+  worklogId: string,
+): Promise<Result<void, JiraError>> {
+  return jiraDelete(
+    `rest/api/3/issue/${encodeURIComponent(issueKey)}/worklog/${encodeURIComponent(worklogId)}`,
+  );
+}

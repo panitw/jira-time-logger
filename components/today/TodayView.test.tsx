@@ -20,8 +20,12 @@ vi.mock('@/lib/create-subtask', () => ({
   createSubtask: vi.fn(async () => ({ kind: 'ok', value: { id: '1', key: 'PROJ-999', summary: 'New sub' } })),
 }));
 
+const updateWorklogMock = vi.fn();
+const deleteWorklogMock = vi.fn();
 vi.mock('@/lib/jira-client', () => ({
   postWorklog: vi.fn(async () => ({ kind: 'ok', value: { id: 'wl-1', timeSpentSeconds: 9000 } })),
+  updateWorklog: (...args: unknown[]) => updateWorklogMock(...args),
+  deleteWorklog: (...args: unknown[]) => deleteWorklogMock(...args),
 }));
 
 const fetchCatchAllSubtasksMock = vi.fn();
@@ -63,7 +67,7 @@ const mockUseHierarchyTickets = vi.mocked(useHierarchyTickets);
 
 function renderWithProviders(ui: React.ReactElement) {
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
@@ -81,6 +85,11 @@ describe('TodayView', () => {
       kind: 'ok',
       value: { id: 'wl-pto', timeSpentSeconds: 28800 },
     });
+    updateWorklogMock.mockResolvedValue({
+      kind: 'ok',
+      value: { id: 'wl-pto', timeSpentSeconds: 14400 },
+    });
+    deleteWorklogMock.mockResolvedValue({ kind: 'ok', value: undefined });
     // @ts-expect-error minimal chrome stub for openOptionsPage
     globalThis.chrome = { runtime: { openOptionsPage: vi.fn() } };
   });
@@ -279,6 +288,63 @@ describe('TodayView', () => {
       },
       { timeout: 1000 },
     );
+  });
+
+  it('editing a logged entry recomputes the header total', async () => {
+    mockUseHierarchyTickets.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    } as never);
+
+    renderWithProviders(<TodayView />);
+    fireEvent.click(await screen.findByText('Mark today as PTO'));
+    fireEvent.click(await screen.findByText('Full day (8h)'));
+    await waitFor(() => expect(screen.getByText(/8h \/ 8h/)).toBeTruthy(), {
+      timeout: 1000,
+    });
+
+    // Open the row menu and edit the entry down to 4h.
+    fireEvent.click(screen.getByLabelText('Worklog actions for KNP-99, 8h'));
+    fireEvent.click(screen.getByText('Edit'));
+    fireEvent.change(screen.getByLabelText('Hours'), { target: { value: '4h' } });
+    fireEvent.click(screen.getByText('Save'));
+
+    await waitFor(() => {
+      expect(updateWorklogMock).toHaveBeenCalledWith(
+        'KNP-99',
+        'wl-pto',
+        expect.objectContaining({ timeSpentSeconds: 14400 }),
+      );
+    });
+    await waitFor(() => expect(screen.getByText(/4h \/ 8h/)).toBeTruthy());
+  });
+
+  it('deleting a logged entry drops the header total', async () => {
+    mockUseHierarchyTickets.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    } as never);
+
+    renderWithProviders(<TodayView />);
+    fireEvent.click(await screen.findByText('Mark today as PTO'));
+    fireEvent.click(await screen.findByText('Full day (8h)'));
+    await waitFor(() => expect(screen.getByText(/8h \/ 8h/)).toBeTruthy(), {
+      timeout: 1000,
+    });
+
+    fireEvent.click(screen.getByLabelText('Worklog actions for KNP-99, 8h'));
+    fireEvent.click(screen.getByText('Delete'));
+    fireEvent.click(screen.getByText('Delete'));
+
+    await waitFor(() => {
+      expect(deleteWorklogMock).toHaveBeenCalledWith('KNP-99', 'wl-pto');
+    });
+    // Entry removed → total back to ── / 8h
+    await waitFor(() => expect(screen.getByText(/—— \/ 8h/)).toBeTruthy());
   });
 
   it('shows the catch-all-unconfigured placeholder when the project key is blank', async () => {

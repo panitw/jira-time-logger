@@ -102,7 +102,12 @@ describe('PtoQuickAction', () => {
     await waitFor(
       () => {
         expect(onLogged).toHaveBeenCalledWith(
-          expect.objectContaining({ key: 'KNP-99', summary: 'PTO', seconds: 28800 }),
+          expect.objectContaining({
+            key: 'KNP-99',
+            summary: 'PTO',
+            seconds: 28800,
+            worklogId: 'wl-1',
+          }),
         );
       },
       { timeout: 1000 },

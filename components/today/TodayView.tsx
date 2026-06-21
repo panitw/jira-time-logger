@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { format } from 'date-fns';
 import { TicketPicker } from '@/components/today/TicketPicker';
 import { QuickLogForm } from '@/components/today/QuickLogForm';
-import { LoggedToday, type LoggedEntry } from '@/components/today/LoggedToday';
+import { LoggedToday, type LoggedEntry, type EditPatch } from '@/components/today/LoggedToday';
 import { PtoQuickAction } from '@/components/today/PtoQuickAction';
 import { secondsToHoursDisplay } from '@/lib/hours';
 import { targetHoursItem, catchAllProjectKeyItem } from '@/lib/storage/settings';
@@ -53,6 +53,26 @@ export function TodayView(): React.ReactElement {
     setSelectedTicket(null);
   }, []);
 
+  const handleEdited = useCallback((worklogId: string, patch: EditPatch): void => {
+    setLoggedEntries((prev) =>
+      prev.map((e) =>
+        e.worklogId === worklogId
+          ? {
+              ...e,
+              hoursDisplay: patch.hoursDisplay,
+              seconds: patch.seconds,
+              started: patch.started,
+              comment: patch.comment,
+            }
+          : e,
+      ),
+    );
+  }, []);
+
+  const handleDeleted = useCallback((worklogId: string): void => {
+    setLoggedEntries((prev) => prev.filter((e) => e.worklogId !== worklogId));
+  }, []);
+
   const totalSeconds = loggedEntries.reduce((sum, e) => sum + e.seconds, 0);
   const totalDisplay = secondsToHoursDisplay(totalSeconds);
 
@@ -82,7 +102,11 @@ export function TodayView(): React.ReactElement {
       )}
 
       <div className="mt-3">
-        <LoggedToday entries={loggedEntries} />
+        <LoggedToday
+          entries={loggedEntries}
+          onEdited={handleEdited}
+          onDeleted={handleDeleted}
+        />
       </div>
 
       <div className="mt-1">

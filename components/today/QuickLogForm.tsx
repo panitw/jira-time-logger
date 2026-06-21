@@ -123,6 +123,7 @@ export function QuickLogForm({
           hoursDisplay: vars.hoursDisplay,
           started: selectedDate,
           seconds: vars.seconds,
+          worklogId: result.value.id,
         };
         successTimeoutRef.current = setTimeout(() => {
           onLogged(entry);

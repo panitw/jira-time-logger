@@ -1,3 +1,8 @@
+## Deferred from: code review of 2-6-edit-delete-worklogs-from-logged-today (2026-06-21)
+
+- Comment round-trip is incomplete: `adfToText` (lib/adf.ts) is built and tested but never wired into the edit form, and `LoggedEntry.comment` is only set by an in-session edit — so a worklog that already has a server-side ADF comment shows a blank comment field on Edit, and a previously-set comment cannot be cleared (omitting `comment` on PUT leaves it untouched). Within the story's "acceptable v1 limitation" envelope. Follow-up: hydrate `entry.comment` from the worklog's ADF comment via `adfToText`, and decide on a comment-clear strategy. [components/today/LoggedToday.tsx:156,352; lib/adf.ts:adfToText]
+- Unparseable hours in edit mode shows no explanatory text (only a red border); over-limit shows a message but unparseable does not. Low-value; border feedback present and roughly consistent with QuickLogForm. [components/today/LoggedToday.tsx editing render]
+
 ## Deferred from: code review of 1-1-project-scaffold-and-oauth-connect (2026-06-20)
 
 - shadcn/ui only shipped `Button` (10 primitives deferred) — acknowledged in dev notes; add via `pnpm dlx shadcn@latest add` when needed.

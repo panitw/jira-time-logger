@@ -147,6 +147,7 @@ describe('QuickLogForm', () => {
             key: 'PROJ-1',
             summary: 'Fix bug',
             seconds: 9000,
+            worklogId: 'wl-1',
           }),
         );
       },

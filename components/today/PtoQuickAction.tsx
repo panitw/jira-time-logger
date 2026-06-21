@@ -119,6 +119,7 @@ export function PtoQuickAction({
           hoursDisplay: secondsToHoursDisplay(seconds),
           started,
           seconds,
+          worklogId: result.value.id,
         };
         setShowSuccess(true);
         successTimeoutRef.current = setTimeout(() => {
