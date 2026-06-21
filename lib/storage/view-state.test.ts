@@ -2,8 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { getPopupView, setPopupView, type PopupView } from './view-state';
 
-const mockGetValue = vi.fn();
-const mockSetValue = vi.fn();
+const { mockGetValue, mockSetValue } = vi.hoisted(() => ({
+  mockGetValue: vi.fn(),
+  mockSetValue: vi.fn(),
+}));
 
 vi.mock('wxt/utils/storage', () => ({
   storage: {
