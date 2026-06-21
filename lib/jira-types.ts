@@ -58,6 +58,26 @@ export const JiraSearchSchema = z.object({
   issues: z.array(JiraIssueSchema),
 });
 
+// ---- Worklog (Story 2.4) — POST /rest/api/3/issue/{key}/worklog response ----
+
+export const JiraWorklogSchema = z.object({
+  id: z.string(),
+  timeSpentSeconds: z.number(),
+  timeSpent: z.string().optional(),
+  started: z.string().optional(),
+  created: z.string().optional(),
+  updated: z.string().optional(),
+  comment: z.unknown().optional(),
+  author: z
+    .object({
+      accountId: z.string().optional(),
+      displayName: z.string().optional(),
+    })
+    .optional(),
+});
+
+export type JiraWorklog = z.infer<typeof JiraWorklogSchema>;
+
 // ---- Hierarchy-specific search response (Story 2.2) ----
 
 export const JiraHierarchyIssueSchema = JiraIssueSchema.extend({

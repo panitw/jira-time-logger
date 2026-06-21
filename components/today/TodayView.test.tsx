@@ -20,6 +20,15 @@ vi.mock('@/lib/create-subtask', () => ({
   createSubtask: vi.fn(async () => ({ kind: 'ok', value: { id: '1', key: 'PROJ-999', summary: 'New sub' } })),
 }));
 
+vi.mock('@/lib/jira-client', () => ({
+  postWorklog: vi.fn(async () => ({ kind: 'ok', value: { id: 'wl-1', timeSpentSeconds: 9000 } })),
+}));
+
+vi.mock('@/lib/storage/settings', () => ({
+  approvalCycleItem: { getValue: vi.fn(async () => 'calendar-month') },
+  targetHoursItem: { getValue: vi.fn(async () => 8) },
+}));
+
 vi.mock('@/lib/log', () => ({
   log: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
 }));
@@ -161,5 +170,48 @@ describe('TodayView', () => {
       },
       { timeout: 300 },
     );
+  });
+
+  it('swaps picker for QuickLogForm when a sub-task is selected', async () => {
+    mockUseHierarchyTickets.mockReturnValue({
+      data: [
+        {
+          key: 'PROJ-1',
+          summary: 'Alpha task',
+          assigneeDisplayName: 'Test User',
+          source: 'self',
+          subtasks: [
+            { key: 'PROJ-2', summary: 'Fix button', assigneeDisplayName: 'Test User' },
+          ],
+        },
+      ],
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    } as never);
+
+    renderWithProviders(<TodayView />);
+
+    // Click the sub-task leaf
+    fireEvent.click(screen.getByLabelText('Pick PROJ-2: Fix button'));
+
+    // QuickLogForm should render with the ticket key
+    await waitFor(() => {
+      expect(screen.getByText('PROJ-2')).toBeTruthy();
+      expect(screen.getByLabelText('Hours')).toBeTruthy();
+    });
+  });
+
+  it('shows total in header as 0h initially', () => {
+    mockUseHierarchyTickets.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    } as never);
+
+    renderWithProviders(<TodayView />);
+    // totalDisplay for 0 seconds is ── per secondsToHoursDisplay
+    expect(screen.getByText(/\/ 8h/)).toBeTruthy();
   });
 });

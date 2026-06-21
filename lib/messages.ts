@@ -26,12 +26,25 @@ export const OAuthCompletedSchema = z.object({
 });
 export const DisconnectRequestedSchema = z.object({});
 
+// Story 2.4 — worklog logging + badge broadcast
+export const LogWorklogSchema = z.object({
+  issueKey: z.string(),
+  timeSpentSeconds: z.number(),
+  started: z.string(),
+  comment: z.string().optional(),
+});
+export const BadgeUpdateSchema = z.object({
+  hoursMissing: z.number(),
+});
+
 // ---- Registry (tagged union) ----
 
 export type MessageRegistry = {
   'oauth-connect-requested': z.infer<typeof OAuthConnectRequestedSchema>;
   'oauth-completed': z.infer<typeof OAuthCompletedSchema>;
   'disconnect': z.infer<typeof DisconnectRequestedSchema>;
+  'log-worklog': z.infer<typeof LogWorklogSchema>;
+  'badge-update': z.infer<typeof BadgeUpdateSchema>;
 };
 
 export type MessageKind = keyof MessageRegistry;
@@ -40,6 +53,8 @@ const SCHEMAS: { [K in MessageKind]: z.ZodType<MessageRegistry[K]> } = {
   'oauth-connect-requested': OAuthConnectRequestedSchema,
   'oauth-completed': OAuthCompletedSchema,
   'disconnect': DisconnectRequestedSchema,
+  'log-worklog': LogWorklogSchema,
+  'badge-update': BadgeUpdateSchema,
 };
 
 type EnvelopeOf<K extends MessageKind> = { kind: K; payload: MessageRegistry[K] };

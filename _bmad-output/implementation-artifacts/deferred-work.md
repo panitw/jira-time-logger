@@ -38,3 +38,7 @@
 - (round 2) No user-visible feedback on create-subtask failure — only `log.warn`; inline form stays open with no message. Revisit with the log flow in Story 2.4. [components/today/TicketPicker.tsx:212-214]
 - (round 2) PRODUCT DECISION: Pinned & Search-Jira results let a non-sub-task (Task/Story/Epic) be logged directly, inconsistent with the hierarchy tree's "sub-task is the only log unit" rule. Confirm whether to constrain search/pin to sub-tasks or document the escape-hatch exception. [components/today/TicketPicker.tsx:357-371,428-436]
 - (round 2) Create-subtask under a manager/skip-level (possibly cross-project) Task assumes create permission + an issue type named `Sub-task`; failures surface only as a logged warning. [lib/create-subtask.ts:9-12]
+
+## Deferred from: code review of 2-4-quicklogform-hours-input-with-jira-flexible-parser (2026-06-21)
+
+- `formatStartedISO` hardcodes 09:00 time — backdated worklogs always have `started` at 09:00 regardless of actual time. For "Today" the current time would be more accurate. Acceptable for v1. [components/today/QuickLogForm.tsx:60-63]

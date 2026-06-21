@@ -9,6 +9,7 @@
  *   - Parses responses with Zod schemas from jira-types.ts
  */
 import { type z } from 'zod';
+import { JiraWorklogSchema, type JiraWorklog } from '@/lib/jira-types';
 import { log } from '@/lib/log';
 import { refreshTokens } from '@/lib/oauth/refresh';
 import { type Result, type JiraError, ok, authExpired, rateLimited, network, parseError, forbidden, notFound } from '@/lib/result';
@@ -107,6 +108,23 @@ export async function jiraGet<T>(
   return result;
 }
 
+/**
+ * Post a worklog to a Jira issue.
+ *
+ * POST /rest/api/3/issue/{issueKey}/worklog
+ * Body is FLAT (not wrapped in { fields }) — different from create-issue.
+ * Returns the created worklog object.
+ */
+export async function postWorklog(
+  issueKey: string,
+  body: { timeSpentSeconds: number; started: string; comment?: string },
+): Promise<Result<JiraWorklog, JiraError>> {
+  return jiraPost(
+    `rest/api/3/issue/${encodeURIComponent(issueKey)}/worklog`,
+    body,
+    JiraWorklogSchema,
+  );
+}
 export async function jiraPost<T>(
   path: string,
   body: unknown,
