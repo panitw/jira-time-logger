@@ -132,6 +132,11 @@ describe('disconnectAll', () => {
     expect(chrome.alarms.clear).toHaveBeenCalledWith('token-refresh');
   });
 
+  it('clears the outbox-retry alarm', async () => {
+    await disconnectAll();
+    expect(chrome.alarms.clear).toHaveBeenCalledWith('outbox-retry');
+  });
+
   it('handles alarm clear failure gracefully', async () => {
     vi.mocked(chrome.alarms.clear).mockRejectedValueOnce(new Error('Alarms unavailable'));
     const result = await disconnectAll();

@@ -10,6 +10,8 @@ import {
 } from '@/lib/storage/settings';
 import { log } from '@/lib/log';
 import { sendMessage } from '@/lib/messages';
+import { enqueue as enqueueOutbox } from '@/lib/storage/outbox';
+import { Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { LoggedEntry } from '@/components/today/LoggedToday';
 
@@ -22,6 +24,7 @@ const STRINGS = {
   notConfiguredPrefix: 'PTO subtask not configured. Configure in ',
   settings: 'Settings',
   postError: 'Couldn’t mark PTO — try again',
+  pending: 'Pending — will retry',
   defaultSummary: 'PTO',
   menuLabel: 'PTO options',
 };
@@ -47,6 +50,7 @@ export function PtoQuickAction({
   const [open, setOpen] = useState(false);
   const [showError, setShowError] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [showPending, setShowPending] = useState(false);
 
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -128,6 +132,21 @@ export function PtoQuickAction({
           triggerRef.current?.focus();
           onLogged(entry);
         }, 200);
+      } else if (result.kind === 'network' || result.kind === 'rate-limited') {
+        // Transient failure — queue the PTO post durably so it retries on
+        // reconnect, and surface the "Pending — will retry" chip.
+        const hours = variant === 'full' ? targetHours : targetHours / 2;
+        const seconds = hoursToSeconds(hours);
+        log.warn('pto.post.failed', { key: ptoKey, kind: result.kind });
+        void enqueueOutbox({
+          kind: 'post',
+          endpoint: `rest/api/3/issue/${encodeURIComponent(ptoKey!)}/worklog`,
+          issueKey: ptoKey!,
+          body: { timeSpentSeconds: seconds, started },
+        }).catch((e) => {
+          log.error('outbox.enqueue.failed', { key: ptoKey, cause: String(e) });
+        });
+        setShowPending(true);
       } else {
         log.warn('pto.post.failed', { key: ptoKey, kind: result.kind });
         setShowError(true);
@@ -147,6 +166,7 @@ export function PtoQuickAction({
       // brief post-success window (popover lingers ~200ms showing ✓).
       if (isPending || showSuccess || !ptoKey) return;
       setShowError(false);
+      setShowPending(false);
       mutate(variant);
     },
     [isPending, showSuccess, ptoKey, mutate],
@@ -154,6 +174,7 @@ export function PtoQuickAction({
 
   const handleTriggerClick = useCallback(() => {
     setShowError(false);
+    setShowPending(false);
     setOpen((prev) => !prev);
   }, []);
 
@@ -251,6 +272,16 @@ export function PtoQuickAction({
             <p className="mt-1 px-1 text-xs text-state-danger font-medium">
               {STRINGS.postError}
             </p>
+          )}
+          {showPending && (
+            <span
+              role="status"
+              aria-live="polite"
+              className="mt-1 mx-1 inline-flex items-center gap-1 rounded-md bg-state-info-subtle px-2 py-0.5 text-xs text-neutral-700"
+            >
+              <Clock className="h-3 w-3 shrink-0" aria-hidden="true" />
+              {STRINGS.pending}
+            </span>
           )}
         </div>
       )}

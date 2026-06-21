@@ -14,6 +14,11 @@ vi.mock('@/lib/messages', () => ({
   sendMessage: (...args: unknown[]) => sendMessageMock(...args),
 }));
 
+const enqueueOutboxMock = vi.fn((..._args: unknown[]) => Promise.resolve({}));
+vi.mock('@/lib/storage/outbox', () => ({
+  enqueue: (...args: unknown[]) => enqueueOutboxMock(...args),
+}));
+
 const ptoKeyGetValue = vi.fn(async () => 'KNP-99' as string | null);
 const ptoSummaryGetValue = vi.fn(async () => 'PTO' as string | null);
 const targetHoursGetValue = vi.fn(async () => 8);
@@ -140,8 +145,8 @@ describe('PtoQuickAction', () => {
     );
   });
 
-  it('shows inline error and does not call onLogged on a non-ok Result', async () => {
-    logFullDayPtoMock.mockResolvedValueOnce({ kind: 'network', cause: 'offline' });
+  it('shows inline error and does not call onLogged on a non-retryable Result', async () => {
+    logFullDayPtoMock.mockResolvedValueOnce({ kind: 'forbidden' });
     const onLogged = vi.fn();
     renderWithProviders(<PtoQuickAction onLogged={onLogged} />);
     fireEvent.click(await screen.findByText('Mark today as PTO'));
@@ -151,6 +156,27 @@ describe('PtoQuickAction', () => {
       expect(screen.getByText(/Couldn.t mark PTO/)).toBeTruthy();
     });
     expect(onLogged).not.toHaveBeenCalled();
+    expect(enqueueOutboxMock).not.toHaveBeenCalled();
+  });
+
+  it('network failure → enqueues a post + shows "Pending — will retry"', async () => {
+    logFullDayPtoMock.mockResolvedValueOnce({ kind: 'network', cause: 'offline' });
+    const onLogged = vi.fn();
+    renderWithProviders(<PtoQuickAction onLogged={onLogged} />);
+    fireEvent.click(await screen.findByText('Mark today as PTO'));
+    fireEvent.click(await screen.findByText('Full day (8h)'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Pending — will retry')).toBeTruthy();
+    });
+    expect(onLogged).not.toHaveBeenCalled();
+    expect(enqueueOutboxMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'post',
+        issueKey: 'KNP-99',
+        body: expect.objectContaining({ timeSpentSeconds: 28800 }),
+      }),
+    );
   });
 
   it('Esc closes the popover', async () => {

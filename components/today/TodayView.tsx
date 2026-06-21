@@ -6,6 +6,7 @@ import { LoggedToday, type LoggedEntry, type EditPatch } from '@/components/toda
 import { PtoQuickAction } from '@/components/today/PtoQuickAction';
 import { secondsToHoursDisplay } from '@/lib/hours';
 import { targetHoursItem, catchAllProjectKeyItem } from '@/lib/storage/settings';
+import { outboxDrainedItem } from '@/lib/storage/outbox';
 import { log } from '@/lib/log';
 
 const STRINGS = {
@@ -15,7 +16,12 @@ const STRINGS = {
     'Catch-all not configured. Configure in ',
   settings: 'Settings',
   catchAllNotConfiguredSuffix: ' to log Admin/Meetings/PTO.',
+  syncedToast: (n: number) =>
+    n === 1 ? 'Synced 1 pending worklog' : `Synced ${n} pending worklogs`,
+  dismissToast: 'Dismiss',
 };
+
+const TOAST_DISMISS_MS = 4000;
 
 export function TodayView(): React.ReactElement {
   const today = format(new Date(), 'EEE, MMM d');
@@ -23,6 +29,7 @@ export function TodayView(): React.ReactElement {
   const [loggedEntries, setLoggedEntries] = useState<LoggedEntry[]>([]);
   const [targetHours, setTargetHours] = useState(8);
   const [catchAllProjectKey, setCatchAllProjectKey] = useState<string | null>(null);
+  const [syncedCount, setSyncedCount] = useState(0);
 
   useEffect(() => {
     void targetHoursItem.getValue().then(setTargetHours);
@@ -30,6 +37,22 @@ export function TodayView(): React.ReactElement {
 
   useEffect(() => {
     void catchAllProjectKeyItem.getValue().then(setCatchAllProjectKey);
+  }, []);
+
+  // On mount, surface a single "Synced N pending worklogs" notice for any outbox
+  // entries the service-worker drained while the popup was closed, then clear
+  // the counter so it shows exactly once. (No dedicated toast component exists
+  // yet — this is a minimal inline notice; same 4s auto-dismiss, max one.)
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    void outboxDrainedItem.getValue().then((count) => {
+      if (count > 0) {
+        setSyncedCount(count);
+        void outboxDrainedItem.setValue(0);
+        timer = setTimeout(() => setSyncedCount(0), TOAST_DISMISS_MS);
+      }
+    });
+    return () => clearTimeout(timer);
   }, []);
 
   const catchAllUnconfigured =
@@ -78,6 +101,23 @@ export function TodayView(): React.ReactElement {
 
   return (
     <div className="motion-safe:animate-fade-in">
+      {syncedCount > 0 && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="mb-2 flex items-center justify-between gap-2 rounded-md bg-state-info-subtle px-3 py-2 text-sm text-neutral-700"
+        >
+          <span>{STRINGS.syncedToast(syncedCount)}</span>
+          <button
+            type="button"
+            aria-label={STRINGS.dismissToast}
+            onClick={() => setSyncedCount(0)}
+            className="rounded text-neutral-500 hover:text-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            ×
+          </button>
+        </div>
+      )}
       <h2 className="text-lg font-semibold text-neutral-900">
         {STRINGS.heading}
       </h2>

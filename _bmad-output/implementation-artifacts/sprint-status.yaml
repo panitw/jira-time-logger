@@ -1,5 +1,5 @@
 # generated: 2026-05-11 22:45:02
-# last_updated: 2026-06-21
+# last_updated: 2026-06-21 (code-review: 2-7 → done)
 # project: jira-time-logger
 # project_key: NOKEY
 # tracking_system: file-system
@@ -37,6 +37,7 @@
 generated: 2026-05-11 22:45:02
 last_updated: 2026-06-21
 project: jira-time-logger
+# 2026-06-21: Story 2-7 created (ready-for-dev) — completes Epic 2
 project_key: NOKEY
 tracking_system: file-system
 story_location: "{project-root}/_bmad-output/implementation-artifacts"
@@ -61,7 +62,7 @@ development_status:
   2-4-quicklogform-hours-input-with-jira-flexible-parser: done
   2-5-catch-all-picker-one-click-pto-action: done
   2-6-edit-delete-worklogs-from-logged-today: done
-  2-7-outbox-queue-failed-writes-retry-on-reconnect: backlog
+  2-7-outbox-queue-failed-writes-retry-on-reconnect: done
   epic-2-retrospective: optional
 
   # Epic 3: Daily Awareness — Badge, Reminder, Banner

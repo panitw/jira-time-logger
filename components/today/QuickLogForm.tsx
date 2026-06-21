@@ -12,6 +12,8 @@ import { formatStartedISO, formatDateForInput } from '@/lib/worklog-date';
 import { approvalCycleItem } from '@/lib/storage/settings';
 import { log } from '@/lib/log';
 import { sendMessage } from '@/lib/messages';
+import { enqueue as enqueueOutbox } from '@/lib/storage/outbox';
+import { Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { LoggedEntry } from '@/components/today/LoggedToday';
 
@@ -26,10 +28,11 @@ const STRINGS = {
   yesterday: 'Yesterday',
   pickDate: 'Pick date',
   postError: 'Couldn\u2019t log time \u2014 try again',
+  pending: 'Pending \u2014 will retry',
   empty: 'Enter hours',
 };
 
-type SubmitState = 'idle' | 'success' | 'error';
+type SubmitState = 'idle' | 'success' | 'error' | 'pending';
 
 type QuickLogFormProps = {
   ticketKey: string;
@@ -128,6 +131,19 @@ export function QuickLogForm({
         successTimeoutRef.current = setTimeout(() => {
           onLogged(entry);
         }, 200);
+      } else if (result.kind === 'network' || result.kind === 'rate-limited') {
+        // Transient failure — queue the post durably so it retries on
+        // reconnect, and surface the persistent "Pending — will retry" chip.
+        log.warn('worklog.post.failed', { key: ticketKey, kind: result.kind });
+        void enqueueOutbox({
+          kind: 'post',
+          endpoint: `rest/api/3/issue/${encodeURIComponent(ticketKey)}/worklog`,
+          issueKey: ticketKey,
+          body: { timeSpentSeconds: vars.seconds, started: vars.started },
+        }).catch((e) => {
+          log.error('outbox.enqueue.failed', { key: ticketKey, cause: String(e) });
+        });
+        setSubmitState('pending');
       } else {
         log.warn('worklog.post.failed', { key: ticketKey, kind: result.kind });
         setSubmitState('error');
@@ -171,6 +187,7 @@ export function QuickLogForm({
 
   const showSuccess = submitState === 'success';
   const showError = submitState === 'error';
+  const showPending = submitState === 'pending';
   const isPending = isLogPending;
   const buttonDisabled = !isValid || isPending || showSuccess;
 
@@ -251,6 +268,16 @@ export function QuickLogForm({
         )}
         {showError && (
           <p className="text-xs text-state-danger font-medium">{STRINGS.postError}</p>
+        )}
+        {showPending && (
+          <span
+            role="status"
+            aria-live="polite"
+            className="inline-flex items-center gap-1 rounded-md bg-state-info-subtle px-2 py-0.5 text-xs text-neutral-700"
+          >
+            <Clock className="h-3 w-3 shrink-0" aria-hidden="true" />
+            {STRINGS.pending}
+          </span>
         )}
       </div>
 

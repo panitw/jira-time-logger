@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { MoreHorizontal, Clock, X } from 'lucide-react';
+import { MoreHorizontal, Clock, X, XCircle, RefreshCw } from 'lucide-react';
 import { updateWorklog, deleteWorklog } from '@/lib/jira-client';
 import {
   parseHours,
@@ -14,6 +14,14 @@ import { approvalCycleItem } from '@/lib/storage/settings';
 import { textToAdf } from '@/lib/adf';
 import { log } from '@/lib/log';
 import { sendMessage } from '@/lib/messages';
+import {
+  enqueue as enqueueOutbox,
+  outboxItem,
+  remove as removeOutbox,
+  update as updateOutbox,
+  runOutboxRetryPass,
+  type OutboxEntry,
+} from '@/lib/storage/outbox';
 import { Button } from '@/components/ui/button';
 import type { JiraError } from '@/lib/result';
 
@@ -35,9 +43,22 @@ const STRINGS = {
   pickDate: 'Pick date',
   overLimitError: 'Hours per entry can’t exceed 24. Split into multiple entries if needed.',
   deleteConfirm: 'Delete this worklog?',
+  discardConfirm: 'Discard this pending write?',
   dismiss: 'Dismiss',
   retry: 'Retry',
+  retryNow: 'Retry now',
+  discard: 'Discard',
   pending: 'Pending — will retry',
+  failedPrefix: 'Couldn’t post after multiple tries — ',
+  failedReason: {
+    network: 'no connection',
+    'rate-limited': 'the server was busy',
+    forbidden: 'you don’t have permission',
+    'not-found': 'the worklog no longer exists',
+    'parse-error': 'an unexpected response',
+    'auth-expired': 'your session expired',
+  } as Record<string, string>,
+  failedReasonDefault: 'an unexpected error',
   editError: {
     forbidden: 'Couldn’t update — you don’t have permission',
     'not-found': 'Couldn’t update — worklog no longer exists',
@@ -74,18 +95,37 @@ type LoggedTodayProps = {
 };
 
 /**
- * Outbox seam (forward-ref to Story 2.7).
+ * Outbox seam (Story 2.7 — durable queue).
  *
- * For Story 2.6 this is a documented no-op that only logs intent — the UI shows
- * the "Pending — will retry" chip regardless. Story 2.7 replaces this with the
- * real lib/storage/outbox.ts enqueue + chrome.alarms retry.
+ * When an edit/delete fails transiently (`network` / `rate-limited`), the write
+ * is appended to the durable outbox (`lib/storage/outbox.ts`) so the
+ * service-worker `outbox-retry` alarm can replay it. The "Pending — will retry"
+ * chip rendered by the caller stays until the entry drains. Fire-and-forget:
+ * enqueue failures are logged but never block the row.
  */
 function enqueueFailedWorklogMutation(info: {
+  issueKey: string;
   worklogId: string;
   kind: 'edit' | 'delete';
   resultKind: string;
+  editBody?: { timeSpentSeconds: number; started: string; comment?: unknown };
 }): void {
-  log.warn('worklog.mutation.deferred-outbox', info);
+  const endpoint =
+    `rest/api/3/issue/${encodeURIComponent(info.issueKey)}` +
+    `/worklog/${encodeURIComponent(info.worklogId)}`;
+  void enqueueOutbox({
+    kind: info.kind === 'edit' ? 'put' : 'delete',
+    endpoint,
+    issueKey: info.issueKey,
+    worklogId: info.worklogId,
+    ...(info.kind === 'edit' && info.editBody ? { body: info.editBody } : {}),
+  }).catch((e) => {
+    log.error('outbox.enqueue.failed', {
+      kind: info.kind,
+      issueKey: info.issueKey,
+      cause: String(e),
+    });
+  });
 }
 
 type ValidationResult =
@@ -150,6 +190,83 @@ function WorklogRow({ entry, onEdited, onDeleted }: WorklogRowProps): React.Reac
   const [mode, setMode] = useState<RowMode>('idle');
   const [errorChip, setErrorChip] = useState<ErrorChip | null>(null);
   const [leaving, setLeaving] = useState(false);
+
+  // ---- Failed-outbox-entry tracking (AC5) ----
+  // A put/delete that exhausted retries (or hit a non-retryable error) lives in
+  // the durable outbox as `status: 'failed'`. We surface it on the matching row
+  // with a danger chip + Retry-now / Discard.
+  const [failedEntry, setFailedEntry] = useState<OutboxEntry | null>(null);
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+  const discardConfirmRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    let active = true;
+    const sync = async (): Promise<void> => {
+      try {
+        const all = await outboxItem.getValue();
+        const match = all.find(
+          (e) =>
+            e.status === 'failed' &&
+            e.issueKey === entry.key &&
+            e.worklogId === entry.worklogId &&
+            (e.kind === 'put' || e.kind === 'delete'),
+        );
+        if (active) setFailedEntry(match ?? null);
+      } catch {
+        if (active) setFailedEntry(null);
+      }
+    };
+    void sync();
+    const unwatch = outboxItem.watch(() => {
+      void sync();
+    });
+    return () => {
+      active = false;
+      unwatch();
+    };
+  }, [entry.worklogId, entry.key]);
+
+  const failedReason = failedEntry
+    ? (STRINGS.failedReason[failedEntry.lastError ?? ''] ?? STRINGS.failedReasonDefault)
+    : '';
+
+  const handleRetryNow = useCallback(async () => {
+    if (!failedEntry) return;
+    // Reset to pending with a fresh attempt budget, then trigger an immediate
+    // drain pass (the SW alarm would otherwise wait up to 60s).
+    await updateOutbox(failedEntry.id, {
+      status: 'pending',
+      attemptCount: 0,
+    });
+    setFailedEntry(null);
+    setErrorChip({ kind: 'pending', message: STRINGS.pending });
+    try {
+      await runOutboxRetryPass();
+    } catch (e) {
+      log.error('outbox.retry.error', { worklogId: entry.worklogId, cause: String(e) });
+    }
+  }, [failedEntry, entry.worklogId]);
+
+  const handleDiscard = useCallback(async () => {
+    if (!failedEntry) return;
+    await removeOutbox(failedEntry.id);
+    setConfirmingDiscard(false);
+    setFailedEntry(null);
+  }, [failedEntry]);
+
+  // Esc reverts the Discard confirmation (never discards).
+  useEffect(() => {
+    if (!confirmingDiscard) return;
+    discardConfirmRef.current?.focus();
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        setConfirmingDiscard(false);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, [confirmingDiscard]);
 
   // Edit-mode field state.
   const [hoursInput, setHoursInput] = useState('');
@@ -249,13 +366,19 @@ function WorklogRow({ entry, onEdited, onDeleted }: WorklogRowProps): React.Reac
   });
 
   const handleEditFailure = useCallback(
-    (err: JiraError, kind: 'edit' | 'delete') => {
+    (
+      err: JiraError,
+      kind: 'edit' | 'delete',
+      editBody?: { timeSpentSeconds: number; started: string; comment?: unknown },
+    ) => {
       const table = kind === 'edit' ? STRINGS.editError : STRINGS.deleteError;
       if (err.kind === 'network' || err.kind === 'rate-limited') {
         enqueueFailedWorklogMutation({
+          issueKey: entry.key,
           worklogId: entry.worklogId,
           kind,
           resultKind: err.kind,
+          ...(editBody ? { editBody } : {}),
         });
         setErrorChip({ kind: 'pending', message: STRINGS.pending });
       } else {
@@ -263,7 +386,7 @@ function WorklogRow({ entry, onEdited, onDeleted }: WorklogRowProps): React.Reac
         setErrorChip({ kind: 'persistent', message });
       }
     },
-    [entry.worklogId],
+    [entry.key, entry.worklogId],
   );
 
   const handleSaveEdit = useCallback(() => {
@@ -302,7 +425,18 @@ function WorklogRow({ entry, onEdited, onDeleted }: WorklogRowProps): React.Reac
           } else {
             log.warn('worklog.edit.failed', { key: entry.key, kind: result.kind });
             setMode('idle');
-            handleEditFailure(result, 'edit');
+            const editBody: {
+              timeSpentSeconds: number;
+              started: string;
+              comment?: unknown;
+            } = {
+              timeSpentSeconds: vars.seconds,
+              started: vars.started,
+            };
+            if (vars.comment.trim()) {
+              editBody.comment = textToAdf(vars.comment.trim());
+            }
+            handleEditFailure(result, 'edit', editBody);
           }
         },
         onError: (e) => {
@@ -610,29 +744,89 @@ function WorklogRow({ entry, onEdited, onDeleted }: WorklogRowProps): React.Reac
         </>
       )}
 
-      {errorChip && (
+      {failedEntry ? (
         <div
           role="alert"
           aria-live="assertive"
-          className={`absolute right-2 top-full z-10 mt-1 flex items-center gap-1 rounded-md px-2 py-1 text-xs ${
-            errorChip.kind === 'pending'
-              ? 'bg-state-info-subtle text-neutral-700'
-              : 'text-state-danger font-medium'
-          }`}
+          className="absolute right-2 top-full z-10 mt-1 flex items-center gap-1 rounded-md px-2 py-1 text-xs text-state-danger font-medium"
         >
-          {errorChip.kind === 'pending' && (
-            <Clock className="h-3 w-3 shrink-0" aria-hidden="true" />
+          <XCircle className="h-3 w-3 shrink-0" aria-hidden="true" />
+          <span>
+            {STRINGS.failedPrefix}
+            {failedReason}
+          </span>
+          {confirmingDiscard ? (
+            <span
+              className="ml-1 flex items-center gap-1"
+              role="group"
+              aria-label={STRINGS.discardConfirm}
+            >
+              <span className="text-neutral-700">{STRINGS.discardConfirm}</span>
+              <Button
+                ref={discardConfirmRef}
+                variant="secondary"
+                size="sm"
+                onClick={() => setConfirmingDiscard(false)}
+              >
+                {STRINGS.cancel}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-state-danger"
+                aria-label={STRINGS.discard}
+                onClick={() => void handleDiscard()}
+              >
+                {STRINGS.discard}
+              </Button>
+            </span>
+          ) : (
+            <>
+              <button
+                type="button"
+                aria-label={STRINGS.retryNow}
+                onClick={() => void handleRetryNow()}
+                className="ml-1 inline-flex items-center gap-1 rounded text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <RefreshCw className="h-3 w-3" aria-hidden="true" />
+                {STRINGS.retryNow}
+              </button>
+              <button
+                type="button"
+                aria-label={STRINGS.discard}
+                onClick={() => setConfirmingDiscard(true)}
+                className="ml-1 rounded text-state-danger hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                {STRINGS.discard}
+              </button>
+            </>
           )}
-          <span>{errorChip.message}</span>
-          <button
-            type="button"
-            aria-label={STRINGS.dismiss}
-            onClick={() => setErrorChip(null)}
-            className="ml-1 rounded text-neutral-500 hover:text-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-          >
-            <X className="h-3 w-3" aria-hidden="true" />
-          </button>
         </div>
+      ) : (
+        errorChip && (
+          <div
+            role="alert"
+            aria-live="assertive"
+            className={`absolute right-2 top-full z-10 mt-1 flex items-center gap-1 rounded-md px-2 py-1 text-xs ${
+              errorChip.kind === 'pending'
+                ? 'bg-state-info-subtle text-neutral-700'
+                : 'text-state-danger font-medium'
+            }`}
+          >
+            {errorChip.kind === 'pending' && (
+              <Clock className="h-3 w-3 shrink-0" aria-hidden="true" />
+            )}
+            <span>{errorChip.message}</span>
+            <button
+              type="button"
+              aria-label={STRINGS.dismiss}
+              onClick={() => setErrorChip(null)}
+              className="ml-1 rounded text-neutral-500 hover:text-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              <X className="h-3 w-3" aria-hidden="true" />
+            </button>
+          </div>
+        )
       )}
     </div>
   );

@@ -9,7 +9,9 @@
  * install. Everything else is wired in subsequent stories.
  */
 import { log } from '@/lib/log';
+import { sendMessage } from '@/lib/messages';
 import { refreshTokens } from '@/lib/oauth/refresh';
+import { runOutboxRetryPass } from '@/lib/storage/outbox';
 import { reminderTimeItem } from '@/lib/storage/settings';
 import { getAuth, hasValidAuth } from '@/lib/storage/tokens';
 
@@ -37,6 +39,23 @@ async function handleTokenRefresh(): Promise<void> {
   }
 }
 
+/**
+ * Drain the durable outbox (Story 2.7). Replays pending worklog writes through
+ * lib/jira-client. On a successful drain pass, broadcasts a badge re-sync; the
+ * drained count is persisted by runOutboxRetryPass for the popup toast. Never
+ * throws — the alarm listener must not crash the service worker.
+ */
+async function handleOutboxRetry(): Promise<void> {
+  try {
+    const { drained } = await runOutboxRetryPass();
+    if (drained > 0) {
+      void sendMessage('badge-update', { hoursMissing: 0 });
+    }
+  } catch (e) {
+    log.error('outbox.retry.error', { cause: String(e) });
+  }
+}
+
 export default defineBackground(async () => {
   log.info('background.boot', {
     manifest: chrome.runtime.getManifest().version,
@@ -51,9 +70,22 @@ export default defineBackground(async () => {
     log.warn('alarms.create.token-refresh.failed', { error: String(e) });
   }
 
+  try {
+    const existing = await chrome.alarms.get('outbox-retry');
+    if (!existing) {
+      // Chrome's minimum period is 1 minute; this is the retry cadence.
+      chrome.alarms.create('outbox-retry', { periodInMinutes: 1 });
+    }
+  } catch (e) {
+    log.warn('alarms.create.outbox-retry.failed', { error: String(e) });
+  }
+
   chrome.alarms.onAlarm.addListener(async (alarm) => {
     if (alarm.name === 'token-refresh') {
       await handleTokenRefresh();
+    }
+    if (alarm.name === 'outbox-retry') {
+      await handleOutboxRetry();
     }
   });
 

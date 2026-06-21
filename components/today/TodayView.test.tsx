@@ -45,6 +45,26 @@ vi.mock('@/lib/messages', () => ({
   sendMessage: (...args: unknown[]) => sendMessageMock(...args),
 }));
 
+let outboxDrained = 0;
+vi.mock('@/lib/storage/outbox', () => ({
+  enqueue: vi.fn(async () => ({})),
+  remove: vi.fn(async () => {}),
+  update: vi.fn(async () => {}),
+  runOutboxRetryPass: vi.fn(async () => ({ drained: 0 })),
+  outboxItem: {
+    getValue: vi.fn(async () => []),
+    setValue: vi.fn(async () => {}),
+    watch: vi.fn(() => () => {}),
+  },
+  outboxDrainedItem: {
+    getValue: vi.fn(async () => outboxDrained),
+    setValue: vi.fn(async (v: number) => {
+      outboxDrained = v;
+    }),
+    watch: vi.fn(() => () => {}),
+  },
+}));
+
 const catchAllProjectKeyGetValue = vi.fn(async () => 'KNP' as string);
 const ptoSubtaskKeyGetValue = vi.fn(async () => 'KNP-99' as string | null);
 const ptoSubtaskSummaryGetValue = vi.fn(async () => 'PTO' as string | null);
@@ -77,6 +97,7 @@ function renderWithProviders(ui: React.ReactElement) {
 describe('TodayView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    outboxDrained = 0;
     catchAllProjectKeyGetValue.mockResolvedValue('KNP');
     ptoSubtaskKeyGetValue.mockResolvedValue('KNP-99');
     ptoSubtaskSummaryGetValue.mockResolvedValue('PTO');

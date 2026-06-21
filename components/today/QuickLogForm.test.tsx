@@ -13,6 +13,11 @@ vi.mock('@/lib/messages', () => ({
   sendMessage: (...args: unknown[]) => sendMessageMock(...args),
 }));
 
+const enqueueOutboxMock = vi.fn((..._args: unknown[]) => Promise.resolve({}));
+vi.mock('@/lib/storage/outbox', () => ({
+  enqueue: (...args: unknown[]) => enqueueOutboxMock(...args),
+}));
+
 vi.mock('@/lib/storage/settings', () => ({
   approvalCycleItem: { getValue: vi.fn(async () => 'calendar-month') },
   targetHoursItem: { getValue: vi.fn(async () => 8) },
@@ -184,8 +189,8 @@ describe('QuickLogForm', () => {
     resolvePost({ kind: 'ok', value: { id: '1', timeSpentSeconds: 9000 } });
   });
 
-  it('shows error on post failure', async () => {
-    postWorklogMock.mockResolvedValueOnce({ kind: 'network', cause: 'offline' });
+  it('shows error on a non-retryable post failure', async () => {
+    postWorklogMock.mockResolvedValueOnce({ kind: 'forbidden' });
 
     renderWithProviders(
       <QuickLogForm
@@ -202,6 +207,34 @@ describe('QuickLogForm', () => {
     await waitFor(() => {
       expect(screen.getByText(/Couldn\u2019t log time/)).toBeTruthy();
     });
+    expect(enqueueOutboxMock).not.toHaveBeenCalled();
+  });
+
+  it('network failure \u2192 enqueues a post + shows "Pending \u2014 will retry"', async () => {
+    postWorklogMock.mockResolvedValueOnce({ kind: 'network', cause: 'offline' });
+
+    renderWithProviders(
+      <QuickLogForm
+        ticketKey="PROJ-1"
+        ticketSummary="Fix bug"
+        onLogged={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    const input = screen.getByLabelText('Hours');
+    fireEvent.change(input, { target: { value: '2.5' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(screen.getByText('Pending \u2014 will retry')).toBeTruthy();
+    });
+    expect(enqueueOutboxMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'post',
+        issueKey: 'PROJ-1',
+        body: expect.objectContaining({ timeSpentSeconds: 9000 }),
+      }),
+    );
   });
 
   it('Escape calls onCancel', () => {

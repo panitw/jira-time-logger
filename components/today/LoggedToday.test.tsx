@@ -18,6 +18,34 @@ vi.mock('@/lib/storage/settings', () => ({
   approvalCycleItem: { getValue: vi.fn(async () => 'calendar-month') },
 }));
 
+const enqueueOutboxMock = vi.fn((..._args: unknown[]) => Promise.resolve({}));
+const removeOutboxMock = vi.fn((..._args: unknown[]) => Promise.resolve());
+const updateOutboxMock = vi.fn((..._args: unknown[]) => Promise.resolve());
+const runOutboxRetryPassMock = vi.fn((..._args: unknown[]) =>
+  Promise.resolve({ drained: 0 }),
+);
+let outboxEntries: unknown[] = [];
+const outboxWatchers: ((v: unknown[]) => void)[] = [];
+vi.mock('@/lib/storage/outbox', () => ({
+  enqueue: (...args: unknown[]) => enqueueOutboxMock(...args),
+  remove: (...args: unknown[]) => removeOutboxMock(...args),
+  update: (...args: unknown[]) => updateOutboxMock(...args),
+  runOutboxRetryPass: (...args: unknown[]) => runOutboxRetryPassMock(...args),
+  outboxItem: {
+    getValue: vi.fn(async () => outboxEntries),
+    setValue: vi.fn(async (v: unknown[]) => {
+      outboxEntries = v;
+    }),
+    watch: vi.fn((cb: (v: unknown[]) => void) => {
+      outboxWatchers.push(cb);
+      return () => {
+        const i = outboxWatchers.indexOf(cb);
+        if (i >= 0) outboxWatchers.splice(i, 1);
+      };
+    }),
+  },
+}));
+
 const logMock = { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() };
 vi.mock('@/lib/log', () => ({ log: logMock }));
 
@@ -44,6 +72,8 @@ const baseEntry = {
 describe('LoggedToday', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    outboxEntries = [];
+    outboxWatchers.length = 0;
     updateWorklogMock.mockResolvedValue({
       kind: 'ok',
       value: { id: '10001', timeSpentSeconds: 7200 },
@@ -234,7 +264,7 @@ describe('LoggedToday', () => {
     expect(onDeleted).not.toHaveBeenCalled();
   });
 
-  it('network failure on delete → "Pending — will retry" chip + outbox seam log', async () => {
+  it('network failure on delete → "Pending — will retry" chip + outbox enqueue', async () => {
     deleteWorklogMock.mockResolvedValueOnce({ kind: 'network', cause: 'offline' });
     const onDeleted = vi.fn();
     renderWithProviders(<LoggedToday entries={[{ ...baseEntry }]} onDeleted={onDeleted} />);
@@ -246,10 +276,113 @@ describe('LoggedToday', () => {
       expect(screen.getByText('Pending — will retry')).toBeTruthy();
     });
     expect(onDeleted).not.toHaveBeenCalled();
-    expect(logMock.warn).toHaveBeenCalledWith(
-      'worklog.mutation.deferred-outbox',
-      expect.objectContaining({ worklogId: '10001', kind: 'delete' }),
+    expect(enqueueOutboxMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'delete',
+        issueKey: 'PROJ-1',
+        worklogId: '10001',
+      }),
     );
+  });
+
+  it('network failure on edit → enqueues a put with the edited body', async () => {
+    updateWorklogMock.mockResolvedValueOnce({ kind: 'network', cause: 'offline' });
+    renderWithProviders(<LoggedToday entries={[{ ...baseEntry }]} onEdited={vi.fn()} />);
+    fireEvent.click(screen.getByLabelText('Worklog actions for PROJ-1, 2.5h'));
+    fireEvent.click(screen.getByText('Edit'));
+    fireEvent.change(screen.getByLabelText('Hours'), { target: { value: '2h' } });
+    fireEvent.click(screen.getByText('Save'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Pending — will retry')).toBeTruthy();
+    });
+    expect(enqueueOutboxMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'put',
+        issueKey: 'PROJ-1',
+        worklogId: '10001',
+        body: expect.objectContaining({ timeSpentSeconds: 7200 }),
+      }),
+    );
+  });
+
+  it('renders a failed-outbox chip with Retry now + Discard for a matching entry', async () => {
+    outboxEntries = [
+      {
+        id: 'ob-1',
+        kind: 'delete',
+        endpoint: 'e',
+        issueKey: 'PROJ-1',
+        worklogId: '10001',
+        attemptCount: 10,
+        status: 'failed',
+        lastError: 'network',
+        enqueuedAt: 'now',
+      },
+    ];
+    renderWithProviders(<LoggedToday entries={[{ ...baseEntry }]} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Couldn’t post after multiple tries/)).toBeTruthy();
+    });
+    expect(screen.getByLabelText('Retry now')).toBeTruthy();
+    expect(screen.getByLabelText('Discard')).toBeTruthy();
+  });
+
+  it('Discard → confirm chip → Discard calls outbox.remove', async () => {
+    outboxEntries = [
+      {
+        id: 'ob-1',
+        kind: 'delete',
+        endpoint: 'e',
+        issueKey: 'PROJ-1',
+        worklogId: '10001',
+        attemptCount: 10,
+        status: 'failed',
+        lastError: 'network',
+        enqueuedAt: 'now',
+      },
+    ];
+    renderWithProviders(<LoggedToday entries={[{ ...baseEntry }]} />);
+
+    await waitFor(() => expect(screen.getByLabelText('Discard')).toBeTruthy());
+    fireEvent.click(screen.getByLabelText('Discard'));
+    expect(screen.getByText('Discard this pending write?')).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('Discard'));
+
+    await waitFor(() => {
+      expect(removeOutboxMock).toHaveBeenCalledWith('ob-1');
+    });
+  });
+
+  it('Retry now → resets to pending + triggers an immediate drain pass', async () => {
+    outboxEntries = [
+      {
+        id: 'ob-1',
+        kind: 'delete',
+        endpoint: 'e',
+        issueKey: 'PROJ-1',
+        worklogId: '10001',
+        attemptCount: 10,
+        status: 'failed',
+        lastError: 'network',
+        enqueuedAt: 'now',
+      },
+    ];
+    renderWithProviders(<LoggedToday entries={[{ ...baseEntry }]} />);
+
+    await waitFor(() => expect(screen.getByLabelText('Retry now')).toBeTruthy());
+    fireEvent.click(screen.getByLabelText('Retry now'));
+
+    await waitFor(() => {
+      expect(updateOutboxMock).toHaveBeenCalledWith(
+        'ob-1',
+        expect.objectContaining({ status: 'pending', attemptCount: 0 }),
+      );
+    });
+    await waitFor(() => {
+      expect(runOutboxRetryPassMock).toHaveBeenCalled();
+    });
   });
 
   it('guards double-submit on Save while pending', async () => {
