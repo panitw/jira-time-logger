@@ -39,6 +39,21 @@ export const JiraIssueSchema = z.object({
 
 export type JiraIssue = z.infer<typeof JiraIssueSchema>;
 
+/**
+ * Jira `POST /rest/api/3/issue` create-issue response shape.
+ *
+ * NOTE: Jira returns only `{ id, key, self }` on create — no `fields`.
+ * Do NOT use `JiraIssueSchema` (which requires `fields.summary`) to parse
+ * a create response; use this schema instead. The summary is sourced from
+ * the user-typed input on the caller side.
+ */
+export const JiraCreateIssueSchema = z.object({
+  id: z.string(),
+  key: z.string(),
+});
+
+export type JiraCreateIssue = z.infer<typeof JiraCreateIssueSchema>;
+
 export const JiraSearchSchema = z.object({
   issues: z.array(JiraIssueSchema),
 });

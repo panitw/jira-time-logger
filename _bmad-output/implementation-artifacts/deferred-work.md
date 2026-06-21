@@ -29,3 +29,12 @@
 - Parent stubs for cross-source subtasks hardcode `source:'self'` + `assigneeDisplayName:null` even when the parent belongs to the manager/skip-level. `source:'self'` is spec-mandated and the Jira `parent` object has no assignee, so null is inherent. [lib/hierarchy.ts:170-177]
 - Account IDs interpolated into JQL without escaping — Jira-controlled safe values, colon-quoting per spec is followed; low-risk hardening only. [lib/hierarchy.ts:132,148]
 - (round 2) PRE-EXISTING test failure unrelated to 2.2: `lib/storage/view-state.test.ts` fails on baseline `c3ef3d6` too (vitest mock-hoisting / Zod error at module load). Means AC #8 "all gates pass" is not literally true repo-wide. Track as its own defect from Story 2.1. [lib/storage/view-state.test.ts]
+
+## Deferred from: code review of 2-3-ticketpicker-2-level-browse-tree-with-search-create-subtask (2026-06-21)
+
+- JQL injection / breakage via unescaped search text in `summary ~ "<query>"` (key branch is regex-guarded) — low risk, escape `"`/`\` when hardening. [lib/ticket-search.ts:25]
+- Minor UX polish: ~400ms search latency from chained 100ms+300ms debounces; create-affordance predicate conflates "no subtask exists" vs "no subtask assigned to me" for manager/skip Tasks; Esc from a non-form element leaves an open create affordance dangling. [components/today/TicketPicker.tsx]
+- (still open) `lib/storage/view-state.test.ts` keeps Story 2.3's AC #8 gate red — pre-existing from Story 2.1; fix or quarantine it repo-wide.
+- (round 2) No user-visible feedback on create-subtask failure — only `log.warn`; inline form stays open with no message. Revisit with the log flow in Story 2.4. [components/today/TicketPicker.tsx:212-214]
+- (round 2) PRODUCT DECISION: Pinned & Search-Jira results let a non-sub-task (Task/Story/Epic) be logged directly, inconsistent with the hierarchy tree's "sub-task is the only log unit" rule. Confirm whether to constrain search/pin to sub-tasks or document the escape-hatch exception. [components/today/TicketPicker.tsx:357-371,428-436]
+- (round 2) Create-subtask under a manager/skip-level (possibly cross-project) Task assumes create permission + an issue type named `Sub-task`; failures surface only as a logged warning. [lib/create-subtask.ts:9-12]

@@ -57,7 +57,7 @@ development_status:
   epic-2: in-progress
   2-1-popup-shell-view-router-tanstack-query-setup: done
   2-2-hierarchy-walk-build-pre-fill-ticket-source: done
-  2-3-ticketpicker-2-level-browse-tree-with-search-create-subtask: ready-for-dev
+  2-3-ticketpicker-2-level-browse-tree-with-search-create-subtask: done
   2-4-quicklogform-hours-input-with-jira-flexible-parser: backlog
   2-5-catch-all-picker-one-click-pto-action: backlog
   2-6-edit-delete-worklogs-from-logged-today: backlog

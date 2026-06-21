@@ -106,3 +106,90 @@ export async function jiraGet<T>(
 
   return result;
 }
+
+export async function jiraPost<T>(
+  path: string,
+  body: unknown,
+  schema: z.ZodType<T>,
+): Promise<Result<T, JiraError>> {
+  const bundle = await getAuth();
+  if (!bundle) {
+    return authExpired();
+  }
+
+  const result = await scheduler.acquire(async () => {
+    try {
+      const url = `${getBaseUrl(bundle)}/${path}`;
+      const headers: Record<string, string> = {
+        Authorization: getAuthHeader(bundle),
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      };
+
+      log.debug('jira.post.request', { path });
+
+      let res = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+
+      if (res.status === 401 && bundle.kind === 'oauth') {
+        log.info('jira.post.401-refreshing', { path });
+        const refreshResult = await refreshTokens();
+        if (refreshResult.kind === 'ok') {
+          const newBundle = await getAuth();
+          if (!newBundle) return authExpired();
+          headers.Authorization = getAuthHeader(newBundle);
+          res = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(body),
+          });
+        } else {
+          return authExpired();
+        }
+      }
+
+      if (res.status === 429) {
+        const retryAfter = res.headers.get('Retry-After');
+        const retryAfterMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : 1000;
+        return rateLimited(Number.isFinite(retryAfterMs) ? retryAfterMs : 1000);
+      }
+
+      if (res.status === 401) {
+        return authExpired();
+      }
+
+      if (res.status === 403) {
+        return forbidden();
+      }
+
+      if (res.status === 404) {
+        return notFound();
+      }
+
+      if (!res.ok) {
+        const resBody = await res.text().catch(() => '');
+        return network(`HTTP ${res.status}: ${resBody.slice(0, 200)}`);
+      }
+
+      const json: unknown = await res.json().catch(() => null);
+      if (json === null) {
+        return parseError('Response body is not valid JSON');
+      }
+
+      const parsed = schema.safeParse(json);
+      if (!parsed.success) {
+        return parseError(parsed.error.issues);
+      }
+
+      return ok(parsed.data);
+    } catch (e) {
+      log.error('jira.post.unexpected-error', { path, cause: String(e) });
+      return network(String(e));
+    }
+  });
+
+  return result;
+}

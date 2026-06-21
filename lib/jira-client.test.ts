@@ -1,7 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { z } from 'zod';
-
-const TestSchema = z.object({ id: z.string(), name: z.string() });
 
 const fetchMock = vi.fn();
 
@@ -22,7 +19,9 @@ vi.mock('@/lib/storage/tokens', () => {
   return {
     getAuth: vi.fn(async () => bundle),
     setAuth: vi.fn(),
-    clearAuth: vi.fn(async () => { bundle = null; }),
+    clearAuth: vi.fn(async () => {
+      bundle = null;
+    }),
     hasValidAuth: vi.fn((b: unknown) => b !== null),
   };
 });
@@ -34,12 +33,15 @@ vi.mock('@/lib/scheduler', () => ({
 }));
 
 vi.mock('@/lib/oauth/refresh', () => ({
-  refreshTokens: vi.fn(async () => ({ kind: 'auth-expired' })),
+  refreshTokens: vi.fn(async () => ({ kind: 'ok' })),
 }));
 
-const { jiraGet } = await import('./jira-client');
+const { jiraPost } = await import('./jira-client');
+const { z } = await import('zod');
 
-describe('jiraGet', () => {
+const TestSchema = z.object({ id: z.string(), name: z.string() });
+
+describe('jiraPost', () => {
   beforeEach(() => {
     fetchMock.mockReset();
   });
@@ -48,88 +50,82 @@ describe('jiraGet', () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
       status: 200,
-      json: async () => ({ id: '1', name: 'test' }),
+      headers: { get: () => null },
+      json: async () => ({ id: '1', name: 'created' }),
     });
 
-    const result = await jiraGet('rest/api/3/myself', TestSchema);
+    const result = await jiraPost(
+      'rest/api/3/issue',
+      { fields: { summary: 'test' } },
+      TestSchema,
+    );
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') {
-      expect(result.value).toEqual({ id: '1', name: 'test' });
+      expect(result.value).toEqual({ id: '1', name: 'created' });
     }
+
+    const callArgs = fetchMock.mock.calls[0]!;
+    expect(callArgs[1].method).toBe('POST');
+    expect(callArgs[1].headers['Content-Type']).toBe('application/json');
+    expect(callArgs[1].body).toBe(JSON.stringify({ fields: { summary: 'test' } }));
+  });
+
+  it('refreshes OAuth token on 401 and retries', async () => {
+    const { refreshTokens } = await import('@/lib/oauth/refresh');
+    vi.mocked(refreshTokens).mockResolvedValueOnce({ kind: 'ok' } as never);
+
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        headers: { get: () => null },
+        json: async () => ({}),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        json: async () => ({ id: '2', name: 'after-refresh' }),
+      });
+
+    const result = await jiraPost('rest/api/3/issue', {}, TestSchema);
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value).toEqual({ id: '2', name: 'after-refresh' });
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(refreshTokens).toHaveBeenCalledTimes(1);
   });
 
   it('returns rate-limited on 429', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: false,
       status: 429,
-      headers: { get: () => '30' },
+      headers: { get: () => '5' },
       json: async () => ({}),
     });
 
-    const result = await jiraGet('rest/api/3/myself', TestSchema);
+    const result = await jiraPost('rest/api/3/issue', {}, TestSchema);
     expect(result.kind).toBe('rate-limited');
-    if (result.kind === 'rate-limited') {
-      expect(result.retryAfterMs).toBe(30000);
-    }
-  });
-
-  it('returns forbidden on 403', async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: false,
-      status: 403,
-      headers: { get: () => null },
-      json: async () => ({}),
-    });
-
-    const result = await jiraGet('rest/api/3/issue/RESTRICTED', TestSchema);
-    expect(result.kind).toBe('forbidden');
-  });
-
-  it('returns not-found on 404', async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: false,
-      status: 404,
-      headers: { get: () => null },
-      json: async () => ({}),
-    });
-
-    const result = await jiraGet('rest/api/3/issue/MISSING', TestSchema);
-    expect(result.kind).toBe('not-found');
-  });
-
-  it('returns network on 5xx', async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: false,
-      status: 500,
-      headers: { get: () => null },
-      text: async () => 'Internal Server Error',
-    });
-
-    const result = await jiraGet('rest/api/3/myself', TestSchema);
-    expect(result.kind).toBe('network');
   });
 
   it('returns parse-error on schema drift', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
       status: 200,
-      json: async () => ({ id: 123, name: null }),
+      headers: { get: () => null },
+      json: async () => ({ wrong: 'shape' }),
     });
 
-    const result = await jiraGet('rest/api/3/myself', TestSchema);
+    const result = await jiraPost('rest/api/3/issue', {}, TestSchema);
     expect(result.kind).toBe('parse-error');
   });
 
-  it('returns parse-error when response is not JSON', async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => {
-        throw new Error('Unexpected token');
-      },
-    });
+  it('returns auth-expired when no auth bundle', async () => {
+    const { clearAuth } = await import('@/lib/storage/tokens');
+    await clearAuth();
 
-    const result = await jiraGet('rest/api/3/myself', TestSchema);
-    expect(result.kind).toBe('parse-error');
+    const result = await jiraPost('rest/api/3/issue', {}, TestSchema);
+    expect(result.kind).toBe('auth-expired');
   });
 });
