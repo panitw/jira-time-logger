@@ -8,6 +8,7 @@ import {
   MAX_HOURS_PER_ENTRY,
 } from '@/lib/hours';
 import { currentCycleRange, isWithinCycle } from '@/lib/cycle-range';
+import { formatStartedISO, formatDateForInput } from '@/lib/worklog-date';
 import { approvalCycleItem } from '@/lib/storage/settings';
 import { log } from '@/lib/log';
 import { sendMessage } from '@/lib/messages';
@@ -50,18 +51,6 @@ function validateHours(input: string): ValidationResult {
   if (parsed.kind !== 'ok') return { kind: 'unparseable' };
   if (parsed.hours > MAX_HOURS_PER_ENTRY) return { kind: 'over-limit', hours: parsed.hours };
   return { kind: 'valid', hours: parsed.hours, seconds: hoursToSeconds(parsed.hours) };
-}
-
-function formatDateForInput(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
-function formatStartedISO(dateStr: string): string {
-  const d = new Date(dateStr + 'T09:00:00');
-  return d.toISOString();
 }
 
 export function QuickLogForm({

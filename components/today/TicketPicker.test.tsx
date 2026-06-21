@@ -29,6 +29,17 @@ vi.mock('@/lib/create-subtask', () => ({
   createSubtask: (...args: unknown[]) => createSubtaskMock(...args),
 }));
 
+const fetchCatchAllSubtasksMock = vi.fn();
+vi.mock('@/lib/catch-all', () => ({
+  fetchCatchAllSubtasks: (...args: unknown[]) =>
+    fetchCatchAllSubtasksMock(...args),
+}));
+
+const catchAllProjectKeyGetValue = vi.fn(async () => '');
+vi.mock('@/lib/storage/settings', () => ({
+  catchAllProjectKeyItem: { getValue: () => catchAllProjectKeyGetValue() },
+}));
+
 vi.mock('@/lib/log', () => ({
   log: {
     info: vi.fn(),
@@ -102,6 +113,8 @@ describe('TicketPicker', () => {
     vi.clearAllMocks();
     getPinnedTicketsMock.mockResolvedValue([]);
     searchTicketsMock.mockResolvedValue({ kind: 'ok', value: [] });
+    catchAllProjectKeyGetValue.mockResolvedValue('');
+    fetchCatchAllSubtasksMock.mockResolvedValue({ kind: 'ok', value: [] });
     createSubtaskMock.mockResolvedValue({
       // Real Jira POST /rest/api/3/issue response — only {id, key}, NO fields
       kind: 'ok',
@@ -531,5 +544,56 @@ describe('TicketPicker', () => {
       },
       { timeout: 500 },
     );
+  });
+
+  it('hides the catch-all group when the project key is blank', async () => {
+    catchAllProjectKeyGetValue.mockResolvedValue('');
+    mockHierarchyLoaded(sampleTasks);
+    renderWithProviders(<TicketPicker onSelect={vi.fn()} />);
+
+    // Give the settings effect a tick to resolve
+    await waitFor(() =>
+      expect(screen.getByText(/Your Tasks/)).toBeTruthy(),
+    );
+    expect(screen.queryByText(/Catch-all/)).toBeNull();
+    expect(fetchCatchAllSubtasksMock).not.toHaveBeenCalled();
+  });
+
+  it('renders the catch-all group as a flat list when configured', async () => {
+    catchAllProjectKeyGetValue.mockResolvedValue('KNP');
+    fetchCatchAllSubtasksMock.mockResolvedValue({
+      kind: 'ok',
+      value: [
+        { key: 'KNP-1', summary: 'Admin' },
+        { key: 'KNP-2', summary: 'Meetings' },
+      ],
+    });
+    mockHierarchyLoaded([]);
+    renderWithProviders(<TicketPicker onSelect={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Catch-all (KNP)')).toBeTruthy();
+      expect(screen.getByLabelText('Pick KNP-1: Admin')).toBeTruthy();
+      expect(screen.getByLabelText('Pick KNP-2: Meetings')).toBeTruthy();
+    });
+    // No create-subtask affordance (the catch-all group is a flat, read-only list).
+    expect(screen.queryByText(/Create my subtask/)).toBeNull();
+  });
+
+  it('selecting a catch-all row calls onSelect with the same handoff', async () => {
+    catchAllProjectKeyGetValue.mockResolvedValue('KNP');
+    fetchCatchAllSubtasksMock.mockResolvedValue({
+      kind: 'ok',
+      value: [{ key: 'KNP-1', summary: 'Admin' }],
+    });
+    const onSelect = vi.fn();
+    mockHierarchyLoaded([]);
+    renderWithProviders(<TicketPicker onSelect={onSelect} />);
+
+    const row = await screen.findByLabelText('Pick KNP-1: Admin');
+    fireEvent.click(row);
+    await waitFor(() => {
+      expect(onSelect).toHaveBeenCalledWith('KNP-1', 'Admin');
+    });
   });
 });

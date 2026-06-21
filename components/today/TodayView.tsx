@@ -3,13 +3,18 @@ import { format } from 'date-fns';
 import { TicketPicker } from '@/components/today/TicketPicker';
 import { QuickLogForm } from '@/components/today/QuickLogForm';
 import { LoggedToday, type LoggedEntry } from '@/components/today/LoggedToday';
+import { PtoQuickAction } from '@/components/today/PtoQuickAction';
 import { secondsToHoursDisplay } from '@/lib/hours';
-import { targetHoursItem } from '@/lib/storage/settings';
+import { targetHoursItem, catchAllProjectKeyItem } from '@/lib/storage/settings';
 import { log } from '@/lib/log';
 
 const STRINGS = {
   heading: 'Today',
   pickLabel: 'Pick a ticket to log',
+  catchAllNotConfiguredPrefix:
+    'Catch-all not configured. Configure in ',
+  settings: 'Settings',
+  catchAllNotConfiguredSuffix: ' to log Admin/Meetings/PTO.',
 };
 
 export function TodayView(): React.ReactElement {
@@ -17,9 +22,21 @@ export function TodayView(): React.ReactElement {
   const [selectedTicket, setSelectedTicket] = useState<{ key: string; summary: string } | null>(null);
   const [loggedEntries, setLoggedEntries] = useState<LoggedEntry[]>([]);
   const [targetHours, setTargetHours] = useState(8);
+  const [catchAllProjectKey, setCatchAllProjectKey] = useState<string | null>(null);
 
   useEffect(() => {
     void targetHoursItem.getValue().then(setTargetHours);
+  }, []);
+
+  useEffect(() => {
+    void catchAllProjectKeyItem.getValue().then(setCatchAllProjectKey);
+  }, []);
+
+  const catchAllUnconfigured =
+    catchAllProjectKey !== null && catchAllProjectKey.trim() === '';
+
+  const openOptions = useCallback((): void => {
+    chrome.runtime.openOptionsPage();
   }, []);
 
   const handleSelect = useCallback((ticketKey: string, ticketSummary: string): void => {
@@ -47,6 +64,22 @@ export function TodayView(): React.ReactElement {
       <p className="mt-1 text-sm text-neutral-500">
         {today} &middot; {totalDisplay} / {targetHours}h
       </p>
+
+      <PtoQuickAction onLogged={handleLogged} />
+
+      {catchAllUnconfigured && (
+        <p className="mt-2 text-center text-sm text-neutral-500">
+          {STRINGS.catchAllNotConfiguredPrefix}
+          <button
+            type="button"
+            onClick={openOptions}
+            className="text-accent hover:underline"
+          >
+            {STRINGS.settings}
+          </button>
+          {STRINGS.catchAllNotConfiguredSuffix}
+        </p>
+      )}
 
       <div className="mt-3">
         <LoggedToday entries={loggedEntries} />

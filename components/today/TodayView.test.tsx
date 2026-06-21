@@ -24,9 +24,32 @@ vi.mock('@/lib/jira-client', () => ({
   postWorklog: vi.fn(async () => ({ kind: 'ok', value: { id: 'wl-1', timeSpentSeconds: 9000 } })),
 }));
 
+const fetchCatchAllSubtasksMock = vi.fn();
+vi.mock('@/lib/catch-all', () => ({
+  fetchCatchAllSubtasks: (...args: unknown[]) => fetchCatchAllSubtasksMock(...args),
+}));
+
+const logFullDayPtoMock = vi.fn();
+const logHalfDayPtoMock = vi.fn();
+vi.mock('@/lib/pto', () => ({
+  logFullDayPto: (...args: unknown[]) => logFullDayPtoMock(...args),
+  logHalfDayPto: (...args: unknown[]) => logHalfDayPtoMock(...args),
+}));
+
+const sendMessageMock = vi.fn();
+vi.mock('@/lib/messages', () => ({
+  sendMessage: (...args: unknown[]) => sendMessageMock(...args),
+}));
+
+const catchAllProjectKeyGetValue = vi.fn(async () => 'KNP' as string);
+const ptoSubtaskKeyGetValue = vi.fn(async () => 'KNP-99' as string | null);
+const ptoSubtaskSummaryGetValue = vi.fn(async () => 'PTO' as string | null);
 vi.mock('@/lib/storage/settings', () => ({
   approvalCycleItem: { getValue: vi.fn(async () => 'calendar-month') },
   targetHoursItem: { getValue: vi.fn(async () => 8) },
+  catchAllProjectKeyItem: { getValue: () => catchAllProjectKeyGetValue() },
+  ptoSubtaskKeyItem: { getValue: () => ptoSubtaskKeyGetValue() },
+  ptoSubtaskSummaryItem: { getValue: () => ptoSubtaskSummaryGetValue() },
 }));
 
 vi.mock('@/lib/log', () => ({
@@ -50,6 +73,16 @@ function renderWithProviders(ui: React.ReactElement) {
 describe('TodayView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    catchAllProjectKeyGetValue.mockResolvedValue('KNP');
+    ptoSubtaskKeyGetValue.mockResolvedValue('KNP-99');
+    ptoSubtaskSummaryGetValue.mockResolvedValue('PTO');
+    fetchCatchAllSubtasksMock.mockResolvedValue({ kind: 'ok', value: [] });
+    logFullDayPtoMock.mockResolvedValue({
+      kind: 'ok',
+      value: { id: 'wl-pto', timeSpentSeconds: 28800 },
+    });
+    // @ts-expect-error minimal chrome stub for openOptionsPage
+    globalThis.chrome = { runtime: { openOptionsPage: vi.fn() } };
   });
 
   it('renders the heading', () => {
@@ -213,5 +246,52 @@ describe('TodayView', () => {
     renderWithProviders(<TodayView />);
     // totalDisplay for 0 seconds is ── per secondsToHoursDisplay
     expect(screen.getByText(/\/ 8h/)).toBeTruthy();
+  });
+
+  it('renders the "Mark today as PTO" action', async () => {
+    mockUseHierarchyTickets.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    } as never);
+
+    renderWithProviders(<TodayView />);
+    expect(await screen.findByText('Mark today as PTO')).toBeTruthy();
+  });
+
+  it('logging full-day PTO appends an entry and increments the total', async () => {
+    mockUseHierarchyTickets.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    } as never);
+
+    renderWithProviders(<TodayView />);
+    fireEvent.click(await screen.findByText('Mark today as PTO'));
+    fireEvent.click(await screen.findByText('Full day (8h)'));
+
+    // 28800s = 8h, total should display 8h / 8h
+    await waitFor(
+      () => {
+        expect(screen.getByText(/8h \/ 8h/)).toBeTruthy();
+      },
+      { timeout: 1000 },
+    );
+  });
+
+  it('shows the catch-all-unconfigured placeholder when the project key is blank', async () => {
+    catchAllProjectKeyGetValue.mockResolvedValue('');
+    mockUseHierarchyTickets.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    } as never);
+
+    renderWithProviders(<TodayView />);
+    expect(await screen.findByText(/Catch-all not configured/)).toBeTruthy();
+    expect(screen.getByText(/to log Admin\/Meetings\/PTO/)).toBeTruthy();
   });
 });

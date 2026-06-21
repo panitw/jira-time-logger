@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search, Plus } from 'lucide-react';
 import { useHierarchyTickets } from '@/hooks/useHierarchyTickets';
 import { type HierarchySource, type HierarchyTask, type HierarchySubtask } from '@/lib/hierarchy';
 import { searchTickets } from '@/lib/ticket-search';
 import { createSubtask } from '@/lib/create-subtask';
+import { fetchCatchAllSubtasks } from '@/lib/catch-all';
+import { catchAllProjectKeyItem } from '@/lib/storage/settings';
 import {
   getPinnedTickets,
   addPinnedTicket,
@@ -27,9 +29,14 @@ const STRINGS = {
   create: 'Create',
   cancel: 'Cancel',
   searchPrompt: 'Type a ticket key or search text',
+  catchAllLabel: (projectKey: string) => `Catch-all (${projectKey})`,
+  catchAllEmpty: 'No catch-all subtasks found.',
+  catchAllError: 'Couldn’t load catch-all subtasks.',
 };
 
 const SOURCE_ORDER: HierarchySource[] = ['self', 'manager', 'skip-level'];
+
+const CATCH_ALL_STALE_TIME = 5 * 60 * 1000;
 
 type PickerMode = 'hierarchy' | 'search-jira';
 
@@ -153,9 +160,34 @@ export function TicketPicker({
     undefined,
   );
 
+  const [catchAllProjectKey, setCatchAllProjectKey] = useState<string | null>(null);
+
   useEffect(() => {
     void getPinnedTickets().then(setPinnedTickets);
   }, []);
+
+  useEffect(() => {
+    void catchAllProjectKeyItem.getValue().then(setCatchAllProjectKey);
+  }, []);
+
+  const catchAllKey = catchAllProjectKey?.trim() ?? '';
+  const {
+    data: catchAllSubtasks,
+    isLoading: isCatchAllLoading,
+    isError: isCatchAllError,
+  } = useQuery({
+    queryKey: ['catch-all', catchAllKey],
+    queryFn: async () => {
+      const result = await fetchCatchAllSubtasks(catchAllKey);
+      if (result.kind !== 'ok') {
+        log.warn('catchall.fetch.failed', { kind: result.kind });
+        throw new Error(result.kind);
+      }
+      return result.value;
+    },
+    enabled: catchAllKey.length > 0,
+    staleTime: CATCH_ALL_STALE_TIME,
+  });
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -286,9 +318,14 @@ export function TicketPicker({
     matchesFilter(t, debouncedQuery),
   );
   const sourceGroups = buildSourceGroups(hierarchyTasks, debouncedQuery);
+  const catchAllConfigured = catchAllKey.length > 0;
+  const filteredCatchAll = (catchAllSubtasks ?? []).filter((t) =>
+    matchesFilter(t, debouncedQuery),
+  );
   const hasAnyHierarchyResults =
     filteredPinned.length > 0 ||
-    sourceGroups.some((g) => g.hasVisibleContent);
+    sourceGroups.some((g) => g.hasVisibleContent) ||
+    (catchAllConfigured && filteredCatchAll.length > 0);
   const filtering = !!debouncedQuery;
 
   if (isLoading) {
@@ -410,6 +447,39 @@ export function TicketPicker({
                     ))}
                 </Disclosure>
               ))}
+
+            {catchAllConfigured && (
+              <Disclosure
+                label={STRINGS.catchAllLabel(catchAllKey)}
+                startOpen
+                forceOpen={filtering && filteredCatchAll.length > 0}
+              >
+                {filteredCatchAll.length > 0 ? (
+                  filteredCatchAll.map((ticket) => (
+                    <TicketRow
+                      key={ticket.key}
+                      ticketKey={ticket.key}
+                      summary={ticket.summary}
+                      onSelect={() =>
+                        void handleSelect(ticket.key, ticket.summary)
+                      }
+                    />
+                  ))
+                ) : isCatchAllLoading ? (
+                  <div className="px-3 py-2">
+                    <div className="h-5 rounded bg-neutral-100 animate-pulse" />
+                  </div>
+                ) : isCatchAllError ? (
+                  <p className="px-3 py-2 text-sm text-neutral-500">
+                    {STRINGS.catchAllError}
+                  </p>
+                ) : !debouncedQuery ? (
+                  <p className="px-3 py-2 text-sm text-neutral-500">
+                    {STRINGS.catchAllEmpty}
+                  </p>
+                ) : null}
+              </Disclosure>
+            )}
 
             {!hasAnyHierarchyResults && debouncedQuery && (
               <div className="py-3 text-center">

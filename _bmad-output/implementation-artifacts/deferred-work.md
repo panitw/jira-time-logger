@@ -42,3 +42,13 @@
 ## Deferred from: code review of 2-4-quicklogform-hours-input-with-jira-flexible-parser (2026-06-21)
 
 - `formatStartedISO` hardcodes 09:00 time — backdated worklogs always have `started` at 09:00 regardless of actual time. For "Today" the current time would be more accurate. Acceptable for v1. [components/today/QuickLogForm.tsx:60-63]
+
+## Deferred from: code review of 2-5-catch-all-picker-one-click-pto-action (2026-06-21)
+
+- `formatStartedISO` (now in `lib/worklog-date.ts`) anchors 09:00 local then `toISOString()` — worklog day-bucketing can drift vs the Jira account timezone. Pre-existing 09:00 limitation, now also the timestamp for one-click PTO. [lib/worklog-date.ts:12]
+- `badge-update` always broadcasts `{ hoursMissing: 0 }` for both full- and half-day PTO; mirrors the `QuickLogForm` fire-and-forget convention (background recomputes the badge). [components/today/PtoQuickAction.tsx:113]
+- No validation of `targetHours` (zero/negative → failed Jira post; non-integer → button-label vs posted-seconds display mismatch). Cross-cutting; settings layer and QuickLogForm don't validate either. [lib/storage/settings.ts:91]
+- Disabled primary `Button` keeps the full `bg-accent` purple with only `text-neutral-300` muted text — reads as low-contrast active rather than clearly disabled. App-wide Button concern; AC7's literal tokens are present. [components/ui/button.tsx:13]
+- Catch-all `useQuery` retries non-retriable errors (403/404/parse-error) up to 3× in prod via the project-wide default retry policy. Shared by hierarchy/search queries. [entrypoints/popup/main.tsx:12]
+- Successful PTO worklog is recorded into the logged-today list only inside a cancellable 200ms `setTimeout`; latent risk if a parent ever unmounts `PtoQuickAction` (currently always rendered). [components/today/PtoQuickAction.tsx:122]
+- Half-day PTO button lacks the spinner/✓ in-flight feedback the Full-day button shows (both are disabled during the post, so no correctness impact). [components/today/PtoQuickAction.tsx:236]
