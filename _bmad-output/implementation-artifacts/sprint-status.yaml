@@ -54,8 +54,8 @@ development_status:
   epic-1-retrospective: optional
 
   # Epic 2: Log Time (Today View)
-  epic-2: backlog
-  2-1-popup-shell-view-router-tanstack-query-setup: backlog
+  epic-2: in-progress
+  2-1-popup-shell-view-router-tanstack-query-setup: done
   2-2-hierarchy-walk-build-pre-fill-ticket-source: backlog
   2-3-ticketpicker-2-level-browse-tree-with-search-create-subtask: backlog
   2-4-quicklogform-hours-input-with-jira-flexible-parser: backlog

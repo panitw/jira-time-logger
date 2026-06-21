@@ -15,3 +15,10 @@
 - (round 2) Waiter misclassifies a holder's terminal failure (auth-expired / network) as `lock-contention` and does not self-retry once the lock frees — best-effort contention path the spec treats as rare; next alarm retries within 1 min, UI re-auth signalling out of scope. [lib/oauth/refresh.ts:79-92]
 - (round 2) `chrome.alarms.get` rejection only logs with no fallback create; `onAlarm` listener registered after `await`s can miss an alarm firing in the SW-wake window — low likelihood, bounded by the 2-min pre-expiry margin. [entrypoints/background.ts:44-57]
 - (round 3) Storage mutex keys on `Date.now()`; two callers with an identical timestamp could both pass read→set→verify. Unreachable today (single-flight + single SW instance), but a `crypto.randomUUID()` nonce would harden it. [lib/storage/refresh-mutex.ts:6-26]
+
+## Deferred from: code review of 2-1-popup-shell-view-router-tanstack-query-setup (2026-06-21)
+
+- getAuth() catch conflates all errors with "disconnected" — storage I/O errors, quota errors, and missing tokens all show same "Connect to Jira" UI; acceptable for Story 2.1 shell since auth-expired is the dominant case. [entrypoints/popup/App.tsx:40-44]
+- fire-and-forget setPopupView drops storage write failures — view-state persistence errors are silently swallowed; non-critical since worst case is seeing Today instead of last view. [entrypoints/popup/App.tsx:70]
+- getCurrentWeekMonday uses local Date without timezone handling — local Date may differ from Jira timezone; acceptable for v1.0 internal tool. [entrypoints/popup/App.tsx:131-136]
+- No auth-change subscription while popup open — token may expire during long popup session; no impact until stories add Jira API calls. [entrypoints/popup/App.tsx:30-47]
