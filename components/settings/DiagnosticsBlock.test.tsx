@@ -26,7 +26,12 @@ vi.mock('@/lib/storage/settings', () => ({
   targetHoursItem: { getValue: vi.fn(async () => 8), setValue: vi.fn(async () => {}) },
   approvalCycleItem: { getValue: vi.fn(async () => 'calendar-month'), setValue: vi.fn(async () => {}) },
   setManagerNames: vi.fn(async () => {}),
-  getManagerNames: vi.fn(async () => ({ managerDisplayName: null, skipLevelDisplayName: null })),
+  getManagerNames: vi.fn(async () => ({
+    managerDisplayName: null,
+    skipLevelDisplayName: null,
+    managerAccountId: null,
+    skipLevelAccountId: null,
+  })),
 }));
 
 import { DiagnosticsBlock } from './DiagnosticsBlock';

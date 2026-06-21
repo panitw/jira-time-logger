@@ -37,7 +37,12 @@ export async function resolveReportingLine(): Promise<Result<ManagerNames, JiraE
     return userResult;
   }
 
-  const managerNames: ManagerNames = { managerDisplayName: null, skipLevelDisplayName: null };
+  const managerNames: ManagerNames = {
+    managerDisplayName: null,
+    skipLevelDisplayName: null,
+    managerAccountId: null,
+    skipLevelAccountId: null,
+  };
   const user = userResult.value as JiraUser;
 
   if (!user.manager) {
@@ -47,8 +52,10 @@ export async function resolveReportingLine(): Promise<Result<ManagerNames, JiraE
   }
 
   managerNames.managerDisplayName = user.manager.displayName ?? null;
+  managerNames.managerAccountId = user.manager.accountId ?? null;
   log.info('manager-resolution.manager-resolved', {
     displayName: user.manager.displayName,
+    accountId: user.manager.accountId,
   });
 
   if (!user.manager.accountId) {
@@ -74,8 +81,10 @@ export async function resolveReportingLine(): Promise<Result<ManagerNames, JiraE
   const skipLevelUser = skipLevelResult.value as JiraUser;
   if (skipLevelUser.manager) {
     managerNames.skipLevelDisplayName = skipLevelUser.manager.displayName;
+    managerNames.skipLevelAccountId = skipLevelUser.manager.accountId ?? null;
     log.info('manager-resolution.skip-level-resolved', {
       displayName: skipLevelUser.manager.displayName,
+      accountId: skipLevelUser.manager.accountId,
     });
   }
 

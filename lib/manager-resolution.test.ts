@@ -11,9 +11,20 @@ vi.mock('@/lib/storage/tokens', () => {
 vi.mock('@/lib/scheduler', () => ({ scheduler: { acquire: vi.fn(async <T>(fn: () => Promise<T>) => fn()) } }));
 vi.mock('@/lib/oauth/refresh', () => ({ refreshTokens: vi.fn(async () => ({ kind: 'auth-expired' })) }));
 vi.mock('@/lib/storage/settings', () => {
-  let store: { managerDisplayName: string | null; skipLevelDisplayName: string | null } = { managerDisplayName: null, skipLevelDisplayName: null };
+  type ManagerStore = {
+    managerDisplayName: string | null;
+    skipLevelDisplayName: string | null;
+    managerAccountId: string | null;
+    skipLevelAccountId: string | null;
+  };
+  let store: ManagerStore = {
+    managerDisplayName: null,
+    skipLevelDisplayName: null,
+    managerAccountId: null,
+    skipLevelAccountId: null,
+  };
   return {
-    setManagerNames: vi.fn(async (names: typeof store) => { store = names; }),
+    setManagerNames: vi.fn(async (names: ManagerStore) => { store = names; }),
     getManagerNames: vi.fn(async () => store),
   };
 });
@@ -42,6 +53,8 @@ describe('resolveReportingLine', () => {
     if (result.kind === 'ok') {
       expect(result.value.managerDisplayName).toBe('Marco Rivera');
       expect(result.value.skipLevelDisplayName).toBe('Anika Patel');
+      expect(result.value.managerAccountId).toBe('m1');
+      expect(result.value.skipLevelAccountId).toBe('s1');
     }
   });
 
@@ -56,6 +69,8 @@ describe('resolveReportingLine', () => {
     if (result.kind === 'ok') {
       expect(result.value.managerDisplayName).toBe('Marco Rivera');
       expect(result.value.skipLevelDisplayName).toBeNull();
+      expect(result.value.managerAccountId).toBe('m1');
+      expect(result.value.skipLevelAccountId).toBeNull();
     }
   });
 
@@ -69,6 +84,8 @@ describe('resolveReportingLine', () => {
     if (result.kind === 'ok') {
       expect(result.value.managerDisplayName).toBeNull();
       expect(result.value.skipLevelDisplayName).toBeNull();
+      expect(result.value.managerAccountId).toBeNull();
+      expect(result.value.skipLevelAccountId).toBeNull();
     }
   });
 

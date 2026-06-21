@@ -29,18 +29,27 @@ describe('settings', () => {
 
   it('returns null fallbacks when no names stored', async () => {
     const result = await getManagerNames();
-    expect(result).toEqual({ managerDisplayName: null, skipLevelDisplayName: null });
+    expect(result).toEqual({
+      managerDisplayName: null,
+      skipLevelDisplayName: null,
+      managerAccountId: null,
+      skipLevelAccountId: null,
+    });
   });
 
-  it('stores and retrieves manager names', async () => {
+  it('stores and retrieves manager names with account IDs', async () => {
     await setManagerNames({
       managerDisplayName: 'Marco Rivera',
       skipLevelDisplayName: 'Anika Patel',
+      managerAccountId: 'm1',
+      skipLevelAccountId: 's1',
     });
     const result = await getManagerNames();
     expect(result).toEqual({
       managerDisplayName: 'Marco Rivera',
       skipLevelDisplayName: 'Anika Patel',
+      managerAccountId: 'm1',
+      skipLevelAccountId: 's1',
     });
   });
 
@@ -48,11 +57,15 @@ describe('settings', () => {
     await setManagerNames({
       managerDisplayName: 'Marco Rivera',
       skipLevelDisplayName: null,
+      managerAccountId: 'm1',
+      skipLevelAccountId: null,
     });
     const result = await getManagerNames();
     expect(result).toEqual({
       managerDisplayName: 'Marco Rivera',
-skipLevelDisplayName: null,
+      skipLevelDisplayName: null,
+      managerAccountId: 'm1',
+      skipLevelAccountId: null,
     });
   });
 

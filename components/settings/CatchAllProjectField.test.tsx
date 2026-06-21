@@ -13,7 +13,12 @@ vi.mock('@/lib/storage/settings', () => ({
   approvalCycleItem: { getValue: vi.fn(async () => 'calendar-month'), setValue: vi.fn(async () => {}) },
   lastSyncTimestampItem: { getValue: vi.fn(async () => null), setValue: vi.fn(async () => {}) },
   setManagerNames: vi.fn(async () => {}),
-  getManagerNames: vi.fn(async () => ({ managerDisplayName: null, skipLevelDisplayName: null })),
+  getManagerNames: vi.fn(async () => ({
+    managerDisplayName: null,
+    skipLevelDisplayName: null,
+    managerAccountId: null,
+    skipLevelAccountId: null,
+  })),
 }));
 vi.mock('@/lib/storage/tokens', () => ({
   getAuth: vi.fn(async () => null),

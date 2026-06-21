@@ -42,3 +42,36 @@ export type JiraIssue = z.infer<typeof JiraIssueSchema>;
 export const JiraSearchSchema = z.object({
   issues: z.array(JiraIssueSchema),
 });
+
+// ---- Hierarchy-specific search response (Story 2.2) ----
+
+export const JiraHierarchyIssueSchema = JiraIssueSchema.extend({
+  fields: JiraIssueSchema.shape.fields.extend({
+    issuetype: z
+      .object({
+        id: z.string(),
+        name: z.string(),
+        subtask: z.boolean().optional(),
+      })
+      .optional(),
+    parent: z
+      .object({
+        id: z.string(),
+        key: z.string(),
+        fields: z.object({ summary: z.string() }),
+      })
+      .optional(),
+    assignee: z
+      .object({
+        accountId: z.string(),
+        displayName: z.string(),
+      })
+      .optional(),
+  }),
+});
+
+export type JiraHierarchyIssue = z.infer<typeof JiraHierarchyIssueSchema>;
+
+export const JiraHierarchySearchSchema = z.object({
+  issues: z.array(JiraHierarchyIssueSchema),
+});

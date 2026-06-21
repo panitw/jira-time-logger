@@ -22,3 +22,10 @@
 - fire-and-forget setPopupView drops storage write failures — view-state persistence errors are silently swallowed; non-critical since worst case is seeing Today instead of last view. [entrypoints/popup/App.tsx:70]
 - getCurrentWeekMonday uses local Date without timezone handling — local Date may differ from Jira timezone; acceptable for v1.0 internal tool. [entrypoints/popup/App.tsx:131-136]
 - No auth-change subscription while popup open — token may expire during long popup session; no impact until stories add Jira API calls. [entrypoints/popup/App.tsx:30-47]
+
+## Deferred from: code review of 2-2-hierarchy-walk-build-pre-fill-ticket-source (2026-06-21)
+
+- `maxResults=100` with no pagination silently truncates large reporting lines (senior managers with >100 open issues) and logs no truncation warning. 100 is spec-specified; pagination is future work — at least log when the page is full. [lib/hierarchy.ts:36]
+- Parent stubs for cross-source subtasks hardcode `source:'self'` + `assigneeDisplayName:null` even when the parent belongs to the manager/skip-level. `source:'self'` is spec-mandated and the Jira `parent` object has no assignee, so null is inherent. [lib/hierarchy.ts:170-177]
+- Account IDs interpolated into JQL without escaping — Jira-controlled safe values, colon-quoting per spec is followed; low-risk hardening only. [lib/hierarchy.ts:132,148]
+- (round 2) PRE-EXISTING test failure unrelated to 2.2: `lib/storage/view-state.test.ts` fails on baseline `c3ef3d6` too (vitest mock-hoisting / Zod error at module load). Means AC #8 "all gates pass" is not literally true repo-wide. Track as its own defect from Story 2.1. [lib/storage/view-state.test.ts]

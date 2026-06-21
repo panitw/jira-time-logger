@@ -18,7 +18,12 @@ vi.mock('@/lib/storage/settings', () => ({
   skipLevelDisplayNameItem: { getValue: vi.fn(async () => null), setValue: vi.fn(async () => {}) },
   lastSyncTimestampItem: { getValue: vi.fn(async () => null), setValue: vi.fn(async () => {}) },
   setManagerNames: vi.fn(async () => {}),
-  getManagerNames: vi.fn(async () => ({ managerDisplayName: null, skipLevelDisplayName: null })),
+  getManagerNames: vi.fn(async () => ({
+    managerDisplayName: null,
+    skipLevelDisplayName: null,
+    managerAccountId: null,
+    skipLevelAccountId: null,
+  })),
 }));
 
 import { ReminderTimeField } from './ReminderTimeField';

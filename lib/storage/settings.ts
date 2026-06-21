@@ -18,22 +18,50 @@ export const skipLevelDisplayNameItem = storage.defineItem<string | null>(
   { fallback: null },
 );
 
+export const managerAccountIdItem = storage.defineItem<string | null>(
+  'local:managerAccountId',
+  { fallback: null },
+);
+
+export const skipLevelAccountIdItem = storage.defineItem<string | null>(
+  'local:skipLevelAccountId',
+  { fallback: null },
+);
+
 export interface ManagerNames {
   managerDisplayName: string | null;
   skipLevelDisplayName: string | null;
+  managerAccountId: string | null;
+  skipLevelAccountId: string | null;
 }
 
 export async function setManagerNames(names: ManagerNames): Promise<void> {
-  await managerDisplayNameItem.setValue(names.managerDisplayName);
-  await skipLevelDisplayNameItem.setValue(names.skipLevelDisplayName);
+  await Promise.all([
+    managerDisplayNameItem.setValue(names.managerDisplayName),
+    skipLevelDisplayNameItem.setValue(names.skipLevelDisplayName),
+    managerAccountIdItem.setValue(names.managerAccountId),
+    skipLevelAccountIdItem.setValue(names.skipLevelAccountId),
+  ]);
 }
 
 export async function getManagerNames(): Promise<ManagerNames> {
-  const [managerDisplayName, skipLevelDisplayName] = await Promise.all([
+  const [
+    managerDisplayName,
+    skipLevelDisplayName,
+    managerAccountId,
+    skipLevelAccountId,
+  ] = await Promise.all([
     managerDisplayNameItem.getValue(),
     skipLevelDisplayNameItem.getValue(),
+    managerAccountIdItem.getValue(),
+    skipLevelAccountIdItem.getValue(),
   ]);
-  return { managerDisplayName, skipLevelDisplayName };
+  return {
+    managerDisplayName,
+    skipLevelDisplayName,
+    managerAccountId,
+    skipLevelAccountId,
+  };
 }
 
 // ---- Catch-all project (Story 1.5) ----
