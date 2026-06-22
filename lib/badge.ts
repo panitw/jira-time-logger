@@ -65,7 +65,7 @@ const weekMarkedDoneItem = storage.defineItem<boolean>('local:weekMarkedDone', {
   fallback: false,
 });
 
-async function isCurrentWeekMarkedDone(): Promise<boolean> {
+export async function isCurrentWeekMarkedDone(): Promise<boolean> {
   try {
     return (await weekMarkedDoneItem.getValue()) === true;
   } catch {

@@ -11,10 +11,45 @@
 import { updateBadge } from '@/lib/badge';
 import { log } from '@/lib/log';
 import { onMessage, sendMessage } from '@/lib/messages';
+import {
+  handleNotificationClick,
+  maybeShowDailyReminder,
+  nextReminderOccurrenceFromSettings,
+} from '@/lib/notification';
 import { refreshTokens } from '@/lib/oauth/refresh';
 import { runOutboxRetryPass } from '@/lib/storage/outbox';
-import { reminderTimeItem } from '@/lib/storage/settings';
 import { getAuth, hasValidAuth } from '@/lib/storage/tokens';
+
+/**
+ * Register (or re-register) the `daily-reminder` alarm at the next configured
+ * wall-clock occurrence (Story 1.6 + 3.2). DST-safe `when`-only registration —
+ * never `periodInMinutes`. Idempotent when `idempotent` is set (boot): skips if
+ * an alarm already exists so a SW wake never resets a still-valid alarm.
+ */
+async function registerDailyReminderAlarm(idempotent = false): Promise<void> {
+  try {
+    if (idempotent) {
+      const existing = await chrome.alarms.get('daily-reminder');
+      if (existing) return;
+    }
+    const when = await nextReminderOccurrenceFromSettings();
+    chrome.alarms.create('daily-reminder', { when });
+  } catch (e) {
+    log.warn('alarms.create.daily-reminder.failed', { error: String(e) });
+  }
+}
+
+/**
+ * Re-register the next day's reminder after the alarm fires. The fired alarm is
+ * already auto-removed by Chrome; `chrome.alarms.create` with the same name
+ * atomically (re)arms the next occurrence in a single call. We deliberately do
+ * NOT `clear` first — a `clear`-then-async-`create` opens a window where, if the
+ * SW is terminated between the two, the reminder is left unarmed with no event
+ * to recreate it until a cold boot. A single `create` has no such gap.
+ */
+async function reRegisterDailyReminder(): Promise<void> {
+  await registerDailyReminderAlarm();
+}
 
 async function handleTokenRefresh(): Promise<void> {
   const bundle = await getAuth();
@@ -101,6 +136,31 @@ export default defineBackground(async () => {
     if (alarm.name === 'badge-update') {
       await updateBadge();
     }
+    if (alarm.name === 'daily-reminder') {
+      // Show/suppress FIRST (never throws), then re-register the next day's
+      // alarm so reminders keep firing regardless of the decision (AC #6).
+      await maybeShowDailyReminder();
+      await reRegisterDailyReminder();
+    }
+  });
+
+  // Open the pre-warmed popup when the daily reminder is clicked (AC #3). The
+  // handler ignores other notification ids and never throws.
+  chrome.notifications.onClicked.addListener((id) => {
+    void handleNotificationClick(id);
+  });
+
+  // Re-register the daily reminder when the user changes the reminder time
+  // (Story 1.6 ReminderTimeField writes `local:reminderTime`). WXT stores the
+  // item under the bare `reminderTime` key in the `local` area; gate on it
+  // defensively (a spurious re-register is harmless — it's idempotent/cheap).
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'local') return;
+    if (!('reminderTime' in changes)) return;
+    // `registerDailyReminderAlarm` re-creates the same-named alarm, which
+    // atomically overwrites the existing one at the new next-occurrence — no
+    // `clear` needed (and no clear/create gap that a SW death could leave bare).
+    void registerDailyReminderAlarm();
   });
 
   // Recompute the badge on local actions (popup/banner worklog posts, outbox
@@ -112,22 +172,9 @@ export default defineBackground(async () => {
   // SW wakes. updateBadge is a no-op (clears) when disconnected.
   void updateBadge();
 
-  try {
-    const existing = await chrome.alarms.get('daily-reminder');
-    if (!existing) {
-      const time = await reminderTimeItem.getValue();
-      const [hours, minutes] = time.split(':').map(Number);
-      const now = new Date();
-      const next = new Date(now);
-      next.setHours(hours ?? 17, minutes ?? 0, 0, 0);
-      if (next <= now) next.setDate(next.getDate() + 1);
-      chrome.alarms.create('daily-reminder', {
-        when: next.getTime(),
-      });
-    }
-  } catch (e) {
-    log.warn('alarms.create.daily-reminder.failed', { error: String(e) });
-  }
+  // Idempotent boot registration — skips if a still-valid alarm exists so a SW
+  // wake never resets it. Uses the shared next-occurrence math (Story 3.2).
+  await registerDailyReminderAlarm(true);
 
   chrome.runtime.onInstalled.addListener((details) => {
     log.info('runtime.installed', { reason: details.reason });

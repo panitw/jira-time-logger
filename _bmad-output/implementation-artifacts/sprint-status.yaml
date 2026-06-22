@@ -35,10 +35,11 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-11 22:45:02
-last_updated: 2026-06-21
+last_updated: 2026-06-22
 project: jira-time-logger
 # 2026-06-21: Story 2-7 created (ready-for-dev) — completes Epic 2
 # 2026-06-21: Story 3-1 created (ready-for-dev); Epic 3 → in-progress
+# 2026-06-22: Story 3-2 created (ready-for-dev)
 project_key: NOKEY
 tracking_system: file-system
 story_location: "{project-root}/_bmad-output/implementation-artifacts"
@@ -69,7 +70,7 @@ development_status:
   # Epic 3: Daily Awareness — Badge, Reminder, Banner
   epic-3: in-progress
   3-1-toolbar-badge-counter: done
-  3-2-daily-push-notification: backlog
+  3-2-daily-push-notification: done
   3-3-inline-jira-banner-with-daily-dismiss-contextual-quick-log: backlog
   epic-3-retrospective: optional
 
