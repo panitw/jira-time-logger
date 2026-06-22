@@ -9,7 +9,14 @@
  *   - Parses responses with Zod schemas from jira-types.ts
  */
 import { type z } from 'zod';
-import { JiraWorklogSchema, type JiraWorklog } from '@/lib/jira-types';
+import { type CycleRange } from '@/lib/cycle-range';
+import {
+  JiraMyselfSchema,
+  JiraSearchSchema,
+  JiraWorklogListSchema,
+  JiraWorklogSchema,
+  type JiraWorklog,
+} from '@/lib/jira-types';
 import { log } from '@/lib/log';
 import { refreshTokens } from '@/lib/oauth/refresh';
 import { type Result, type JiraError, ok, authExpired, rateLimited, network, parseError, forbidden, notFound } from '@/lib/result';
@@ -406,4 +413,84 @@ export async function deleteWorklog(
   return jiraDelete(
     `rest/api/3/issue/${encodeURIComponent(issueKey)}/worklog/${encodeURIComponent(worklogId)}`,
   );
+}
+
+/** Format a Date as `yyyy-MM-dd` (local) for JQL `worklogDate` comparisons. */
+function toJqlDate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * Fetch the current user's worklogs for the given week range (Story 3.1).
+ *
+ * Strategy:
+ *   1. Resolve the current user's accountId via `rest/api/3/myself`.
+ *   2. JQL-search for issues the user logged time on this week
+ *      (`worklogAuthor = currentUser() AND worklogDate >= <start> AND
+ *       worklogDate <= <end>`).
+ *   3. Read each matching issue's worklog list and keep only the current
+ *      user's worklogs whose `started` falls within the range.
+ *
+ * PTO worklogs are ordinary worklogs on the catch-all subtask and count like
+ * any other — no special handling. All HTTP routes through `jiraGet` (which
+ * already wraps scheduler + auth + 401-refresh + Result), never raw `fetch`.
+ */
+export async function fetchCurrentUserWeekWorklogs(
+  range: CycleRange,
+): Promise<Result<JiraWorklog[], JiraError>> {
+  const myselfResult = await jiraGet('rest/api/3/myself', JiraMyselfSchema);
+  if (myselfResult.kind !== 'ok') {
+    return myselfResult;
+  }
+  const accountId = myselfResult.value.accountId;
+
+  const startDate = toJqlDate(range.start);
+  const endDate = toJqlDate(range.end);
+  const jql = `worklogAuthor = currentUser() AND worklogDate >= "${startDate}" AND worklogDate <= "${endDate}"`;
+  // `summary` is requested (not just `key`) because JiraSearchSchema/JiraIssueSchema
+  // require `fields.summary`; asking for `key` alone returns `fields: {}` and the
+  // Zod parse fails, silently breaking the badge. Mirrors lib/ticket-search.ts.
+  const searchPath = `rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&maxResults=100&fields=key,summary`;
+
+  const searchResult = await jiraGet(searchPath, JiraSearchSchema);
+  if (searchResult.kind !== 'ok') {
+    return searchResult;
+  }
+
+  const startMs = range.start.getTime();
+  const endMs = range.end.getTime();
+  const collected: JiraWorklog[] = [];
+
+  // Use the worklog endpoint's `startedAfter`/`startedBefore` (epoch ms) so the
+  // server returns only worklogs in the week window. Jira returns worklogs
+  // oldest-first, so on a long-lived catch-all/PTO subtask the current week's
+  // entries land on the LAST page; without this filter, reading only the first
+  // page would silently miss them. The filter keeps the page small and relevant.
+  const startedAfter = startMs - 1; // inclusive lower bound
+  const startedBefore = endMs + 1; // inclusive upper bound
+  for (const issue of searchResult.value.issues) {
+    const worklogResult = await jiraGet(
+      `rest/api/3/issue/${encodeURIComponent(issue.key)}/worklog?startedAfter=${startedAfter}&startedBefore=${startedBefore}`,
+      JiraWorklogListSchema,
+    );
+    if (worklogResult.kind !== 'ok') {
+      return worklogResult;
+    }
+
+    for (const worklog of worklogResult.value.worklogs) {
+      if (worklog.author?.accountId !== accountId) continue;
+      if (worklog.started) {
+        const startedMs = new Date(worklog.started).getTime();
+        if (!Number.isFinite(startedMs) || startedMs < startMs || startedMs > endMs) {
+          continue;
+        }
+      }
+      collected.push(worklog);
+    }
+  }
+
+  return ok(collected);
 }

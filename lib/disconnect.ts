@@ -22,6 +22,12 @@ export async function disconnectAll(): Promise<Result<void, DisconnectError>> {
   }
 
   try {
+    await chrome.alarms.clear('badge-update');
+  } catch (e) {
+    log.warn('disconnect.alarm-clear-failed', { cause: String(e) });
+  }
+
+  try {
     await chrome.storage.session.remove('oauth.refreshInFlight');
   } catch (e) {
     log.warn('disconnect.session-remove-failed', { cause: String(e) });

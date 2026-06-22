@@ -1,3 +1,9 @@
+## Deferred from: code review of 3-1-toolbar-badge-counter (2026-06-22)
+
+- Timezone mismatch between JQL `worklogDate` (Jira-server day) and the client-side `started` epoch filter (SW-local day). Only affects worklogs within hours of the week boundary for users whose SW timezone differs from their Jira timezone; correcting it needs the Jira user timezone which is not currently fetched. [lib/jira-client.ts]
+- No mutex across concurrent `updateBadge` calls (alarm + message + boot) — last-writer-wins can briefly flicker the badge. Low impact on a 30-min cadence; converges on the next update. [entrypoints/background.ts]
+- `workdaysSoFar` counts the current weekday as a full day and ignores public holidays — this is the spec-defined behavior (Monday → 1, full target); holiday-awareness is out of scope. [lib/cycle-range.ts]
+
 ## Deferred from: code review of 2-7-outbox-queue-failed-writes-retry-on-reconnect (2026-06-21)
 
 - Failed `post`-kind outbox entries have no Retry-now/Discard surface — a failed POST never produces a `LoggedEntry` row, so the AC5 failed-row UI (put/delete-scoped by design) has nowhere to attach. Entry stays durable (not lost). Needs a new UI affordance the spec does not define — product-design decision, out of scope. [components/today/LoggedToday.tsx:207]

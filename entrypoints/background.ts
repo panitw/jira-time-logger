@@ -8,8 +8,9 @@
  * For Story 1.1 the service worker only opens the options page on first
  * install. Everything else is wired in subsequent stories.
  */
+import { updateBadge } from '@/lib/badge';
 import { log } from '@/lib/log';
-import { sendMessage } from '@/lib/messages';
+import { onMessage, sendMessage } from '@/lib/messages';
 import { refreshTokens } from '@/lib/oauth/refresh';
 import { runOutboxRetryPass } from '@/lib/storage/outbox';
 import { reminderTimeItem } from '@/lib/storage/settings';
@@ -80,6 +81,16 @@ export default defineBackground(async () => {
     log.warn('alarms.create.outbox-retry.failed', { error: String(e) });
   }
 
+  try {
+    const existing = await chrome.alarms.get('badge-update');
+    if (!existing) {
+      // Normal cadence for the toolbar badge counter (Story 3.1, NFR4).
+      chrome.alarms.create('badge-update', { periodInMinutes: 30 });
+    }
+  } catch (e) {
+    log.warn('alarms.create.badge-update.failed', { error: String(e) });
+  }
+
   chrome.alarms.onAlarm.addListener(async (alarm) => {
     if (alarm.name === 'token-refresh') {
       await handleTokenRefresh();
@@ -87,7 +98,19 @@ export default defineBackground(async () => {
     if (alarm.name === 'outbox-retry') {
       await handleOutboxRetry();
     }
+    if (alarm.name === 'badge-update') {
+      await updateBadge();
+    }
   });
+
+  // Recompute the badge on local actions (popup/banner worklog posts, outbox
+  // drains) broadcasting `badge-update`. The payload's `hoursMissing` is a
+  // placeholder and is ignored — updateBadge recomputes authoritatively.
+  onMessage('badge-update', () => updateBadge());
+
+  // Refresh the badge once on service-worker boot so it is correct after the
+  // SW wakes. updateBadge is a no-op (clears) when disconnected.
+  void updateBadge();
 
   try {
     const existing = await chrome.alarms.get('daily-reminder');

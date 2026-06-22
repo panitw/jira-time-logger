@@ -78,6 +78,18 @@ export const JiraWorklogSchema = z.object({
 
 export type JiraWorklog = z.infer<typeof JiraWorklogSchema>;
 
+/**
+ * Jira `GET /rest/api/3/issue/{key}/worklog` response shape (Story 3.1).
+ * A paginated wrapper around an array of worklogs. The badge fetch scopes this
+ * with `startedAfter`/`startedBefore` so a single week's worklogs fit one page.
+ */
+export const JiraWorklogListSchema = z.object({
+  worklogs: z.array(JiraWorklogSchema),
+  total: z.number().optional(),
+});
+
+export type JiraWorklogList = z.infer<typeof JiraWorklogListSchema>;
+
 // ---- Hierarchy-specific search response (Story 2.2) ----
 
 export const JiraHierarchyIssueSchema = JiraIssueSchema.extend({

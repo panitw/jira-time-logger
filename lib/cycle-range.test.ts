@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { currentCycleRange, isWithinCycle } from './cycle-range';
+import { currentCycleRange, isWithinCycle, workdaysSoFar } from './cycle-range';
 
 describe('currentCycleRange', () => {
   it('returns calendar-month range by default', () => {
@@ -43,5 +43,39 @@ describe('isWithinCycle', () => {
   it('returns true for last day of month', () => {
     const ref = new Date(2026, 5, 15);
     expect(isWithinCycle(new Date(2026, 5, 30), 'calendar-month', ref)).toBe(true);
+  });
+});
+
+describe('workdaysSoFar', () => {
+  // Week of Jun 15 2026: Mon Jun 15 ... Sun Jun 21.
+  it('returns 1 on Monday', () => {
+    expect(workdaysSoFar(new Date(2026, 5, 15, 9, 0, 0))).toBe(1); // Mon
+  });
+
+  it('returns 2 on Tuesday', () => {
+    expect(workdaysSoFar(new Date(2026, 5, 16, 9, 0, 0))).toBe(2); // Tue
+  });
+
+  it('returns 3 on Wednesday', () => {
+    expect(workdaysSoFar(new Date(2026, 5, 17, 9, 0, 0))).toBe(3); // Wed
+  });
+
+  it('returns 5 on Friday', () => {
+    expect(workdaysSoFar(new Date(2026, 5, 19, 9, 0, 0))).toBe(5); // Fri
+  });
+
+  it('returns 5 on Saturday (weekend caps at 5)', () => {
+    expect(workdaysSoFar(new Date(2026, 5, 20, 9, 0, 0))).toBe(5); // Sat
+  });
+
+  it('returns 5 on Sunday (weekend caps at 5)', () => {
+    expect(workdaysSoFar(new Date(2026, 5, 21, 9, 0, 0))).toBe(5); // Sun
+  });
+
+  it('counts from the same Monday boundary as currentCycleRange("weekly")', () => {
+    const ref = new Date(2026, 5, 18, 14, 30, 0); // Thu
+    const { start } = currentCycleRange('weekly', ref);
+    expect(start.getDay()).toBe(1); // Monday anchor
+    expect(workdaysSoFar(ref)).toBe(4); // Mon..Thu inclusive
   });
 });

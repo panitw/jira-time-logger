@@ -137,6 +137,11 @@ describe('disconnectAll', () => {
     expect(chrome.alarms.clear).toHaveBeenCalledWith('outbox-retry');
   });
 
+  it('clears the badge-update alarm', async () => {
+    await disconnectAll();
+    expect(chrome.alarms.clear).toHaveBeenCalledWith('badge-update');
+  });
+
   it('handles alarm clear failure gracefully', async () => {
     vi.mocked(chrome.alarms.clear).mockRejectedValueOnce(new Error('Alarms unavailable'));
     const result = await disconnectAll();

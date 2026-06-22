@@ -38,8 +38,15 @@ vi.mock('@/lib/oauth/refresh', () => ({
   refreshTokens: vi.fn(async () => ({ kind: 'ok' })),
 }));
 
-const { jiraPost, postWorklog, jiraPut, jiraDelete, updateWorklog, deleteWorklog } =
-  await import('./jira-client');
+const {
+  jiraPost,
+  postWorklog,
+  jiraPut,
+  jiraDelete,
+  updateWorklog,
+  deleteWorklog,
+  fetchCurrentUserWeekWorklogs,
+} = await import('./jira-client');
 const { z } = await import('zod');
 
 async function resetAuthBundle(): Promise<void> {
@@ -534,5 +541,159 @@ describe('deleteWorklog', () => {
     });
     const result = await deleteWorklog('PROJ-1', '10001');
     expect(result.kind).toBe('not-found');
+  });
+});
+
+describe('fetchCurrentUserWeekWorklogs', () => {
+  const ACCOUNT_ID = 'acct-me';
+  const range = {
+    start: new Date(2026, 5, 15, 0, 0, 0, 0), // Mon Jun 15
+    end: new Date(2026, 5, 21, 23, 59, 59, 999), // Sun Jun 21
+  };
+
+  function okJson(body: unknown) {
+    return { ok: true, status: 200, headers: { get: () => null }, json: async () => body };
+  }
+
+  beforeEach(async () => {
+    fetchMock.mockReset();
+    await resetAuthBundle();
+  });
+
+  it('resolves accountId, searches, and sums the current user worklogs in range', async () => {
+    fetchMock
+      .mockResolvedValueOnce(okJson({ accountId: ACCOUNT_ID, displayName: 'Me' })) // myself
+      .mockResolvedValueOnce(
+        okJson({ issues: [{ id: '1', key: 'PROJ-1', fields: { summary: 'A' } }] }),
+      ) // search
+      .mockResolvedValueOnce(
+        okJson({
+          worklogs: [
+            {
+              id: 'wl-1',
+              timeSpentSeconds: 3600,
+              started: '2026-06-16T09:00:00.000+0000',
+              author: { accountId: ACCOUNT_ID },
+            },
+            {
+              id: 'wl-2',
+              timeSpentSeconds: 7200,
+              started: '2026-06-17T09:00:00.000+0000',
+              author: { accountId: 'someone-else' },
+            },
+          ],
+        }),
+      ); // worklog list
+
+    const result = await fetchCurrentUserWeekWorklogs(range);
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value).toHaveLength(1);
+      expect(result.value[0]!.id).toBe('wl-1');
+    }
+  });
+
+  it('filters out worklogs whose started falls outside the range', async () => {
+    fetchMock
+      .mockResolvedValueOnce(okJson({ accountId: ACCOUNT_ID, displayName: 'Me' }))
+      .mockResolvedValueOnce(
+        okJson({ issues: [{ id: '1', key: 'PROJ-1', fields: { summary: 'A' } }] }),
+      )
+      .mockResolvedValueOnce(
+        okJson({
+          worklogs: [
+            {
+              id: 'wl-old',
+              timeSpentSeconds: 3600,
+              started: '2026-06-08T09:00:00.000+0000', // prior week
+              author: { accountId: ACCOUNT_ID },
+            },
+          ],
+        }),
+      );
+
+    const result = await fetchCurrentUserWeekWorklogs(range);
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value).toHaveLength(0);
+    }
+  });
+
+  it('returns empty when no issues match', async () => {
+    fetchMock
+      .mockResolvedValueOnce(okJson({ accountId: ACCOUNT_ID, displayName: 'Me' }))
+      .mockResolvedValueOnce(okJson({ issues: [] }));
+
+    const result = await fetchCurrentUserWeekWorklogs(range);
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value).toHaveLength(0);
+    }
+    // Only myself + search were called, no per-issue worklog read.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('propagates the error when the myself lookup fails', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      headers: { get: () => null },
+      json: async () => ({}),
+    });
+    const result = await fetchCurrentUserWeekWorklogs(range);
+    expect(result.kind).toBe('forbidden');
+    // No search/worklog calls once myself fails.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses a worklogAuthor/worklogDate JQL search via jiraGet (no raw fetch direct path)', async () => {
+    fetchMock
+      .mockResolvedValueOnce(okJson({ accountId: ACCOUNT_ID, displayName: 'Me' }))
+      .mockResolvedValueOnce(okJson({ issues: [] }));
+
+    await fetchCurrentUserWeekWorklogs(range);
+    const searchUrl = fetchMock.mock.calls[1]![0] as string;
+    expect(decodeURIComponent(searchUrl)).toContain('worklogAuthor = currentUser()');
+    expect(decodeURIComponent(searchUrl)).toContain('worklogDate >= "2026-06-15"');
+    expect(decodeURIComponent(searchUrl)).toContain('worklogDate <= "2026-06-21"');
+  });
+
+  it('requests fields=key,summary so JiraSearchSchema can parse (not key alone)', async () => {
+    fetchMock
+      .mockResolvedValueOnce(okJson({ accountId: ACCOUNT_ID, displayName: 'Me' }))
+      .mockResolvedValueOnce(okJson({ issues: [] }));
+
+    await fetchCurrentUserWeekWorklogs(range);
+    const searchUrl = fetchMock.mock.calls[1]![0] as string;
+    // JiraIssueSchema requires fields.summary; requesting `fields=key` alone
+    // returns `fields: {}` and the Zod parse fails (badge silently breaks).
+    expect(decodeURIComponent(searchUrl)).toContain('fields=key,summary');
+  });
+
+  it('fails (parse-error) when the search omits summary — regression guard', async () => {
+    // Simulate what Jira returns for `fields=key` alone: no summary.
+    fetchMock
+      .mockResolvedValueOnce(okJson({ accountId: ACCOUNT_ID, displayName: 'Me' }))
+      .mockResolvedValueOnce(okJson({ issues: [{ id: '1', key: 'PROJ-1', fields: {} }] }));
+
+    const result = await fetchCurrentUserWeekWorklogs(range);
+    expect(result.kind).toBe('parse-error');
+  });
+
+  it('scopes the per-issue worklog read with startedAfter/startedBefore', async () => {
+    fetchMock
+      .mockResolvedValueOnce(okJson({ accountId: ACCOUNT_ID, displayName: 'Me' }))
+      .mockResolvedValueOnce(
+        okJson({ issues: [{ id: '1', key: 'PROJ-1', fields: { summary: 'A' } }] }),
+      )
+      .mockResolvedValueOnce(okJson({ worklogs: [] }));
+
+    await fetchCurrentUserWeekWorklogs(range);
+    const worklogUrl = fetchMock.mock.calls[2]![0] as string;
+    // Jira returns worklogs oldest-first; without this server-side window the
+    // current week's entries on a long-lived subtask land on a later page and
+    // would be missed.
+    expect(worklogUrl).toContain('startedAfter=');
+    expect(worklogUrl).toContain('startedBefore=');
   });
 });
