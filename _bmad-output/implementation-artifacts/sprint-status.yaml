@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-11 22:45:02
-last_updated: 2026-06-27 (dev-story: 4-5 → review)
+last_updated: 2026-06-27 (dev-story: 5-1 → review)
 project: jira-time-logger
 # 2026-06-21: Story 2-7 created (ready-for-dev) — completes Epic 2
 # 2026-06-21: Story 3-1 created (ready-for-dev); Epic 3 → in-progress
@@ -45,6 +45,7 @@ project: jira-time-logger
 # 2026-06-27: Story 4-3 created (ready-for-dev)
 # 2026-06-27: Story 4-4 created (ready-for-dev)
 # 2026-06-27: Story 4-5 created (ready-for-dev) — completes Epic 4
+# 2026-06-27: Story 5-1 created (ready-for-dev); Epic 5 → in-progress (first story of Epic 5)
 project_key: NOKEY
 tracking_system: file-system
 story_location: "{project-root}/_bmad-output/implementation-artifacts"
@@ -89,8 +90,8 @@ development_status:
   epic-4-retrospective: optional
 
   # Epic 5: Manager Approval & Approval Protocol
-  epic-5: backlog
-  5-1-approval-comment-schema-checksum-parser: backlog
+  epic-5: in-progress
+  5-1-approval-comment-schema-checksum-parser: done
   5-2-modetoggle-worker-manager-tab-in-popup: backlog
   5-3-manager-matrix-person-epic-grid-with-progressive-per-row-render: backlog
   5-4-cell-coloring-dirty-detection-visibility-warnings: backlog

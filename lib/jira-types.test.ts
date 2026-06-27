@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { JiraIssueSchema, JiraMyselfSchema, JiraUserSchema } from './jira-types';
+import {
+  JiraCommentListSchema,
+  JiraIssueSchema,
+  JiraMyselfSchema,
+  JiraUserSchema,
+} from './jira-types';
 
 describe('JiraMyselfSchema', () => {
   it('parses a valid myself response', () => {
@@ -114,5 +119,37 @@ describe('JiraIssueSchema', () => {
       self: 'https://example.com/rest/api/3/issue/10001',
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe('JiraCommentListSchema', () => {
+  it('parses a comment list with ADF bodies and extra fields', () => {
+    const result = JiraCommentListSchema.safeParse({
+      total: 1,
+      maxResults: 100,
+      comments: [
+        {
+          id: '10100',
+          created: '2026-05-31T09:00:00.000+0000',
+          author: { accountId: '557058:mgr' },
+          body: { type: 'doc', version: 1, content: [] },
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('tolerates a missing optional total', () => {
+    const result = JiraCommentListSchema.safeParse({
+      comments: [{ id: '1', created: '2026-05-31T09:00:00.000+0000', body: {} }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a comment missing the created timestamp', () => {
+    const result = JiraCommentListSchema.safeParse({
+      comments: [{ id: '1', body: {} }],
+    });
+    expect(result.success).toBe(false);
   });
 });

@@ -104,6 +104,36 @@ export type WeekIssueWorklogs = {
   worklogs: JiraWorklog[];
 };
 
+// ---- Comments (Story 5.1) — GET /rest/api/3/issue/{key}/comment ----
+
+/**
+ * One Jira comment. `body` is an ADF document (object), typed `z.unknown()` —
+ * the approval parser converts it to text via `adfToText`. `created` is the
+ * Jira-native ISO timestamp used as the newest-wins tiebreaker (NOT the payload
+ * `at` field). Tolerates extra fields like Jira's full comment shape.
+ */
+export const JiraCommentSchema = z.object({
+  id: z.string(),
+  created: z.string(),
+  body: z.unknown(),
+});
+
+export type JiraComment = z.infer<typeof JiraCommentSchema>;
+
+/**
+ * The paginated wrapper Jira returns for the comment-list endpoint. `startAt`,
+ * `maxResults`, and `total` drive the pagination loop in `findApprovalComments`
+ * so an Epic with more comments than one page still surfaces every approval.
+ */
+export const JiraCommentListSchema = z.object({
+  comments: z.array(JiraCommentSchema),
+  startAt: z.number().optional(),
+  maxResults: z.number().optional(),
+  total: z.number().optional(),
+});
+
+export type JiraCommentList = z.infer<typeof JiraCommentListSchema>;
+
 // ---- Hierarchy-specific search response (Story 2.2) ----
 
 export const JiraHierarchyIssueSchema = JiraIssueSchema.extend({
