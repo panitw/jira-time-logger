@@ -7,6 +7,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { log } from '@/lib/log';
 import { getAuth, hasValidAuth } from '@/lib/storage/tokens';
 import { getPopupView, setPopupView, type PopupView } from '@/lib/storage/view-state';
+import { currentWeekMonday } from '@/lib/week-of';
 
 const STRINGS = {
   todayTab: 'Today',
@@ -68,7 +69,7 @@ export function App(): React.ReactElement {
   const handleTabChange = (value: string): void => {
     const newView: PopupView =
       value === STRINGS.tabValueWeek
-        ? { kind: 'week', weekOf: getCurrentWeekMonday() }
+        ? { kind: 'week', weekOf: currentWeekMonday() }
         : { kind: 'today' };
     setView(newView);
     void setPopupView(newView).catch(() => {
@@ -130,24 +131,9 @@ export function App(): React.ReactElement {
           <TodayView />
         </TabsContent>
         <TabsContent value={STRINGS.tabValueWeek} forceMount>
-          <WeekView weekOf={view.kind === 'week' ? view.weekOf : getCurrentWeekMonday()} />
+          <WeekView weekOf={view.kind === 'week' ? view.weekOf : currentWeekMonday()} />
         </TabsContent>
       </Tabs>
     </div>
   );
-}
-
-function getCurrentWeekMonday(): string {
-  const now = new Date();
-  const day = now.getDay();
-  const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-  const monday = new Date(now.getFullYear(), now.getMonth(), diff);
-  // Format the LOCAL date — never `toISOString()`, which converts local
-  // midnight to UTC and, in positive-offset timezones, rolls back to Sunday.
-  // This must agree with `currentCycleRange('weekly')`'s local-midnight Monday
-  // (Story 4.1) so the week header/cache key and the fetched range share a Monday.
-  const y = monday.getFullYear();
-  const m = String(monday.getMonth() + 1).padStart(2, '0');
-  const d = String(monday.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
 }

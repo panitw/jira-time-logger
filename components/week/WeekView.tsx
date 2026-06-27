@@ -5,12 +5,18 @@ import { Button } from '@/components/ui/button';
 import { WeeklyGrid } from '@/components/week/WeeklyGrid';
 import { useWeekWorklogs } from '@/hooks/useWeekWorklogs';
 import { secondsToHoursDisplay } from '@/lib/hours';
+import { log } from '@/lib/log';
+import { sendMessage } from '@/lib/messages';
 import {
   targetHoursItem,
   catchAllProjectKeyItem,
   ptoSubtaskKeyItem,
 } from '@/lib/storage/settings';
 import type { ISODate } from '@/lib/storage/view-state';
+import {
+  getMarkDoneState,
+  clearWeekMarkedDone,
+} from '@/lib/storage/view-state';
 import { buildWeekGrid, computeDayStatuses } from '@/lib/week-grid';
 
 type Props = { weekOf: ISODate };
@@ -33,6 +39,9 @@ const STRINGS = {
   errorHeading: "Couldn't load this week",
   errorBody: 'Check your connection and try again.',
   retry: 'Try again',
+  weekDone: 'Week done',
+  undo: 'Undo',
+  undoLabel: 'Undo mark week as done',
 };
 
 function openOptions(): void {
@@ -57,6 +66,38 @@ export function WeekView({ weekOf }: Props): React.ReactElement {
   }, []);
   useEffect(() => {
     void ptoSubtaskKeyItem.getValue().then((v) => setPtoSubtaskKey(v ?? ''));
+  }, []);
+
+  // Mark-week-as-done flag (Story 4.5). Week-aware: the stored `weekOf` must
+  // match THIS view's week. Re-read on mount and after mark/undo; a local
+  // useState refreshed by the callbacks is sufficient (no cross-surface live
+  // sync required for v1).
+  const [isMarkedDone, setIsMarkedDone] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void getMarkDoneState().then((state) => {
+      if (active) setIsMarkedDone(state?.weekOf === weekOf);
+    });
+    return () => {
+      active = false;
+    };
+  }, [weekOf]);
+
+  const handleMarkedDone = useCallback(() => {
+    setIsMarkedDone(true);
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    clearWeekMarkedDone()
+      .then(() => {
+        void sendMessage('badge-update', { hoursMissing: 0 });
+        setIsMarkedDone(false);
+      })
+      .catch((e: unknown) => {
+        // Storage write failed — leave the week marked done (the user can
+        // retry) rather than swallow an unhandled rejection.
+        log.error('week.undo.failed', { cause: String(e) });
+      });
   }, []);
 
   const query = useWeekWorklogs(weekOf);
@@ -92,9 +133,27 @@ export function WeekView({ weekOf }: Props): React.ReactElement {
 
   return (
     <div className="motion-safe:animate-fade-in">
-      <h2 className="text-lg font-semibold text-neutral-900">
-        {STRINGS.headingPrefix} {displayDate}
-      </h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold text-neutral-900">
+          {STRINGS.headingPrefix} {displayDate}
+        </h2>
+        {isMarkedDone ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-700">
+            {STRINGS.weekDone}
+            <span aria-hidden className="text-neutral-300">
+              ·
+            </span>
+            <button
+              type="button"
+              aria-label={STRINGS.undoLabel}
+              onClick={handleUndo}
+              className="rounded text-neutral-500 underline-offset-2 hover:text-neutral-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              {STRINGS.undo}
+            </button>
+          </span>
+        ) : null}
+      </div>
       {!query.isPending && !query.isError && (
         <p className="mt-1 text-sm text-neutral-500">
           <span className="font-mono">
@@ -114,13 +173,28 @@ export function WeekView({ weekOf }: Props): React.ReactElement {
             <WeekErrorState onRetry={() => void query.refetch()} />
           )
         ) : grid ? (
-          <WeeklyGrid
-            grid={grid}
-            onMutated={handleMutated}
-            ptoSubtaskKey={ptoSubtaskKey || null}
-            targetHours={targetHours}
-            {...(dayStatuses ? { dayStatuses } : {})}
-          />
+          // Marked-done: faint grayed tint signalling the week is closed, but
+          // NOT pointer-events-none — edits stay possible and visible (AC #8,
+          // FR26); only explicit Undo clears the flag.
+          <div
+            className={
+              isMarkedDone
+                ? 'rounded-md bg-neutral-100/60 opacity-60 motion-safe:transition-opacity'
+                : undefined
+            }
+            data-testid={isMarkedDone ? 'week-grayed' : undefined}
+          >
+            <WeeklyGrid
+              grid={grid}
+              weekOf={weekOf}
+              onMutated={handleMutated}
+              ptoSubtaskKey={ptoSubtaskKey || null}
+              targetHours={targetHours}
+              isMarkedDone={isMarkedDone}
+              onMarkedDone={handleMarkedDone}
+              {...(dayStatuses ? { dayStatuses } : {})}
+            />
+          </div>
         ) : null}
       </div>
     </div>

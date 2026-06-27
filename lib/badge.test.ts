@@ -233,9 +233,12 @@ describe('updateBadge orchestration', () => {
     expect(badgeText).toBe('8h');
   });
 
-  it('marked-done week clears the badge regardless of deficit (AC #3)', async () => {
-    pinWednesday();
-    store.set('local:weekMarkedDone', true);
+  it('marked-done week (matching weekOf) clears the badge regardless of deficit (AC #3)', async () => {
+    pinWednesday(); // week Monday = 2026-06-15
+    store.set('local:weekMarkedDone', {
+      weekOf: '2026-06-15',
+      markedDoneAt: '2026-06-17T10:00:00.000Z',
+    });
     fetchWeekMock.mockResolvedValue({
       kind: 'ok',
       value: [], // would otherwise be a 24h deficit
@@ -243,6 +246,26 @@ describe('updateBadge orchestration', () => {
     await updateBadge();
     expect(badgeText).toBe('');
     expect(fetchWeekMock).not.toHaveBeenCalled();
+  });
+
+  it('a STALE marked-done (previous weekOf) does NOT suppress this week (Story 4.5)', async () => {
+    pinWednesday(); // current week Monday = 2026-06-15
+    store.set('local:weekMarkedDone', {
+      weekOf: '2026-06-08', // last week
+      markedDoneAt: '2026-06-12T10:00:00.000Z',
+    });
+    fetchWeekMock.mockResolvedValue({ kind: 'ok', value: [] }); // 24h deficit
+    await updateBadge();
+    expect(badgeText).toBe('24h');
+    expect(badgeColor).toBe(BADGE_DANGER_COLOR);
+  });
+
+  it('null marked-done flag renders the live deficit', async () => {
+    pinWednesday();
+    store.set('local:weekMarkedDone', null);
+    fetchWeekMock.mockResolvedValue({ kind: 'ok', value: [] });
+    await updateBadge();
+    expect(badgeText).toBe('24h');
   });
 
   it('disconnected → clears badge and does NOT fetch (AC #6)', async () => {
@@ -316,12 +339,25 @@ describe('getWeekHoursMissing / getWeekDeficit (shared deficit, Story 3.3)', () 
     expect(fetchWeekMock).not.toHaveBeenCalled();
   });
 
-  it('returns null when the week is marked done', async () => {
-    pinWednesday();
-    store.set('local:weekMarkedDone', true);
+  it('returns null when the current week is marked done', async () => {
+    pinWednesday(); // week Monday = 2026-06-15
+    store.set('local:weekMarkedDone', {
+      weekOf: '2026-06-15',
+      markedDoneAt: '2026-06-17T10:00:00.000Z',
+    });
     fetchWeekMock.mockResolvedValue({ kind: 'ok', value: [] });
     expect(await getWeekHoursMissing()).toBeNull();
     expect(fetchWeekMock).not.toHaveBeenCalled();
+  });
+
+  it('returns the live deficit when a STALE week is marked done', async () => {
+    pinWednesday();
+    store.set('local:weekMarkedDone', {
+      weekOf: '2026-06-08',
+      markedDoneAt: '2026-06-12T10:00:00.000Z',
+    });
+    fetchWeekMock.mockResolvedValue({ kind: 'ok', value: [] });
+    expect(await getWeekHoursMissing()).toBe(24);
   });
 
   it('returns null on a transient fetch error (no stale banner)', async () => {

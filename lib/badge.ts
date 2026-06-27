@@ -12,13 +12,14 @@
  *   - The badge owns its own fetch+sum; nothing else reads worklogs back.
  *   - `updateBadge` never throws; transient fetch errors leave the badge as-is.
  */
-import { storage } from 'wxt/utils/storage';
 import { currentCycleRange, workdaysSoFar } from '@/lib/cycle-range';
 import { secondsToHours } from '@/lib/hours';
 import { fetchCurrentUserWeekWorklogs } from '@/lib/jira-client';
 import { log } from '@/lib/log';
 import { targetHoursItem } from '@/lib/storage/settings';
 import { getAuth, hasValidAuth } from '@/lib/storage/tokens';
+import { getMarkDoneState } from '@/lib/storage/view-state';
+import { currentWeekMonday } from '@/lib/week-of';
 
 /** The `state.danger` token (styles/globals.css line 37). Single source. */
 export const BADGE_DANGER_COLOR = '#dc2626';
@@ -54,20 +55,17 @@ async function clearBadge(): Promise<void> {
 }
 
 /**
- * Forward-compatible "current week marked done" flag (Epic 4 Story 4.5, FR24).
+ * "Current week marked done" flag (Epic 4 Story 4.5, FR24).
  *
- * Story 4.5 owns the UI + the authoritative write of this flag; it does not
- * exist yet. We only READ it here, defensively: the storage item defaults to
- * false, so the badge simply never skips on this account until 4.5 starts
- * writing the key. We do NOT build the 4.5 storage module/UI here.
+ * Story 4.5 owns the UI + the authoritative write of this flag; the item now
+ * lives in `lib/storage/view-state.ts` as `{ weekOf, markedDoneAt } | null`.
+ * The badge reads it WEEK-AWARELY: a mark-done only suppresses *this* week's
+ * badge — a stale flag from a previous week never silences the current week.
  */
-const weekMarkedDoneItem = storage.defineItem<boolean>('local:weekMarkedDone', {
-  fallback: false,
-});
-
 export async function isCurrentWeekMarkedDone(): Promise<boolean> {
   try {
-    return (await weekMarkedDoneItem.getValue()) === true;
+    const state = await getMarkDoneState();
+    return state != null && state.weekOf === currentWeekMonday();
   } catch {
     // Storage unavailable — treat as not marked done.
     return false;

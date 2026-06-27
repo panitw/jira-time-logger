@@ -12,9 +12,12 @@ vi.mock('@/hooks/useWeekWorklogs', () => ({
 const weeklyGridProps = vi.fn();
 vi.mock('@/components/week/WeeklyGrid', () => ({
   WeeklyGrid: (props: {
+    weekOf?: string;
     onMutated?: () => void;
     ptoSubtaskKey?: string | null;
     targetHours?: number;
+    isMarkedDone?: boolean;
+    onMarkedDone?: () => void;
   }) => {
     weeklyGridProps(props);
     return (
@@ -22,9 +25,26 @@ vi.mock('@/components/week/WeeklyGrid', () => ({
         <button type="button" onClick={() => props.onMutated?.()}>
           trigger-mutated
         </button>
+        {!props.isMarkedDone ? (
+          <button type="button" onClick={() => props.onMarkedDone?.()}>
+            Mark week as done
+          </button>
+        ) : null}
       </div>
     );
   },
+}));
+
+const getMarkDoneStateMock = vi.fn(async () => null as unknown);
+const clearWeekMarkedDoneMock = vi.fn(async () => {});
+vi.mock('@/lib/storage/view-state', () => ({
+  getMarkDoneState: () => getMarkDoneStateMock(),
+  clearWeekMarkedDone: () => clearWeekMarkedDoneMock(),
+}));
+
+const sendMessageMock = vi.fn(async (..._args: unknown[]) => {});
+vi.mock('@/lib/messages', () => ({
+  sendMessage: (...args: unknown[]) => sendMessageMock(...args),
 }));
 
 const targetHoursGet = vi.fn(async () => 8);
@@ -56,7 +76,31 @@ describe('WeekView', () => {
   beforeEach(() => {
     useWeekWorklogsMock.mockReset();
     targetHoursGet.mockClear();
+    getMarkDoneStateMock.mockReset();
+    getMarkDoneStateMock.mockResolvedValue(null);
+    clearWeekMarkedDoneMock.mockClear();
+    sendMessageMock.mockClear();
   });
+
+  function dataLoaded(): void {
+    useWeekWorklogsMock.mockReturnValue({
+      isPending: false,
+      isError: false,
+      data: [
+        {
+          key: 'PROJ-1',
+          summary: 'A',
+          worklogs: [
+            {
+              id: 'w1',
+              timeSpentSeconds: hoursToSeconds(8),
+              started: '2026-06-15T09:00:00.000+0000',
+            },
+          ],
+        },
+      ],
+    });
+  }
 
   it('renders the week header with the Monday date', async () => {
     useWeekWorklogsMock.mockReturnValue({ isPending: true });
@@ -162,5 +206,91 @@ describe('WeekView', () => {
       await screen.findByRole('button', { name: /Try again/i }),
     ).toBeTruthy();
     expect(screen.queryByTestId('weekly-grid')).toBeNull();
+  });
+
+  describe('mark-week-as-done (Story 4.5)', () => {
+    it('not-marked: renders the mark-done button, no chip, no grayed state', async () => {
+      dataLoaded();
+      getMarkDoneStateMock.mockResolvedValue(null);
+      const { container } = renderView('2026-06-15');
+      await screen.findByTestId('weekly-grid');
+      expect(screen.getByRole('button', { name: 'Mark week as done' })).toBeTruthy();
+      expect(screen.queryByText('Week done')).toBeNull();
+      expect(container.querySelector('[data-testid="week-grayed"]')).toBeNull();
+    });
+
+    it('marked-done (matching weekOf): chip + grayed grid + no mark-done button', async () => {
+      dataLoaded();
+      getMarkDoneStateMock.mockResolvedValue({
+        weekOf: '2026-06-15',
+        markedDoneAt: '2026-06-19T17:00:00.000Z',
+      });
+      const { container } = renderView('2026-06-15');
+      await screen.findByTestId('weekly-grid');
+      await waitFor(() => expect(screen.getByText('Week done')).toBeTruthy());
+      expect(
+        screen.getByRole('button', { name: 'Undo mark week as done' }),
+      ).toBeTruthy();
+      expect(container.querySelector('[data-testid="week-grayed"]')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Mark week as done' })).toBeNull();
+    });
+
+    it('a STALE marked-done (different weekOf) does NOT mark this week done', async () => {
+      dataLoaded();
+      getMarkDoneStateMock.mockResolvedValue({
+        weekOf: '2026-06-08',
+        markedDoneAt: '2026-06-12T17:00:00.000Z',
+      });
+      renderView('2026-06-15');
+      await screen.findByTestId('weekly-grid');
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Mark week as done' })).toBeTruthy(),
+      );
+      expect(screen.queryByText('Week done')).toBeNull();
+    });
+
+    it('Undo clears the flag, fires badge-update, restores the grid + button', async () => {
+      dataLoaded();
+      getMarkDoneStateMock.mockResolvedValue({
+        weekOf: '2026-06-15',
+        markedDoneAt: '2026-06-19T17:00:00.000Z',
+      });
+      renderView('2026-06-15');
+      await screen.findByTestId('weekly-grid');
+      const undo = await screen.findByRole('button', {
+        name: 'Undo mark week as done',
+      });
+      fireEvent.click(undo);
+      await waitFor(() => expect(clearWeekMarkedDoneMock).toHaveBeenCalledTimes(1));
+      expect(sendMessageMock).toHaveBeenCalledWith('badge-update', {
+        hoursMissing: 0,
+      });
+      await waitFor(() => expect(screen.queryByText('Week done')).toBeNull());
+      expect(screen.getByRole('button', { name: 'Mark week as done' })).toBeTruthy();
+    });
+
+    it('onMarkedDone flips into the marked-done state (chip appears, button hides)', async () => {
+      dataLoaded();
+      getMarkDoneStateMock.mockResolvedValue(null);
+      renderView('2026-06-15');
+      await screen.findByTestId('weekly-grid');
+      const markBtn = await screen.findByRole('button', {
+        name: 'Mark week as done',
+      });
+      fireEvent.click(markBtn); // mock WeeklyGrid calls onMarkedDone
+      await waitFor(() => expect(screen.getByText('Week done')).toBeTruthy());
+      expect(screen.queryByRole('button', { name: 'Mark week as done' })).toBeNull();
+    });
+
+    it('threads weekOf + onMarkedDone to WeeklyGrid', async () => {
+      dataLoaded();
+      renderView('2026-06-15');
+      await screen.findByTestId('weekly-grid');
+      await waitFor(() => {
+        expect(weeklyGridProps).toHaveBeenCalledWith(
+          expect.objectContaining({ weekOf: '2026-06-15' }),
+        );
+      });
+    });
   });
 });

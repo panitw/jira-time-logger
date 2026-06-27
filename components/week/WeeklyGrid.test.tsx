@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { hoursToSeconds } from '@/lib/hours';
 import type { DayStatus, WeekGrid, WeekGridCell } from '@/lib/week-grid';
@@ -39,6 +40,13 @@ vi.mock('@/lib/storage/outbox', () => ({
 
 vi.mock('@/lib/log', () => ({
   log: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
+}));
+
+// Story 4.5: the wired-up MarkAsDoneButton writes via view-state. Stub the
+// local-only flag write so these grid tests stay isolated from storage.
+const setWeekMarkedDoneMock = vi.fn(async (..._args: unknown[]) => {});
+vi.mock('@/lib/storage/view-state', () => ({
+  setWeekMarkedDone: (...args: unknown[]) => setWeekMarkedDoneMock(...args),
 }));
 
 const { WeeklyGrid } = await import('./WeeklyGrid');
@@ -148,19 +156,26 @@ describe('WeeklyGrid', () => {
     expect(screen.queryByText(/Build the grid/)).toBeNull();
   });
 
-  it('shows the add-subtask affordance and the mark-week-done placeholder', () => {
+  it('shows the add-subtask affordance and the mark-week-done CTA', () => {
     renderGrid(<WeeklyGrid grid={emptyGrid()} />);
     expect(screen.getByText(/Add a subtask to this week/)).toBeTruthy();
     const markDone = screen.getByRole('button', { name: /Mark week as done/i });
     expect(markDone).toBeTruthy();
   });
 
-  it('the mark-week-done placeholder is disabled (Story 4.5 owns behavior)', () => {
+  it('the mark-week-done CTA is enabled (Story 4.5 wired up; gap-check on click)', () => {
     renderGrid(<WeeklyGrid grid={emptyGrid()} />);
     const markDone = screen.getByRole('button', {
       name: /Mark week as done/i,
     }) as HTMLButtonElement;
-    expect(markDone.disabled).toBe(true);
+    expect(markDone.disabled).toBe(false);
+  });
+
+  it('hides the mark-week-done CTA when the week is already marked done', () => {
+    renderGrid(<WeeklyGrid grid={emptyGrid()} weekOf="2026-06-15" isMarkedDone />);
+    expect(
+      screen.queryByRole('button', { name: /Mark week as done/i }),
+    ).toBeNull();
   });
 
   it('colors a complete day green with a Check icon and aria-label', () => {

@@ -5,12 +5,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { TicketPicker } from '@/components/today/TicketPicker';
 import { Button } from '@/components/ui/button';
 import { DayCell } from '@/components/week/DayCell';
+import { MarkAsDoneButton } from '@/components/week/MarkAsDoneButton';
 import { PtoPopover } from '@/components/week/PtoPopover';
 import { secondsToCellDisplay } from '@/lib/hours';
 import { deleteWorklog } from '@/lib/jira-client';
 import { log } from '@/lib/log';
 import { sendMessage } from '@/lib/messages';
 import { enqueue as enqueueOutbox } from '@/lib/storage/outbox';
+import type { ISODate } from '@/lib/storage/view-state';
 import {
   DAYS_PER_WEEK,
   type DayStatus,
@@ -33,7 +35,6 @@ const STRINGS = {
   subtaskColHeader: 'Subtask',
   totalsRowLabel: 'Daily totals',
   addSubtask: '+ Add a subtask to this week',
-  markWeekDone: 'Mark week as done',
   belowTarget: 'below target',
   pto: 'PTO',
   statusComplete: 'complete',
@@ -47,6 +48,8 @@ const STRINGS = {
 
 type Props = {
   grid: WeekGrid;
+  /** This week's local-midnight Monday (for the mark-done write, Story 4.5). */
+  weekOf?: ISODate;
   /** Per-day status (index 0 = Monday); when omitted, totals render neutral. */
   dayStatuses?: DayStatus[];
   /** Configured PTO subtask key (`null`/blank → PTO popover buttons disabled). */
@@ -55,6 +58,10 @@ type Props = {
   targetHours?: number;
   /** Invalidate the week query after a successful cell/row mutation (AC #8). */
   onMutated?: () => void;
+  /** True when the week is already marked done → hide the mark-done CTA. */
+  isMarkedDone?: boolean;
+  /** Fired after the week is marked done (Story 4.5). */
+  onMarkedDone?: () => void;
 };
 
 /** A locally-added subtask row (Story 4.1) — all-`──` cells, no worklog posted. */
@@ -299,10 +306,13 @@ function RowActions({
 
 export function WeeklyGrid({
   grid,
+  weekOf = '',
   dayStatuses,
   ptoSubtaskKey = null,
   targetHours = 8,
   onMutated,
+  isMarkedDone = false,
+  onMarkedDone,
 }: Props): React.ReactElement {
   const [localRows, setLocalRows] = useState<LocalRow[]>([]);
   const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(new Set());
@@ -494,11 +504,16 @@ export function WeeklyGrid({
         )}
       </div>
 
-      <div className="mt-4 flex justify-center">
-        <Button variant="primary" disabled>
-          {STRINGS.markWeekDone}
-        </Button>
-      </div>
+      {!isMarkedDone ? (
+        <div className="mt-4 flex justify-center">
+          <MarkAsDoneButton
+            grid={grid}
+            weekOf={weekOf}
+            targetHours={targetHours}
+            onMarkedDone={() => onMarkedDone?.()}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -287,11 +287,32 @@ describe('maybeShowDailyReminder orchestration', () => {
     expect(createdNotifications).toHaveLength(0);
   });
 
-  it('suppresses (no fetch) when week is marked done (AC #1)', async () => {
-    store.set('local:weekMarkedDone', true);
+  it('suppresses (no fetch) when the CURRENT week is marked done (AC #1)', async () => {
+    pinWednesday(); // current week Monday = 2026-06-15
+    store.set('local:weekMarkedDone', {
+      weekOf: '2026-06-15',
+      markedDoneAt: '2026-06-17T17:00:00.000Z',
+    });
     await maybeShowDailyReminder();
     expect(fetchWeekMock).not.toHaveBeenCalled();
     expect(createdNotifications).toHaveLength(0);
+  });
+
+  it('does NOT suppress when a STALE week is marked done (Story 4.5)', async () => {
+    pinWednesday(); // current week Monday = 2026-06-15
+    store.set('local:weekMarkedDone', {
+      weekOf: '2026-06-08', // last week
+      markedDoneAt: '2026-06-12T17:00:00.000Z',
+    });
+    fetchWeekMock.mockResolvedValue({
+      kind: 'ok',
+      value: [
+        { timeSpentSeconds: hoursToSeconds(3), started: '2026-06-16T09:00:00.000' },
+      ],
+    });
+    await maybeShowDailyReminder();
+    expect(fetchWeekMock).toHaveBeenCalled();
+    expect(createdNotifications).toHaveLength(1);
   });
 
   it('suppresses when worker has already logged today (AC #1)', async () => {
