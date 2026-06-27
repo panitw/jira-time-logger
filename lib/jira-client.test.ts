@@ -46,6 +46,7 @@ const {
   updateWorklog,
   deleteWorklog,
   fetchCurrentUserWeekWorklogs,
+  fetchCurrentUserWeekWorklogsByIssue,
 } = await import('./jira-client');
 const { z } = await import('zod');
 
@@ -695,5 +696,109 @@ describe('fetchCurrentUserWeekWorklogs', () => {
     // would be missed.
     expect(worklogUrl).toContain('startedAfter=');
     expect(worklogUrl).toContain('startedBefore=');
+  });
+});
+
+describe('fetchCurrentUserWeekWorklogsByIssue', () => {
+  const ACCOUNT_ID = 'acct-me';
+  const range = {
+    start: new Date(2026, 5, 15, 0, 0, 0, 0), // Mon Jun 15
+    end: new Date(2026, 5, 21, 23, 59, 59, 999), // Sun Jun 21
+  };
+
+  function okJson(body: unknown) {
+    return { ok: true, status: 200, headers: { get: () => null }, json: async () => body };
+  }
+
+  beforeEach(async () => {
+    fetchMock.mockReset();
+    await resetAuthBundle();
+  });
+
+  it('returns each issue paired with the current user in-range worklogs (key + summary preserved)', async () => {
+    fetchMock
+      .mockResolvedValueOnce(okJson({ accountId: ACCOUNT_ID, displayName: 'Me' })) // myself
+      .mockResolvedValueOnce(
+        okJson({ issues: [{ id: '1', key: 'PROJ-1', fields: { summary: 'Build the grid' } }] }),
+      ) // search
+      .mockResolvedValueOnce(
+        okJson({
+          worklogs: [
+            {
+              id: 'wl-1',
+              timeSpentSeconds: 3600,
+              started: '2026-06-16T09:00:00.000+0000',
+              author: { accountId: ACCOUNT_ID },
+            },
+            {
+              id: 'wl-2',
+              timeSpentSeconds: 7200,
+              started: '2026-06-17T09:00:00.000+0000',
+              author: { accountId: 'someone-else' },
+            },
+          ],
+        }),
+      ); // worklog list
+
+    const result = await fetchCurrentUserWeekWorklogsByIssue(range);
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value).toHaveLength(1);
+      expect(result.value[0]!.key).toBe('PROJ-1');
+      expect(result.value[0]!.summary).toBe('Build the grid');
+      expect(result.value[0]!.worklogs).toHaveLength(1);
+      expect(result.value[0]!.worklogs[0]!.id).toBe('wl-1');
+    }
+  });
+
+  it('omits issues that have no in-range worklogs for the current user', async () => {
+    fetchMock
+      .mockResolvedValueOnce(okJson({ accountId: ACCOUNT_ID, displayName: 'Me' }))
+      .mockResolvedValueOnce(
+        okJson({ issues: [{ id: '1', key: 'PROJ-1', fields: { summary: 'A' } }] }),
+      )
+      .mockResolvedValueOnce(
+        okJson({
+          worklogs: [
+            {
+              id: 'wl-old',
+              timeSpentSeconds: 3600,
+              started: '2026-06-08T09:00:00.000+0000', // prior week
+              author: { accountId: ACCOUNT_ID },
+            },
+          ],
+        }),
+      );
+
+    const result = await fetchCurrentUserWeekWorklogsByIssue(range);
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value).toHaveLength(0);
+    }
+  });
+
+  it('returns empty when no issues match', async () => {
+    fetchMock
+      .mockResolvedValueOnce(okJson({ accountId: ACCOUNT_ID, displayName: 'Me' }))
+      .mockResolvedValueOnce(okJson({ issues: [] }));
+
+    const result = await fetchCurrentUserWeekWorklogsByIssue(range);
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value).toHaveLength(0);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('propagates the error when the myself lookup fails', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      headers: { get: () => null },
+      json: async () => ({}),
+    });
+    const result = await fetchCurrentUserWeekWorklogsByIssue(range);
+    expect(result.kind).toBe('forbidden');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

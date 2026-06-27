@@ -1,3 +1,7 @@
+## Deferred from: code review of 4-1-week-view-shell-7-day-grid-with-subtask-rows (2026-06-27)
+
+- `fetchCurrentUserWeekWorklogsByIssue` does not paginate the JQL search (`maxResults=100`, no `nextPageToken`/`startAt` follow-up). A user who logged against >100 distinct issues in one week loses the overflow rows from the grid and their hours from the week total, with no error shown. Faithfully mirrors the pre-existing flat sibling `fetchCurrentUserWeekWorklogs`; should be fixed in both fetchers together (out of scope for the 4.1 shell). [lib/jira-client.ts:528]
+
 ## Deferred from: code review of 3-1-toolbar-badge-counter (2026-06-22)
 
 - Timezone mismatch between JQL `worklogDate` (Jira-server day) and the client-side `started` epoch filter (SW-local day). Only affects worklogs within hours of the week boundary for users whose SW timezone differs from their Jira timezone; correcting it needs the Jira user timezone which is not currently fetched. [lib/jira-client.ts]

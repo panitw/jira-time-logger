@@ -4,6 +4,7 @@ import {
   hoursToSeconds,
   secondsToHours,
   secondsToHoursDisplay,
+  secondsToCellDisplay,
   MAX_HOURS_PER_ENTRY,
 } from './hours';
 
@@ -123,6 +124,24 @@ describe('secondsToHoursDisplay', () => {
 
   it('displays 8h for 28800s', () => {
     expect(secondsToHoursDisplay(28800)).toBe('8h');
+  });
+});
+
+describe('secondsToCellDisplay', () => {
+  it('displays a bare one-decimal value (4.0)', () => {
+    expect(secondsToCellDisplay(14400)).toBe('4.0');
+  });
+
+  it('displays 0.5 for 1800s', () => {
+    expect(secondsToCellDisplay(1800)).toBe('0.5');
+  });
+
+  it('displays ── for 0s', () => {
+    expect(secondsToCellDisplay(0)).toBe('——');
+  });
+
+  it('displays ── for negative', () => {
+    expect(secondsToCellDisplay(-100)).toBe('——');
   });
 });
 

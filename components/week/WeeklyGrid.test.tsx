@@ -1,0 +1,126 @@
+import { render, screen, fireEvent, within } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { WeeklyGrid } from './WeeklyGrid';
+import { hoursToSeconds } from '@/lib/hours';
+import type { WeekGrid } from '@/lib/week-grid';
+
+vi.mock('@/components/today/TicketPicker', () => ({
+  TicketPicker: ({
+    onSelect,
+  }: {
+    onSelect: (k: string, s: string) => void;
+  }) => (
+    <button
+      type="button"
+      onClick={() => onSelect('NEW-1', 'A new ticket')}
+    >
+      mock-pick
+    </button>
+  ),
+}));
+
+const DAYS: WeekGrid['days'] = [
+  '2026-06-15',
+  '2026-06-16',
+  '2026-06-17',
+  '2026-06-18',
+  '2026-06-19',
+  '2026-06-20',
+  '2026-06-21',
+];
+
+function gridWithOneRow(): WeekGrid {
+  const cells = [hoursToSeconds(4), 0, hoursToSeconds(0.5), 0, 0, 0, 0];
+  return {
+    days: DAYS,
+    rows: [
+      {
+        key: 'PROJ-1',
+        summary: 'Build the grid',
+        category: 'task',
+        cellsSeconds: cells,
+        rowTotalSeconds: hoursToSeconds(4.5),
+      },
+    ],
+    dayTotalsSeconds: cells,
+  };
+}
+
+function emptyGrid(): WeekGrid {
+  return {
+    days: DAYS,
+    rows: [],
+    dayTotalsSeconds: [0, 0, 0, 0, 0, 0, 0],
+  };
+}
+
+describe('WeeklyGrid', () => {
+  it('renders a semantic table with Mon..Sun column headers', () => {
+    render(<WeeklyGrid grid={gridWithOneRow()} />);
+    const colHeaders = screen
+      .getAllByRole('columnheader')
+      .map((th) => th.textContent);
+    expect(colHeaders).toEqual(
+      expect.arrayContaining(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']),
+    );
+  });
+
+  it('renders a row-header with key + summary and bare-decimal / em-dash cells', () => {
+    render(<WeeklyGrid grid={gridWithOneRow()} />);
+    const rowHeader = screen.getByText(/Build the grid/).closest('th');
+    expect(rowHeader?.textContent).toContain('PROJ-1');
+    expect(rowHeader?.textContent).toContain('Build the grid');
+    expect(
+      screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid').textContent,
+    ).toBe('4.0');
+    expect(
+      screen.getByLabelText('Hours for Wednesday, PROJ-1 Build the grid').textContent,
+    ).toBe('0.5');
+  });
+
+  it('gives each data cell an aria-label with day name + ticket', () => {
+    render(<WeeklyGrid grid={gridWithOneRow()} />);
+    expect(
+      screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'),
+    ).toBeTruthy();
+  });
+
+  it('renders a per-day totals row', () => {
+    render(<WeeklyGrid grid={gridWithOneRow()} />);
+    const totalsRow = screen.getByRole('row', { name: /Daily totals/i });
+    expect(within(totalsRow).getByText('4.0')).toBeTruthy();
+  });
+
+  it('renders day headers + totals but no data rows for an empty week', () => {
+    render(<WeeklyGrid grid={emptyGrid()} />);
+    expect(screen.getAllByRole('columnheader').length).toBeGreaterThanOrEqual(7);
+    expect(screen.queryByText(/Build the grid/)).toBeNull();
+  });
+
+  it('shows the add-subtask affordance and the mark-week-done placeholder', () => {
+    render(<WeeklyGrid grid={emptyGrid()} />);
+    expect(screen.getByText(/Add a subtask to this week/)).toBeTruthy();
+    const markDone = screen.getByRole('button', { name: /Mark week as done/i });
+    expect(markDone).toBeTruthy();
+  });
+
+  it('the mark-week-done placeholder is disabled (Story 4.5 owns behavior)', () => {
+    render(<WeeklyGrid grid={emptyGrid()} />);
+    const markDone = screen.getByRole('button', {
+      name: /Mark week as done/i,
+    }) as HTMLButtonElement;
+    expect(markDone.disabled).toBe(true);
+  });
+
+  it('appends a local all-em-dash row when a ticket is picked, deduping by key', () => {
+    render(<WeeklyGrid grid={emptyGrid()} />);
+    fireEvent.click(screen.getByText(/Add a subtask to this week/));
+    fireEvent.click(screen.getByText('mock-pick'));
+    expect(screen.getByText(/A new ticket/)).toBeTruthy();
+
+    // Pick the same ticket again — no duplicate row.
+    fireEvent.click(screen.getByText(/Add a subtask to this week/));
+    fireEvent.click(screen.getByText('mock-pick'));
+    expect(screen.getAllByText(/A new ticket/)).toHaveLength(1);
+  });
+});

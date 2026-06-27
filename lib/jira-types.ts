@@ -90,6 +90,20 @@ export const JiraWorklogListSchema = z.object({
 
 export type JiraWorklogList = z.infer<typeof JiraWorklogListSchema>;
 
+/**
+ * One issue paired with its in-range worklogs (Story 4.1, week grid).
+ *
+ * Unlike the flat `fetchCurrentUserWeekWorklogs` (badge 3.1 / banner 3.3) which
+ * discards the issue, the week grid needs per-subtask rows, so the issue
+ * `key`/`summary` must survive alongside its worklogs. Composed from existing
+ * wire schemas — no new Zod schema needed.
+ */
+export type WeekIssueWorklogs = {
+  key: string;
+  summary: string;
+  worklogs: JiraWorklog[];
+};
+
 // ---- Hierarchy-specific search response (Story 2.2) ----
 
 export const JiraHierarchyIssueSchema = JiraIssueSchema.extend({

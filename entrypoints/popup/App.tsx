@@ -142,5 +142,12 @@ function getCurrentWeekMonday(): string {
   const day = now.getDay();
   const diff = now.getDate() - day + (day === 0 ? -6 : 1);
   const monday = new Date(now.getFullYear(), now.getMonth(), diff);
-  return monday.toISOString().slice(0, 10);
+  // Format the LOCAL date — never `toISOString()`, which converts local
+  // midnight to UTC and, in positive-offset timezones, rolls back to Sunday.
+  // This must agree with `currentCycleRange('weekly')`'s local-midnight Monday
+  // (Story 4.1) so the week header/cache key and the fetched range share a Monday.
+  const y = monday.getFullYear();
+  const m = String(monday.getMonth() + 1).padStart(2, '0');
+  const d = String(monday.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }

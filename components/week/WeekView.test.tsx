@@ -1,27 +1,108 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import * as React from 'react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import { WeekView } from './WeekView';
+const useWeekWorklogsMock = vi.fn();
+
+vi.mock('@/hooks/useWeekWorklogs', () => ({
+  useWeekWorklogs: (...args: unknown[]) => useWeekWorklogsMock(...args),
+}));
+
+vi.mock('@/components/week/WeeklyGrid', () => ({
+  WeeklyGrid: () => <div data-testid="weekly-grid">grid</div>,
+}));
+
+const targetHoursGet = vi.fn(async () => 8);
+const catchAllGet = vi.fn(async () => 'KNP');
+const ptoGet = vi.fn(async () => 'KNP-1');
+
+vi.mock('@/lib/storage/settings', () => ({
+  targetHoursItem: { getValue: () => targetHoursGet() },
+  catchAllProjectKeyItem: { getValue: () => catchAllGet() },
+  ptoSubtaskKeyItem: { getValue: () => ptoGet() },
+}));
+
+const { WeekView } = await import('./WeekView');
+const { hoursToSeconds } = await import('@/lib/hours');
+
+function renderView(weekOf = '2026-06-15') {
+  const client = new QueryClient();
+  return render(
+    React.createElement(
+      QueryClientProvider,
+      { client },
+      React.createElement(WeekView, { weekOf }),
+    ),
+  );
+}
 
 describe('WeekView', () => {
-  it('renders the heading with a valid weekOf', () => {
-    render(<WeekView weekOf="2026-06-16" />);
-    expect(screen.getByText('Week of Tue, Jun 16')).toBeTruthy();
+  beforeEach(() => {
+    useWeekWorklogsMock.mockReset();
+    targetHoursGet.mockClear();
   });
 
-  it('renders placeholder hours', () => {
-    render(<WeekView weekOf="2026-06-16" />);
-    expect(screen.getByText('0h logged')).toBeTruthy();
+  it('renders the week header with the Monday date', async () => {
+    useWeekWorklogsMock.mockReturnValue({ isPending: true });
+    renderView('2026-06-15');
+    expect(await screen.findByText('Week of Mon, Jun 15')).toBeTruthy();
   });
 
-  it('handles invalid weekOf gracefully', () => {
-    render(<WeekView weekOf="not-a-date" />);
-    expect(screen.getByText('Week of Unknown week')).toBeTruthy();
-    expect(screen.getByText('0h logged')).toBeTruthy();
+  it('shows a skeleton grid (no spinner) while pending', () => {
+    useWeekWorklogsMock.mockReturnValue({ isPending: true });
+    const { container } = renderView();
+    expect(container.querySelector('[data-testid="week-skeleton"]')).toBeTruthy();
+    expect(container.querySelector('.animate-spin')).toBeNull();
   });
 
-  it('renders without crashing for empty string', () => {
-    const { container } = render(<WeekView weekOf="" />);
-    expect(container).toBeTruthy();
+  it('renders the grid and week total on success', async () => {
+    useWeekWorklogsMock.mockReturnValue({
+      isPending: false,
+      isError: false,
+      data: [
+        {
+          key: 'PROJ-1',
+          summary: 'A',
+          worklogs: [
+            {
+              id: 'w1',
+              timeSpentSeconds: hoursToSeconds(28),
+              started: '2026-06-15T09:00:00.000+0000',
+            },
+          ],
+        },
+      ],
+    });
+    renderView();
+    expect(await screen.findByTestId('weekly-grid')).toBeTruthy();
+    // 28 logged / (8 * 5 = 40) target — value spans a <span> + text node.
+    expect(screen.getByText('28')).toBeTruthy();
+    expect(screen.getByText(/\/ 40h/)).toBeTruthy();
+  });
+
+  it('shows the Connect to Jira fallback on auth-expired', async () => {
+    useWeekWorklogsMock.mockReturnValue({
+      isPending: false,
+      isError: true,
+      error: { kind: 'auth-expired' },
+    });
+    renderView();
+    expect(
+      await screen.findByRole('button', { name: /Connect to Jira/ }),
+    ).toBeTruthy();
+  });
+
+  it('shows an error state (not a raw exception) on a network error', async () => {
+    useWeekWorklogsMock.mockReturnValue({
+      isPending: false,
+      isError: true,
+      error: { kind: 'network', cause: 'offline' },
+    });
+    renderView();
+    expect(
+      await screen.findByRole('button', { name: /Try again/i }),
+    ).toBeTruthy();
+    expect(screen.queryByTestId('weekly-grid')).toBeNull();
   });
 });

@@ -16,6 +16,7 @@ import {
   JiraWorklogListSchema,
   JiraWorklogSchema,
   type JiraWorklog,
+  type WeekIssueWorklogs,
 } from '@/lib/jira-types';
 import { log } from '@/lib/log';
 import { refreshTokens } from '@/lib/oauth/refresh';
@@ -489,6 +490,70 @@ export async function fetchCurrentUserWeekWorklogs(
         }
       }
       collected.push(worklog);
+    }
+  }
+
+  return ok(collected);
+}
+
+/**
+ * Like `fetchCurrentUserWeekWorklogs`, but preserves which issue each worklog
+ * belongs to (Story 4.1, week grid). Returns one `WeekIssueWorklogs` per issue
+ * that has at least one of the current user's in-range worklogs, carrying the
+ * issue `key`/`summary` so the grid can build per-subtask rows.
+ *
+ * NOTE: This is a sibling of `fetchCurrentUserWeekWorklogs` — do NOT collapse
+ * the two. The flat version is consumed by the badge (3.1) and banner (3.3),
+ * which only need a sum; this version is consumed by the Week view grid.
+ */
+export async function fetchCurrentUserWeekWorklogsByIssue(
+  range: CycleRange,
+): Promise<Result<WeekIssueWorklogs[], JiraError>> {
+  const myselfResult = await jiraGet('rest/api/3/myself', JiraMyselfSchema);
+  if (myselfResult.kind !== 'ok') {
+    return myselfResult;
+  }
+  const accountId = myselfResult.value.accountId;
+
+  const startDate = toJqlDate(range.start);
+  const endDate = toJqlDate(range.end);
+  const jql = `worklogAuthor = currentUser() AND worklogDate >= "${startDate}" AND worklogDate <= "${endDate}"`;
+  const searchPath = `rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&maxResults=100&fields=key,summary`;
+
+  const searchResult = await jiraGet(searchPath, JiraSearchSchema);
+  if (searchResult.kind !== 'ok') {
+    return searchResult;
+  }
+
+  const startMs = range.start.getTime();
+  const endMs = range.end.getTime();
+  const startedAfter = startMs - 1; // inclusive lower bound
+  const startedBefore = endMs + 1; // inclusive upper bound
+
+  const collected: WeekIssueWorklogs[] = [];
+  for (const issue of searchResult.value.issues) {
+    const worklogResult = await jiraGet(
+      `rest/api/3/issue/${encodeURIComponent(issue.key)}/worklog?startedAfter=${startedAfter}&startedBefore=${startedBefore}`,
+      JiraWorklogListSchema,
+    );
+    if (worklogResult.kind !== 'ok') {
+      return worklogResult;
+    }
+
+    const worklogs: JiraWorklog[] = [];
+    for (const worklog of worklogResult.value.worklogs) {
+      if (worklog.author?.accountId !== accountId) continue;
+      if (worklog.started) {
+        const startedMs = new Date(worklog.started).getTime();
+        if (!Number.isFinite(startedMs) || startedMs < startMs || startedMs > endMs) {
+          continue;
+        }
+      }
+      worklogs.push(worklog);
+    }
+
+    if (worklogs.length > 0) {
+      collected.push({ key: issue.key, summary: issue.fields.summary, worklogs });
     }
   }
 

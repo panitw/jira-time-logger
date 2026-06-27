@@ -86,3 +86,13 @@ export function secondsToHoursDisplay(seconds: number): string {
   const hours = secondsToHours(seconds);
   return `${hours.toFixed(1).replace(/\.0$/, '')}h`;
 }
+
+/**
+ * Week-grid cell format: a bare one-decimal value (`4.0`, `0.5`) per the
+ * Weekly Review wireframe, or `\u2500\u2500` (em-dash pair) for empty cells (\u22640).
+ * No `h` suffix \u2014 the column context makes the unit clear (UX-DR11).
+ */
+export function secondsToCellDisplay(seconds: number): string {
+  if (seconds <= 0) return '\u2014\u2014';
+  return secondsToHours(seconds).toFixed(1);
+}
