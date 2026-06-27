@@ -149,7 +149,7 @@ describe('TicketPicker', () => {
     expect(taskRow).toBeNull();
   });
 
-  it('renders sub-task leaves as <button role="option"> with aria-labels', () => {
+  it('renders sub-task leaves as <button role="treeitem"> with aria-labels', () => {
     mockHierarchyLoaded(sampleTasks);
     renderWithProviders(<TicketPicker onSelect={vi.fn()} />);
 
@@ -234,7 +234,9 @@ describe('TicketPicker', () => {
     const { container } = renderWithProviders(
       <TicketPicker onSelect={vi.fn()} />,
     );
-    expect(container.querySelector('.animate-pulse')).toBeTruthy();
+    // Reduced-motion gated: the shimmer collapses to a static fill under
+    // prefers-reduced-motion (Story 6.1 AC6).
+    expect(container.querySelector('.motion-safe\\:animate-pulse')).toBeTruthy();
   });
 
   it('shows error state with retry button when hierarchy fails', () => {
@@ -400,16 +402,18 @@ describe('TicketPicker', () => {
     expect(screen.getByPlaceholderText(/Search or pick/)).toBeTruthy();
   });
 
-  it('ARIA: listbox container + sub-task rows have role=option', () => {
+  it('ARIA: tree container + sub-task rows have role=treeitem', () => {
     mockHierarchyLoaded(sampleTasks);
     renderWithProviders(<TicketPicker onSelect={vi.fn()} />);
 
-    const listbox = screen.getByRole('listbox');
-    expect(listbox).toBeTruthy();
-    expect(listbox.getAttribute('aria-label')).toBe('Ticket picker');
+    // Story 6.1 AC3: a nested, collapsible hierarchy is a `tree` (not a flat
+    // `listbox`, whose focusable group headers are invalid ARIA children).
+    const tree = screen.getByRole('tree');
+    expect(tree).toBeTruthy();
+    expect(tree.getAttribute('aria-label')).toBe('Ticket picker');
 
     const subtaskRow = screen.getByLabelText('Pick PROJ-2: Fix alpha button');
-    expect(subtaskRow.getAttribute('role')).toBe('option');
+    expect(subtaskRow.getAttribute('role')).toBe('treeitem');
   });
 
   it('arrow-key nav moves focus between visible sub-task leaves only', async () => {

@@ -62,8 +62,9 @@ export function TargetHoursField({ onSaved }: Props): React.ReactElement {
 
   return (
     <div>
-      <label className="block text-sm font-medium text-neutral-700">{STRINGS.label}</label>
+      <label htmlFor="target-hours-input" className="block text-sm font-medium text-neutral-700">{STRINGS.label}</label>
       <input
+        id="target-hours-input"
         type="number"
         value={hours}
         onChange={handleHoursChange}

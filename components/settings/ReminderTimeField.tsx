@@ -57,8 +57,9 @@ export function ReminderTimeField({ onSaved }: Props): React.ReactElement {
 
   return (
     <div>
-      <label className="block text-sm font-medium text-neutral-700">{STRINGS.label}</label>
+      <label htmlFor="reminder-time-input" className="block text-sm font-medium text-neutral-700">{STRINGS.label}</label>
       <input
+        id="reminder-time-input"
         type="time"
         value={time}
         onChange={handleTimeChange}

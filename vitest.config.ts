@@ -5,7 +5,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    setupFiles: [],
+    setupFiles: ['./vitest.setup.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
@@ -16,6 +16,8 @@ export default defineConfig({
         '.wxt/',
         '**/*.test.ts',
         '**/*.test.tsx',
+        'lib/test/**',
+        'vitest.setup.ts',
         'eslint.config.js',
         'vitest.config.ts',
         'wxt.config.ts',

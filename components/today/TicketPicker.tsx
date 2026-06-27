@@ -293,7 +293,7 @@ export function TicketPicker({
         if (!listbox) return;
         const buttons = Array.from(
           listbox.querySelectorAll<HTMLButtonElement>(
-            'button[data-picker-row="true"][role="option"]',
+            'button[data-picker-row="true"][role="treeitem"]',
           ),
         ).filter(isRowReachable);
         if (buttons.length === 0) return;
@@ -332,7 +332,7 @@ export function TicketPicker({
     return (
       <div className="mt-3 space-y-2">
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="h-7 rounded bg-neutral-100 animate-pulse" />
+          <div key={i} className="h-7 rounded bg-neutral-100 motion-safe:animate-pulse" />
         ))}
       </div>
     );
@@ -380,7 +380,11 @@ export function TicketPicker({
 
       <div
         ref={listboxRef}
-        role="listbox"
+        // A nested, collapsible ticket hierarchy is a tree (not a flat listbox):
+        // `tree` validly contains `group` nodes and `treeitem` leaves, and its
+        // group headers may be focusable — which a `listbox` forbids (Story 6.1
+        // AC3 — the hand-rolled picker is the highest keyboard-semantics risk).
+        role="tree"
         aria-label="Ticket picker"
         className="mt-2 max-h-64 overflow-y-auto"
       >
@@ -467,7 +471,7 @@ export function TicketPicker({
                   ))
                 ) : isCatchAllLoading ? (
                   <div className="px-3 py-2">
-                    <div className="h-5 rounded bg-neutral-100 animate-pulse" />
+                    <div className="h-5 rounded bg-neutral-100 motion-safe:animate-pulse" />
                   </div>
                 ) : isCatchAllError ? (
                   <p className="px-3 py-2 text-sm text-neutral-500">
@@ -569,12 +573,23 @@ function Disclosure({
       open={open}
       onToggle={(e) => setUserOpen(e.currentTarget.open)}
       className="group"
+      // The <details> is a layout-only wrapper; the tree semantics live on the
+      // <summary> (the expandable treeitem) and the body <div role="group">.
+      // role="presentation" keeps the wrapper out of the a11y tree so the tree's
+      // owned children are the summary treeitem + the group of leaf treeitems
+      // (Story 6.1 AC3 \u2014 valid `tree` semantics).
+      role="presentation"
     >
-      <summary className="flex cursor-pointer items-center gap-1 px-2 py-1 text-xs font-medium text-neutral-500 select-none hover:text-neutral-700 list-none">
+      <summary
+        role="treeitem"
+        aria-expanded={open}
+        aria-label={label}
+        className="flex cursor-pointer items-center gap-1 px-2 py-1 text-xs font-medium text-neutral-500 select-none hover:text-neutral-700 list-none"
+      >
         <span className="group-open:rotate-90 transition-transform">{'\u25B8'}</span>
         {label}
       </summary>
-      <div className="ml-1">{children}</div>
+      <div role="group" className="ml-1">{children}</div>
     </details>
   );
 }
@@ -623,8 +638,16 @@ function TaskDisclosure({
       open={open}
       onToggle={(e) => setUserOpen(e.currentTarget.open)}
       className="group ml-2"
+      // Layout-only wrapper; tree semantics live on the summary treeitem + the
+      // body group (mirrors Disclosure). See Story 6.1 AC3.
+      role="presentation"
     >
-      <summary className="flex cursor-pointer items-center gap-2 px-2 py-1.5 rounded hover:bg-neutral-50 list-none">
+      <summary
+        role="treeitem"
+        aria-expanded={open}
+        aria-label={`${task.key} ${task.summary}`}
+        className="flex cursor-pointer items-center gap-2 px-2 py-1.5 rounded hover:bg-neutral-50 list-none"
+      >
         <span className="group-open:rotate-90 transition-transform text-neutral-400">
           {'\u25B8'}
         </span>
@@ -636,7 +659,7 @@ function TaskDisclosure({
           ({task.subtasks.length})
         </span>
       </summary>
-      <div className="ml-3 mt-0.5">
+      <div role="group" className="ml-3 mt-0.5">
         {subtasksToRender.map((st) => (
           <TicketRow
             key={st.key}
@@ -650,7 +673,7 @@ function TaskDisclosure({
           <button
             type="button"
             data-picker-row="true"
-            role="option"
+            role="treeitem"
             onClick={onAffordanceClick}
             aria-label={STRINGS.createSubtask}
             className="flex w-full items-center gap-1.5 pl-7 pr-3 py-1.5 text-left rounded text-xs text-accent hover:bg-accent-subtle"
@@ -689,7 +712,7 @@ function TicketRow({
     <button
       type="button"
       data-picker-row="true"
-      role="option"
+      role="treeitem"
       onClick={onSelect}
       aria-label={`Pick ${ticketKey}: ${summary}`}
       className={cn(

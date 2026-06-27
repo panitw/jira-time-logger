@@ -655,7 +655,7 @@ function WorklogRow({ entry, onEdited, onDeleted }: WorklogRowProps): React.Reac
   return (
     <div
       className={`group relative flex items-center gap-2 px-3 py-1.5 ${
-        leaving ? 'motion-safe:animate-slide-out' : 'animate-slide-in'
+        leaving ? 'motion-safe:animate-slide-out' : 'motion-safe:animate-slide-in'
       }`}
     >
       <span className="font-mono text-sm font-medium text-neutral-900 shrink-0">

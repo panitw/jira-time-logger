@@ -1,6 +1,7 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { scan, criticalOrSerious } from '@/lib/test/axe';
 
 vi.mock('@/hooks/useHierarchyTickets', () => ({
   useHierarchyTickets: vi.fn(),
@@ -171,7 +172,8 @@ describe('TodayView', () => {
     } as never);
 
     const { container } = renderWithProviders(<TodayView />);
-    expect(container.querySelector('.animate-pulse')).toBeTruthy();
+    // Reduced-motion gated (Story 6.1 AC6).
+    expect(container.querySelector('.motion-safe\\:animate-pulse')).toBeTruthy();
   });
 
   it('shows error state with retry button', () => {
@@ -380,5 +382,22 @@ describe('TodayView', () => {
     renderWithProviders(<TodayView />);
     expect(await screen.findByText(/Catch-all not configured/)).toBeTruthy();
     expect(screen.getByText(/to log Admin\/Meetings\/PTO/)).toBeTruthy();
+  });
+
+  // --- Story 6.1 AC1: axe a11y scan of the Today view --------------------
+
+  describe('a11y scan (Story 6.1 AC1)', () => {
+    it('the Today view has zero Critical/Serious violations', async () => {
+      mockUseHierarchyTickets.mockReturnValue({
+        data: [],
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      } as never);
+      const { container } = renderWithProviders(<TodayView />);
+      await screen.findByText('Today');
+      const results = await scan(container);
+      expect(criticalOrSerious(results.violations)).toEqual([]);
+    });
   });
 });

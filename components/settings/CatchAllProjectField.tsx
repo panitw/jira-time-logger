@@ -100,9 +100,10 @@ export function CatchAllProjectField({ onSaved }: Props): React.ReactElement {
       <hr className="my-3 border-neutral-200" />
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-neutral-700">{STRINGS.projectKeyLabel}</label>
+          <label htmlFor="catchall-key-input" className="block text-sm font-medium text-neutral-700">{STRINGS.projectKeyLabel}</label>
           <div className="mt-1 flex items-center gap-2">
             <input
+              id="catchall-key-input"
               type="text"
               value={projectKey}
               onChange={(e) => setProjectKey(e.target.value)}
@@ -118,8 +119,8 @@ export function CatchAllProjectField({ onSaved }: Props): React.ReactElement {
         </div>
         {!keyError && subtasks.length > 0 && (
           <div>
-            <label className="block text-sm font-medium text-neutral-700">{STRINGS.ptoLabel}</label>
-            <select value={subtasks.findIndex((s) => s.key === selectedKey)} onChange={(e) => void handleSubtasksChange(e)} className="mt-1 block w-full rounded-md border border-neutral-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-1">
+            <label htmlFor="catchall-pto-select" className="block text-sm font-medium text-neutral-700">{STRINGS.ptoLabel}</label>
+            <select id="catchall-pto-select" value={subtasks.findIndex((s) => s.key === selectedKey)} onChange={(e) => void handleSubtasksChange(e)} className="mt-1 block w-full rounded-md border border-neutral-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-1">
               <option value={-1}>{STRINGS.ptoPlaceholder}</option>
               {subtasks.map((issue, idx) => <option key={issue.key} value={idx}>{issue.key} — {issue.fields.summary}</option>)}
             </select>

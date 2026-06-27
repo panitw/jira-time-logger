@@ -21,22 +21,15 @@
  * the banner is a passive guest (AC #8, graceful degradation).
  */
 import {
+  BANNER_STRINGS,
+  ensureBannerHost,
+  renderCollapsedBanner,
+  renderExpandedQuickLog,
+} from '@/lib/banner-dom';
+import {
   BANNER_HOST_ID,
-  COLLAPSED_HEIGHT,
-  EXPANDED_HEIGHT,
   SLIDE_TRANSITION,
   NO_TRANSITION,
-  bannerContainerStyle,
-  brandDotStyle,
-  primaryTextStyle,
-  openExtensionStyle,
-  contextualButtonStyle,
-  hoursInputStyle,
-  logButtonStyle,
-  dismissButtonStyle,
-  errorTextStyle,
-  styleString,
-  type InlineStyle,
 } from '@/lib/banner-styles';
 import { parseHours, hoursToSeconds, MAX_HOURS_PER_ENTRY } from '@/lib/hours';
 import { log } from '@/lib/log';
@@ -45,18 +38,10 @@ import { dismissForToday, isDismissedToday } from '@/lib/storage/banner-dismiss'
 import { formatStartedISO, todayDateString } from '@/lib/worklog-date';
 
 const STRINGS = {
-  unloggedSuffix: ' unlogged this week.',
-  openExtension: 'Open extension',
-  dismissLabel: 'Dismiss for today',
-  logTimeOn: (key: string) => `Log time on ${key}`,
-  hoursLabel: (key: string) => `Hours to log on ${key}`,
-  hoursPlaceholder: '2.5h, 2h 30m…',
-  logButton: 'Log',
+  ...BANNER_STRINGS,
   parseError: 'Use formats like 2.5h, 2h 30m',
   overLimitError: 'Hours per entry can’t exceed 24',
   logFailedError: 'Couldn’t log time — try again',
-  bannerRegionLabel: 'Time-tracking banner',
-  check: '✓',
 };
 
 const SPA_DEBOUNCE_MS = 250;
@@ -67,10 +52,6 @@ function prefersReducedMotion(): boolean {
   } catch {
     return false;
   }
-}
-
-function applyStyle(el: HTMLElement, style: InlineStyle): void {
-  el.setAttribute('style', styleString(style));
 }
 
 function transitionFor(): string {
@@ -120,68 +101,37 @@ type BannerState = { hoursMissing: number; currentTicket?: string };
 function renderBanner(state: BannerState): void {
   // A re-render supersedes any in-flight slide-up removal — keep the banner.
   cancelPendingRemoval();
-  let host = existingHost();
-  const isNew = host === null;
-  if (!host) {
-    host = document.createElement('div');
-    host.id = BANNER_HOST_ID;
-    host.setAttribute('role', 'region');
-    host.setAttribute('aria-label', STRINGS.bannerRegionLabel);
-    document.body.appendChild(host);
-  }
-  // Reset to collapsed layout each render (re-eval may have changed the page).
-  applyStyle(host, bannerContainerStyle);
-  host.style.height = COLLAPSED_HEIGHT;
+  const isNew = existingHost() === null;
+  // Build (or reuse) the host with its role="region" + aria-label, and render
+  // the collapsed content via the shared builder (single a11y source of truth).
+  const host = ensureBannerHost();
+  if (isNew) document.body.appendChild(host);
+  renderCollapsedBanner(
+    host,
+    {
+      hoursMissing: state.hoursMissing,
+      ...(state.currentTicket !== undefined ? { currentTicket: state.currentTicket } : {}),
+    },
+    {
+      ...(state.currentTicket !== undefined
+        ? { onContextualLog: () => expandQuickLog(state.currentTicket!) }
+        : {}),
+      onOpenExtension: () => {
+        void sendMessage('open-popup', {});
+      },
+      onDismiss: () => {
+        // Persist the dismissal BEFORE removing so any re-eval reliably sees it.
+        void (async () => {
+          await dismissForToday();
+          removeBanner();
+        })();
+      },
+    },
+  );
+  // Set the transition AFTER renderCollapsedBanner: its applyStyle() rewrites
+  // the whole inline `style` attribute, which would otherwise wipe a transition
+  // set earlier — losing the fresh-mount slide-in (Story 3.3 behaviour).
   host.style.transition = transitionFor();
-  host.replaceChildren();
-
-  // Brand dot (the only brand mark — no logo, banner is a guest).
-  const dot = document.createElement('span');
-  applyStyle(dot, brandDotStyle);
-  dot.textContent = '●';
-  dot.setAttribute('aria-hidden', 'true');
-  host.appendChild(dot);
-
-  // Honest past-tense copy: "6h unlogged this week."
-  const text = document.createElement('span');
-  applyStyle(text, primaryTextStyle);
-  text.textContent = `${state.hoursMissing}h${STRINGS.unloggedSuffix}`;
-  host.appendChild(text);
-
-  // Contextual CTA on a /browse/<KEY> page (AC #4).
-  if (state.currentTicket) {
-    const cta = document.createElement('button');
-    cta.type = 'button';
-    applyStyle(cta, contextualButtonStyle);
-    cta.textContent = STRINGS.logTimeOn(state.currentTicket);
-    cta.addEventListener('click', () => expandQuickLog(state.currentTicket!));
-    host.appendChild(cta);
-  }
-
-  // "Open extension" tertiary CTA (AC #3).
-  const open = document.createElement('button');
-  open.type = 'button';
-  applyStyle(open, openExtensionStyle);
-  open.textContent = STRINGS.openExtension;
-  open.addEventListener('click', () => {
-    void sendMessage('open-popup', {});
-  });
-  host.appendChild(open);
-
-  // ✕ dismiss (AC #6).
-  const dismiss = document.createElement('button');
-  dismiss.type = 'button';
-  applyStyle(dismiss, dismissButtonStyle);
-  dismiss.textContent = '✕';
-  dismiss.setAttribute('aria-label', STRINGS.dismissLabel);
-  dismiss.addEventListener('click', () => {
-    // Persist the dismissal BEFORE removing so any re-eval reliably sees it.
-    void (async () => {
-      await dismissForToday();
-      removeBanner();
-    })();
-  });
-  host.appendChild(dismiss);
 
   // Slide-in for a freshly mounted banner (instant under reduced motion).
   if (isNew && !prefersReducedMotion()) {
@@ -198,31 +148,9 @@ function renderBanner(state: BannerState): void {
 function expandQuickLog(ticket: string): void {
   const host = existingHost();
   if (!host) return;
-  host.style.height = EXPANDED_HEIGHT;
-  host.replaceChildren();
-
-  const label = document.createElement('span');
-  applyStyle(label, primaryTextStyle);
-  label.textContent = STRINGS.logTimeOn(ticket);
-  host.appendChild(label);
-
-  const input = document.createElement('input');
-  input.type = 'text';
-  applyStyle(input, hoursInputStyle);
-  input.placeholder = STRINGS.hoursPlaceholder;
-  input.setAttribute('aria-label', STRINGS.hoursLabel(ticket));
-  host.appendChild(input);
-
-  const logBtn = document.createElement('button');
-  logBtn.type = 'button';
-  applyStyle(logBtn, logButtonStyle);
-  logBtn.textContent = STRINGS.logButton;
-  host.appendChild(logBtn);
-
-  const error = document.createElement('span');
-  applyStyle(error, errorTextStyle);
-  error.style.display = 'none';
-  host.appendChild(error);
+  // Build the labelled hours input + Log button + error slot via the shared
+  // builder (single a11y source of truth with the axe scan).
+  const { input, logBtn, error } = renderExpandedQuickLog(host, ticket);
 
   const showError = (msg: string): void => {
     error.textContent = msg;

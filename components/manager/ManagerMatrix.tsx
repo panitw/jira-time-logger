@@ -810,7 +810,11 @@ function MatrixCell({
           ) : null}
           <span className={isEmpty ? 'text-neutral-500' : undefined}>{display}</span>
           {locked ? (
-            <span className="inline-flex shrink-0 text-neutral-500" role="img" aria-hidden>
+            // Decorative only: the "restricted visibility" meaning is carried
+            // verbally in the cell button's aria-label (ariaRestrictedSuffix),
+            // so the Lock glyph is hidden from AT to avoid a double / contradictory
+            // announcement. (`role="img"` + `aria-hidden` was contradictory.)
+            <span className="inline-flex shrink-0 text-neutral-500" aria-hidden>
               <Lock size={ICON_SIZE} aria-hidden />
             </span>
           ) : null}

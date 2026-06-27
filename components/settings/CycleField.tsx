@@ -40,8 +40,9 @@ export function CycleField({ onSaved }: Props): React.ReactElement {
 
   return (
     <div>
-      <label className="block text-sm font-medium text-neutral-700">{STRINGS.label}</label>
+      <label htmlFor="cycle-select" className="block text-sm font-medium text-neutral-700">{STRINGS.label}</label>
       <select
+        id="cycle-select"
         value={cycle}
         onChange={(e) => void handleChange(e)}
         className="mt-1 block w-48 rounded-md border border-neutral-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-1"

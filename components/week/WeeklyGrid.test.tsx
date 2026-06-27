@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { hoursToSeconds } from '@/lib/hours';
+import { scan, criticalOrSerious } from '@/lib/test/axe';
 import type { DayStatus, WeekGrid, WeekGridCell } from '@/lib/week-grid';
 
 vi.mock('@/components/today/TicketPicker', () => ({
@@ -377,5 +378,32 @@ describe('WeeklyGrid', () => {
     });
     await waitFor(() => expect(onMutated).toHaveBeenCalled());
     expect(sendMessageMock).toHaveBeenCalledWith('badge-update', { hoursMissing: 0 });
+  });
+
+  // --- Story 6.1 AC1: axe a11y scan of the Week grid ----------------------
+
+  describe('a11y scan (Story 6.1 AC1)', () => {
+    it('a populated grid with colored day statuses has zero Critical/Serious violations', async () => {
+      const statuses: DayStatus[] = [
+        'complete',
+        'below-target',
+        'neutral',
+        'neutral',
+        'neutral',
+        'neutral',
+        'neutral',
+      ];
+      const { container } = renderGrid(
+        <WeeklyGrid grid={gridWithOneRow()} dayStatuses={statuses} />,
+      );
+      const results = await scan(container);
+      expect(criticalOrSerious(results.violations)).toEqual([]);
+    });
+
+    it('the empty grid has zero Critical/Serious violations', async () => {
+      const { container } = renderGrid(<WeeklyGrid grid={emptyGrid()} />);
+      const results = await scan(container);
+      expect(criticalOrSerious(results.violations)).toEqual([]);
+    });
   });
 });

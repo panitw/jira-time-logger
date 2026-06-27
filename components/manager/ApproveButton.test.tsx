@@ -65,14 +65,17 @@ describe('ApproveButton', () => {
   it('is disabled (with explanation) when the row has no touched Epics', () => {
     renderButton({ epics: [] });
     const btn = screen.getByTestId('approve-button') as HTMLButtonElement;
-    expect(btn.disabled).toBe(true);
+    // AC4 (Story 6.1): aria-disabled (kept focusable) rather than native disabled.
+    expect(btn.getAttribute('aria-disabled')).toBe('true');
+    expect(btn.disabled).toBe(false);
     expect(btn.title).toMatch(/no hours logged/i);
   });
 
   it('is disabled with the provided disabledReason (5.8 seam)', () => {
     renderButton({ disabledReason: 'Only the canonical manager can approve' });
     const btn = screen.getByTestId('approve-button') as HTMLButtonElement;
-    expect(btn.disabled).toBe(true);
+    expect(btn.getAttribute('aria-disabled')).toBe('true');
+    expect(btn.disabled).toBe(false);
     expect(btn.title).toBe('Only the canonical manager can approve');
   });
 
@@ -254,8 +257,61 @@ describe('ApproveButton', () => {
       disabledReason: 'Only the canonical manager can approve',
     });
     const btn = screen.getByTestId('approve-button') as HTMLButtonElement;
-    expect(btn.disabled).toBe(true);
+    expect(btn.getAttribute('aria-disabled')).toBe('true');
+    expect(btn.disabled).toBe(false);
     expect(btn.title).toBe('Only the canonical manager can approve');
+  });
+
+  // --- Story 6.1 AC4: disabled-reason is keyboard/SR-reachable ------------
+
+  describe('AC4 — disabled-button explanation reachable by keyboard & SR', () => {
+    it('keeps a disabled (non-canonical) Approve focusable and announces its reason', () => {
+      renderButton({ disabledReason: 'Only the canonical manager can approve' });
+      const btn = screen.getByTestId('approve-button') as HTMLButtonElement;
+      // Focusable: not the native `disabled` attribute (which drops it from the
+      // tab order and hides its title from assistive tech).
+      expect(btn.disabled).toBe(false);
+      expect(btn.getAttribute('aria-disabled')).toBe('true');
+      btn.focus();
+      expect(btn).toHaveFocus();
+      // The reason is associated via aria-describedby → a (visually-hidden) node
+      // carrying the explanation, so a screen reader announces it.
+      const describedBy = btn.getAttribute('aria-describedby');
+      expect(describedBy).toBeTruthy();
+      const reasonNode = document.getElementById(describedBy!);
+      expect(reasonNode?.textContent).toBe('Only the canonical manager can approve');
+      // jsdom can't compute the accessible description, but the wiring above is
+      // the screen-reader contract; the accessible NAME stays the button label.
+      expect(btn).toHaveAccessibleName('Approve Bob');
+    });
+
+    it('associates the empty-row reason the same way', () => {
+      renderButton({ epics: [] });
+      const btn = screen.getByTestId('approve-button') as HTMLButtonElement;
+      const describedBy = btn.getAttribute('aria-describedby');
+      expect(describedBy).toBeTruthy();
+      expect(document.getElementById(describedBy!)?.textContent).toMatch(/no hours logged/i);
+    });
+
+    it('does NOT open the confirm dialog when activated while disabled (fail-closed, no 5.8 regression)', () => {
+      renderButton({ disabledReason: 'Only the canonical manager can approve' });
+      const btn = screen.getByTestId('approve-button');
+      // Click and keyboard activation must both be inert while disabled.
+      fireEvent.click(btn);
+      fireEvent.keyDown(btn, { key: 'Enter' });
+      fireEvent.keyUp(btn, { key: 'Enter' });
+      // No confirm dialog, no approve-cycle request.
+      expect(screen.queryByText(/across .* Epic/)).toBeNull();
+      expect(sendRequestMock).not.toHaveBeenCalled();
+    });
+
+    it('an enabled Approve has no aria-disabled and no describedby reason node', () => {
+      renderButton();
+      const btn = screen.getByTestId('approve-button') as HTMLButtonElement;
+      expect(btn.getAttribute('aria-disabled')).toBeNull();
+      expect(btn.getAttribute('aria-describedby')).toBeNull();
+      expect(screen.queryByTestId('approve-disabled-reason')).toBeNull();
+    });
   });
 
   it('resets a terminal "✓ Done" state when the cycle subject changes', async () => {

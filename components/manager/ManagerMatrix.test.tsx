@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ApprovalComment } from '@/lib/comment-schema';
 import type { ReportCycleWorklogs, ReportEpicWorklogs } from '@/lib/jira-types';
 import type { DirectReport } from '@/lib/storage/direct-reports';
+import { scan, criticalOrSerious } from '@/lib/test/axe';
 
 // --- Mocks for the data hooks the matrix composes -------------------------
 
@@ -243,7 +244,11 @@ describe('ManagerMatrix', () => {
     reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
     rowMock.mockReturnValue(rowState({ status: 'success', data: [] }));
     renderMatrix();
-    expect(screen.getByText(/no hours logged this cycle/i)).toBeTruthy();
+    // The empty-row Approve also carries an sr-only disabled reason that mentions
+    // "No hours logged this cycle to approve" (Story 6.1 AC4), so scope to the
+    // visible per-row placeholder (which does NOT end with "to approve").
+    const matches = screen.getAllByText(/no hours logged this cycle/i);
+    expect(matches.some((el) => !/to approve/i.test(el.textContent ?? ''))).toBe(true);
   });
 
   it('carries a per-cell aria-label with the hours + status (on target above the boundary)', () => {
@@ -277,7 +282,9 @@ describe('ManagerMatrix', () => {
     canApproveMock.mockReturnValue(canApproveState(false, 'Carol Boss'));
     renderMatrix();
     const approve = screen.getByRole('button', { name: 'Approve Bob' }) as HTMLButtonElement;
-    expect(approve.disabled).toBe(true);
+    // AC4 (Story 6.1): aria-disabled (kept focusable), not native disabled.
+    expect(approve.getAttribute('aria-disabled')).toBe('true');
+    expect(approve.disabled).toBe(false);
     expect(approve.title).toBe(
       "Only Bob's canonical manager (Carol Boss) can approve their cycle. You can read but not approve here.",
     );
@@ -291,7 +298,8 @@ describe('ManagerMatrix', () => {
     canApproveMock.mockReturnValue(canApproveState(false, null));
     renderMatrix();
     const approve = screen.getByRole('button', { name: 'Approve Bob' }) as HTMLButtonElement;
-    expect(approve.disabled).toBe(true);
+    expect(approve.getAttribute('aria-disabled')).toBe('true');
+    expect(approve.disabled).toBe(false);
     expect(approve.title).toBe(
       "Only Bob's canonical manager (their manager) can approve their cycle. You can read but not approve here.",
     );
@@ -312,11 +320,12 @@ describe('ManagerMatrix', () => {
       accountId === 'r-bob' ? canApproveState(true) : canApproveState(false, 'Dave Lead'),
     );
     renderMatrix();
-    expect((screen.getByRole('button', { name: 'Approve Bob' }) as HTMLButtonElement).disabled).toBe(
-      false,
-    );
+    const bob = screen.getByRole('button', { name: 'Approve Bob' }) as HTMLButtonElement;
+    // Canonical row: enabled (no aria-disabled).
+    expect(bob.getAttribute('aria-disabled')).toBeNull();
     const amy = screen.getByRole('button', { name: 'Approve Amy' }) as HTMLButtonElement;
-    expect(amy.disabled).toBe(true);
+    expect(amy.getAttribute('aria-disabled')).toBe('true');
+    expect(amy.disabled).toBe(false);
     expect(amy.title).toBe(
       "Only Amy's canonical manager (Dave Lead) can approve their cycle. You can read but not approve here.",
     );
@@ -335,7 +344,8 @@ describe('ManagerMatrix', () => {
     });
     renderMatrix();
     const approve = screen.getByRole('button', { name: 'Approve Bob' }) as HTMLButtonElement;
-    expect(approve.disabled).toBe(true);
+    expect(approve.getAttribute('aria-disabled')).toBe('true');
+    expect(approve.disabled).toBe(false);
     expect(approve.title).toBe('Resolving your account…');
   });
 
@@ -350,7 +360,8 @@ describe('ManagerMatrix', () => {
     canApproveMock.mockReturnValue(canApproveState(false, 'Someone'));
     renderMatrix();
     const approve = screen.getByRole('button', { name: 'Approve Bob' }) as HTMLButtonElement;
-    expect(approve.disabled).toBe(true);
+    expect(approve.getAttribute('aria-disabled')).toBe('true');
+    expect(approve.disabled).toBe(false);
     expect(approve.title).toBe('Resolving your account…');
   });
 
@@ -372,7 +383,8 @@ describe('ManagerMatrix', () => {
     );
     renderMatrix();
     const approve = screen.getByRole('button', { name: 'Approve Bob' }) as HTMLButtonElement;
-    expect(approve.disabled).toBe(true);
+    expect(approve.getAttribute('aria-disabled')).toBe('true');
+    expect(approve.disabled).toBe(false);
   });
 
   it('shows the "X of N done" progress chip in the header', () => {
@@ -830,5 +842,59 @@ describe('ManagerMatrix', () => {
     expect(container.querySelector('[data-testid="matrix-scroll"]')!.className).toContain(
       'overflow-x-auto',
     );
+  });
+
+  // --- Story 6.1 AC1: axe a11y scan of the rendered Manager matrix --------
+
+  describe('a11y scan (Story 6.1 AC1)', () => {
+    it('a populated matrix (mixed canonical/non-canonical, restricted, approved) has zero Critical/Serious violations', async () => {
+      reportsMock.mockReturnValue(reportsOk(REPORTS));
+      const bobRow = rowState({
+        status: 'success',
+        data: [
+          epic('PROJ-1', 64 * 3600, {
+            restrictedCount: 2, // exercises the locked cell (decorative Lock fix)
+            worklogs: [
+              {
+                ticketKey: 'PROJ-1-1',
+                ticketSummary: 's',
+                seconds: 64 * 3600,
+                updated: '2026-05-10T00:00:00.000Z',
+              },
+            ],
+          }),
+        ],
+      });
+      const amyRow = rowState({ status: 'success', data: [epic('PROJ-2', 12.5 * 3600)] });
+      rowMock.mockImplementation((accountId: string) =>
+        accountId === 'r-bob' ? bobRow : amyRow,
+      );
+      // Bob: approved. Amy: non-canonical → disabled Approve (aria-disabled + reason).
+      const approval: ApprovalComment = {
+        v: 1,
+        user: 'r-bob',
+        cycle: '2026-05',
+        by: 'mgr-1',
+        at: '2026-05-20T00:00:00.000Z',
+        restrictedCount: 2,
+        checksum: 'x',
+      };
+      approvalsMock.mockImplementation(() => approvalsState([approval]));
+      canApproveMock.mockImplementation((accountId: string) =>
+        accountId === 'r-bob' ? canApproveState(true) : canApproveState(false, 'Dave Lead'),
+      );
+      const { container } = renderMatrix();
+      await waitFor(() => expect(screen.getByRole('table')).toBeTruthy());
+      const results = await scan(container);
+      expect(criticalOrSerious(results.violations)).toEqual([]);
+    });
+
+    it('the empty-matrix state has zero Critical/Serious violations', async () => {
+      reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+      rowMock.mockReturnValue(rowState({ status: 'success', data: [] }));
+      const { container } = renderMatrix();
+      const results = await scan(container);
+      expect(criticalOrSerious(results.violations)).toEqual([]);
+    });
   });
 });

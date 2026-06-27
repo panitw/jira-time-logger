@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO, isValid } from 'date-fns';
 import { Check, Info } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -152,6 +152,9 @@ export function ApproveButton({
 
   const isEmpty = epics.length === 0;
   const total = epics.length;
+  // Stable id linking the (aria-disabled) button to its visually-hidden reason
+  // node via aria-describedby (AC4 — keyboard/SR-reachable disabled explanation).
+  const reasonId = useId();
 
   // Reset the terminal (`done`/`partial`) state when the approval SUBJECT
   // changes (a different report or a different cycle), so a reused button
@@ -249,6 +252,14 @@ export function ApproveButton({
   const disabled = isEmpty || inFlight || disabledReason !== undefined;
   // The disabled reason surfaces as a tooltip — never a mystery-disabled button.
   const title = disabledReason ?? (isEmpty ? 'No hours logged this cycle to approve' : undefined);
+  // AC4 (Story 6.1): a native `disabled` button is dropped from the tab order
+  // and its `title` is never exposed to assistive tech, so the disabled reason
+  // becomes a mystery for keyboard / screen-reader users. Instead keep the
+  // button focusable and mark it `aria-disabled`, associating the reason via a
+  // visually-hidden `aria-describedby` node so it is announced. The click /
+  // dialog-open path stays fully inert while disabled (fail-closed — Story 5.8
+  // non-canonical Approve must NOT become actionable).
+  const hasReason = disabled && title !== undefined;
 
   // Re-approve is a deliberate corrective action: secondary tier (NOT brand
   // primary), distinct label, and a supersede dialog line. The state machine,
@@ -265,14 +276,31 @@ export function ApproveButton({
       <Button
         variant={isReapprove ? 'secondary' : 'primary'}
         size="sm"
-        disabled={disabled}
-        onClick={() => setOpen(true)}
+        // Keep the control focusable for AT: aria-disabled (not native disabled)
+        // so it stays in the tab order and its reason is reachable/announced.
+        aria-disabled={disabled || undefined}
+        // Mirror native disabled affordances without leaving the tab order:
+        // greyed text + not-allowed cursor (pointer activation is also guarded
+        // in onClick below so a mouse click cannot open the dialog).
+        className={disabled ? 'cursor-not-allowed opacity-60' : undefined}
+        onClick={() => {
+          // Fail-closed: never open the confirm dialog while disabled (this is
+          // the Story 5.8 non-canonical Approve guard — must not regress).
+          if (disabled) return;
+          setOpen(true);
+        }}
         title={title}
         aria-label={label}
+        aria-describedby={hasReason ? reasonId : undefined}
         data-testid="approve-button"
       >
         {inFlight ? STRINGS.approving : label}
       </Button>
+      {hasReason ? (
+        <span id={reasonId} className="sr-only" data-testid="approve-disabled-reason">
+          {title}
+        </span>
+      ) : null}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
