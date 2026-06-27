@@ -59,6 +59,20 @@ describe('view-state', () => {
     }
   });
 
+  it('round-trips a manager-matrix view preserving the cycle (Story 5.2)', async () => {
+    const view: PopupView = { kind: 'manager-matrix', cycle: '2026-06' };
+    mockGetValue.mockResolvedValue(view);
+
+    await setPopupView(view);
+    expect(mockSetValue).toHaveBeenCalledWith({ kind: 'manager-matrix', cycle: '2026-06' });
+
+    const result = await getPopupView();
+    expect(result.kind).toBe('manager-matrix');
+    if (result.kind === 'manager-matrix') {
+      expect(result.cycle).toBe('2026-06');
+    }
+  });
+
   describe('mark-week-as-done flag (Story 4.5)', () => {
     it('returns null when nothing is marked done', async () => {
       mockGetValue.mockResolvedValue(null);

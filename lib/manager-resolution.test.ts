@@ -28,6 +28,17 @@ vi.mock('@/lib/storage/settings', () => {
     getManagerNames: vi.fn(async () => store),
   };
 });
+// `manager-resolution.ts` now imports `lib/storage/direct-reports.ts`, whose
+// top-level `storage.defineItem` eagerly probes chrome.storage on module load.
+// In this test file `wxt/utils/storage` is real (the storage permission isn't
+// set up here), so leaving it unmocked surfaces an unhandled rejection. These
+// `resolveReportingLine` tests never touch the direct-reports cache, so mock the
+// module to keep the boundary clean. (The cache itself is covered in
+// lib/storage/direct-reports.test.ts and lib/manager-resolution.direct-reports.test.ts.)
+vi.mock('@/lib/storage/direct-reports', () => ({
+  getCachedDirectReports: vi.fn(async () => null),
+  setCachedDirectReports: vi.fn(async () => undefined),
+}));
 
 const { resolveReportingLine } = await import('./manager-resolution');
 

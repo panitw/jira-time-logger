@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { currentCycleRange, isWithinCycle, workdaysSoFar } from './cycle-range';
+import { format } from 'date-fns';
+
+import {
+  currentCycleRange,
+  getCurrentCycleId,
+  isWithinCycle,
+  workdaysSoFar,
+} from './cycle-range';
 
 describe('currentCycleRange', () => {
   it('returns calendar-month range by default', () => {
@@ -21,6 +28,40 @@ describe('currentCycleRange', () => {
     const range = currentCycleRange('calendar-month', ref);
     expect(range.start).toEqual(new Date(2026, 11, 1, 0, 0, 0, 0));
     expect(range.end).toEqual(new Date(2026, 11, 31, 23, 59, 59, 999));
+  });
+});
+
+describe('getCurrentCycleId', () => {
+  it('returns yyyy-MM for calendar-month', () => {
+    const ref = new Date(2026, 5, 15, 10, 0, 0); // Jun 15 2026
+    expect(getCurrentCycleId('calendar-month', ref)).toBe('2026-06');
+  });
+
+  it('returns yyyy-MM for an unknown cadence (default branch)', () => {
+    const ref = new Date(2026, 11, 3); // Dec 2026
+    expect(getCurrentCycleId('something-else', ref)).toBe('2026-12');
+  });
+
+  it('returns the Monday yyyy-MM-dd matching currentCycleRange("weekly").start', () => {
+    const ref = new Date(2026, 5, 17, 14, 30, 0); // Wed Jun 17 2026
+    const expected = format(currentCycleRange('weekly', ref).start, 'yyyy-MM-dd');
+    expect(getCurrentCycleId('weekly', ref)).toBe(expected);
+    // Sanity: the week of Wed Jun 17 2026 starts Mon Jun 15 2026.
+    expect(getCurrentCycleId('weekly', ref)).toBe('2026-06-15');
+  });
+
+  it('is stable across dates within the same calendar-month cycle', () => {
+    const a = getCurrentCycleId('calendar-month', new Date(2026, 5, 1));
+    const b = getCurrentCycleId('calendar-month', new Date(2026, 5, 30, 23, 0, 0));
+    expect(a).toBe(b);
+  });
+
+  it('is stable across dates within the same weekly cycle', () => {
+    // Mon Jun 15 .. Sun Jun 21 2026 all map to the same Monday.
+    const mon = getCurrentCycleId('weekly', new Date(2026, 5, 15, 8, 0, 0));
+    const sun = getCurrentCycleId('weekly', new Date(2026, 5, 21, 22, 0, 0));
+    expect(mon).toBe(sun);
+    expect(mon).toBe('2026-06-15');
   });
 });
 

@@ -29,6 +29,30 @@ export const JiraUserSchema = z.object({
 
 export type JiraUser = z.infer<typeof JiraUserSchema>;
 
+/**
+ * `GET /rest/api/3/user/search?query=…` directory-query response (Story 5.2).
+ *
+ * A bare array of user records. Each entry carries `accountId` + `displayName`;
+ * the optional `manager` sub-object (same shape as `JiraUserSchema.manager`) is
+ * present only when the deployment expands it. `findDirectReports` uses this as
+ * the candidate set, then confirms each candidate's manager. Tolerates the many
+ * extra fields the directory returns (avatarUrls, active, accountType, …).
+ */
+export const JiraUserSearchResultSchema = z.array(
+  z.object({
+    accountId: z.string(),
+    displayName: z.string(),
+    manager: z
+      .object({
+        accountId: z.string(),
+        displayName: z.string(),
+      })
+      .optional(),
+  }),
+);
+
+export type JiraUserSearchResult = z.infer<typeof JiraUserSearchResultSchema>;
+
 export const JiraIssueSchema = z.object({
   id: z.string(),
   key: z.string(),

@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
 
+import { ManagerView } from '@/components/manager/ManagerView';
 import { TodayView } from '@/components/today/TodayView';
 import { WeekView } from '@/components/week/WeekView';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { getCurrentCycleId } from '@/lib/cycle-range';
 import { log } from '@/lib/log';
+import { hasDirectReports } from '@/lib/manager-resolution';
+import { approvalCycleItem } from '@/lib/storage/settings';
 import { getAuth, hasValidAuth } from '@/lib/storage/tokens';
 import { getPopupView, setPopupView, type PopupView } from '@/lib/storage/view-state';
 import { currentWeekMonday } from '@/lib/week-of';
@@ -12,6 +16,7 @@ import { currentWeekMonday } from '@/lib/week-of';
 const STRINGS = {
   todayTab: 'Today',
   weekTab: 'Week',
+  managerTab: 'Manager',
   disconnectedHeading: 'Connect to Jira',
   disconnectedBody:
     'Connect your Jira Cloud account to start logging time.',
@@ -19,6 +24,7 @@ const STRINGS = {
   loading: 'Loading\u2026',
   tabValueToday: 'today',
   tabValueWeek: 'week',
+  tabValueManager: 'manager',
 };
 
 type AuthState =
@@ -29,6 +35,11 @@ type AuthState =
 export function App(): React.ReactElement {
   const [authState, setAuthState] = useState<AuthState>({ kind: 'loading' });
   const [view, setView] = useState<PopupView | null>(null);
+  // null = still resolving; the Manager tab is hidden while resolving and when
+  // the user has no reports (or the lookup errored — `hasDirectReports` fails
+  // closed to false). Never rendered disabled (UX-DR18).
+  const [managesReports, setManagesReports] = useState<boolean | null>(null);
+  const [approvalCycle, setApprovalCycle] = useState('calendar-month');
 
   useEffect(() => {
     const ac = new AbortController();
@@ -66,11 +77,52 @@ export function App(): React.ReactElement {
     return () => ac.abort();
   }, []);
 
+  // Resolve the cycle cadence + whether the user manages anyone. Non-blocking:
+  // the popup renders Today/Week immediately; the Manager tab only appears once
+  // this resolves true. `hasDirectReports` fails closed to false on any error.
+  useEffect(() => {
+    const ac = new AbortController();
+    void (async () => {
+      try {
+        const [cycle, manages] = await Promise.all([
+          approvalCycleItem.getValue(),
+          hasDirectReports(),
+        ]);
+        if (!ac.signal.aborted) {
+          setApprovalCycle(cycle);
+          setManagesReports(manages);
+        }
+      } catch {
+        if (!ac.signal.aborted) {
+          setManagesReports(false);
+        }
+      }
+    })();
+    return () => ac.abort();
+  }, []);
+
+  // Stale-state guard (AC 9): if a persisted `manager-matrix` view is restored
+  // but the user no longer manages anyone, fall back to Today and persist it.
+  // Runs only once reports resolve so it never fights the loading state.
+  useEffect(() => {
+    if (managesReports === false && view?.kind === 'manager-matrix') {
+      const fallback: PopupView = { kind: 'today' };
+      setView(fallback);
+      void setPopupView(fallback).catch(() => {
+        // View state is non-critical — worst case user sees default on next open
+      });
+    }
+  }, [managesReports, view]);
+
   const handleTabChange = (value: string): void => {
-    const newView: PopupView =
-      value === STRINGS.tabValueWeek
-        ? { kind: 'week', weekOf: currentWeekMonday() }
-        : { kind: 'today' };
+    let newView: PopupView;
+    if (value === STRINGS.tabValueManager) {
+      newView = { kind: 'manager-matrix', cycle: getCurrentCycleId(approvalCycle) };
+    } else if (value === STRINGS.tabValueWeek) {
+      newView = { kind: 'week', weekOf: currentWeekMonday() };
+    } else {
+      newView = { kind: 'today' };
+    }
     setView(newView);
     void setPopupView(newView).catch(() => {
       // View state is non-critical — worst case user sees default on next open
@@ -113,8 +165,17 @@ export function App(): React.ReactElement {
     );
   }
 
+  // The Manager trigger/content are only rendered once reports resolve true, so
+  // never select the Manager tab before then — otherwise a restored
+  // `manager-matrix` view would point Radix at a value with no rendered tab,
+  // blanking the popup body during the async resolution window (and briefly
+  // before the stale-state guard rewrites the view to Today).
   const activeTab =
-    view.kind === 'week' ? STRINGS.tabValueWeek : STRINGS.tabValueToday;
+    view.kind === 'manager-matrix' && managesReports === true
+      ? STRINGS.tabValueManager
+      : view.kind === 'week'
+        ? STRINGS.tabValueWeek
+        : STRINGS.tabValueToday;
 
   return (
     <div className="min-w-[360px] p-4">
@@ -126,6 +187,11 @@ export function App(): React.ReactElement {
           <TabsTrigger value={STRINGS.tabValueWeek}>
             {STRINGS.weekTab}
           </TabsTrigger>
+          {managesReports === true && (
+            <TabsTrigger value={STRINGS.tabValueManager}>
+              {STRINGS.managerTab}
+            </TabsTrigger>
+          )}
         </TabsList>
         <TabsContent value={STRINGS.tabValueToday} forceMount>
           <TodayView />
@@ -133,6 +199,13 @@ export function App(): React.ReactElement {
         <TabsContent value={STRINGS.tabValueWeek} forceMount>
           <WeekView weekOf={view.kind === 'week' ? view.weekOf : currentWeekMonday()} />
         </TabsContent>
+        {managesReports === true && (
+          <TabsContent value={STRINGS.tabValueManager}>
+            <ManagerView
+              cycle={view.kind === 'manager-matrix' ? view.cycle : getCurrentCycleId(approvalCycle)}
+            />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

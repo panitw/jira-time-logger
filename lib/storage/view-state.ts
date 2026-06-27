@@ -2,9 +2,20 @@ import { storage } from 'wxt/utils/storage';
 
 export type ISODate = string;
 
+/**
+ * Canonical cycle identifier string (Story 5.2). `calendar-month` → `"yyyy-MM"`
+ * (e.g. `"2026-06"`); `weekly` → the ISO Monday `"yyyy-MM-dd"`. Produced
+ * exclusively by `getCurrentCycleId` in `lib/cycle-range.ts` and must match
+ * Story 5.1's checksummed approval-comment `cycle` field.
+ */
+export type CycleId = string;
+
 export type PopupView =
   | { kind: 'today' }
-  | { kind: 'week'; weekOf: ISODate };
+  | { kind: 'week'; weekOf: ISODate }
+  | { kind: 'manager-matrix'; cycle: CycleId };
+// Forward-compat: a `manager-drill-down` variant is added in Story 5.5 — do NOT
+// add it here.
 
 const popupViewItem = storage.defineItem<PopupView>('local:popupView', {
   fallback: { kind: 'today' },

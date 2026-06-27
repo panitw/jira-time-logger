@@ -4,7 +4,30 @@ import {
   JiraIssueSchema,
   JiraMyselfSchema,
   JiraUserSchema,
+  JiraUserSearchResultSchema,
 } from './jira-types';
+
+describe('JiraUserSearchResultSchema', () => {
+  it('parses an array of directory users with optional manager', () => {
+    const result = JiraUserSearchResultSchema.safeParse([
+      { accountId: 'r1', displayName: 'Report One', active: true },
+      {
+        accountId: 'r2',
+        displayName: 'Report Two',
+        manager: { accountId: 'm1', displayName: 'Manager' },
+      },
+    ]);
+    expect(result.success).toBe(true);
+  });
+
+  it('parses an empty directory result', () => {
+    expect(JiraUserSearchResultSchema.safeParse([]).success).toBe(true);
+  });
+
+  it('rejects a non-array payload', () => {
+    expect(JiraUserSearchResultSchema.safeParse({ accountId: 'x' }).success).toBe(false);
+  });
+});
 
 describe('JiraMyselfSchema', () => {
   it('parses a valid myself response', () => {
