@@ -1,8 +1,8 @@
-import { render, screen, fireEvent, within } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
-import { WeeklyGrid } from './WeeklyGrid';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { hoursToSeconds } from '@/lib/hours';
-import type { DayStatus, WeekGrid } from '@/lib/week-grid';
+import type { DayStatus, WeekGrid, WeekGridCell } from '@/lib/week-grid';
 
 vi.mock('@/components/today/TicketPicker', () => ({
   TicketPicker: ({
@@ -19,6 +19,30 @@ vi.mock('@/components/today/TicketPicker', () => ({
   ),
 }));
 
+const postWorklogMock = vi.fn();
+const deleteWorklogMock = vi.fn();
+vi.mock('@/lib/jira-client', () => ({
+  postWorklog: (...args: unknown[]) => postWorklogMock(...args),
+  updateWorklog: vi.fn(),
+  deleteWorklog: (...args: unknown[]) => deleteWorklogMock(...args),
+}));
+
+const sendMessageMock = vi.fn();
+vi.mock('@/lib/messages', () => ({
+  sendMessage: (...args: unknown[]) => sendMessageMock(...args),
+}));
+
+const enqueueOutboxMock = vi.fn((..._args: unknown[]) => Promise.resolve({}));
+vi.mock('@/lib/storage/outbox', () => ({
+  enqueue: (...args: unknown[]) => enqueueOutboxMock(...args),
+}));
+
+vi.mock('@/lib/log', () => ({
+  log: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
+}));
+
+const { WeeklyGrid } = await import('./WeeklyGrid');
+
 const DAYS: WeekGrid['days'] = [
   '2026-06-15',
   '2026-06-16',
@@ -29,8 +53,21 @@ const DAYS: WeekGrid['days'] = [
   '2026-06-21',
 ];
 
+function singleCell(seconds: number, id: string, startedISO: string): WeekGridCell {
+  return { seconds, worklogs: seconds > 0 ? [{ id, startedISO }] : [] };
+}
+
 function gridWithOneRow(): WeekGrid {
-  const cells = [hoursToSeconds(4), 0, hoursToSeconds(0.5), 0, 0, 0, 0];
+  const cells: WeekGridCell[] = [
+    singleCell(hoursToSeconds(4), 'w-mon', '2026-06-15T09:00:00.000+0000'),
+    singleCell(0, '', ''),
+    singleCell(hoursToSeconds(0.5), 'w-wed', '2026-06-17T09:00:00.000+0000'),
+    singleCell(0, '', ''),
+    singleCell(0, '', ''),
+    singleCell(0, '', ''),
+    singleCell(0, '', ''),
+  ];
+  const cellsSeconds = cells.map((c) => c.seconds);
   return {
     days: DAYS,
     rows: [
@@ -38,11 +75,12 @@ function gridWithOneRow(): WeekGrid {
         key: 'PROJ-1',
         summary: 'Build the grid',
         category: 'task',
-        cellsSeconds: cells,
+        cells,
+        cellsSeconds,
         rowTotalSeconds: hoursToSeconds(4.5),
       },
     ],
-    dayTotalsSeconds: cells,
+    dayTotalsSeconds: cellsSeconds,
   };
 }
 
@@ -54,9 +92,22 @@ function emptyGrid(): WeekGrid {
   };
 }
 
+function renderGrid(ui: React.ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  postWorklogMock.mockResolvedValue({ kind: 'ok', value: { id: 'new-1', timeSpentSeconds: 9000 } });
+  deleteWorklogMock.mockResolvedValue({ kind: 'ok', value: undefined });
+});
+
 describe('WeeklyGrid', () => {
   it('renders a semantic table with Mon..Sun column headers', () => {
-    render(<WeeklyGrid grid={gridWithOneRow()} />);
+    renderGrid(<WeeklyGrid grid={gridWithOneRow()} />);
     const colHeaders = screen
       .getAllByRole('columnheader')
       .map((th) => th.textContent);
@@ -66,7 +117,7 @@ describe('WeeklyGrid', () => {
   });
 
   it('renders a row-header with key + summary and bare-decimal / em-dash cells', () => {
-    render(<WeeklyGrid grid={gridWithOneRow()} />);
+    renderGrid(<WeeklyGrid grid={gridWithOneRow()} />);
     const rowHeader = screen.getByText(/Build the grid/).closest('th');
     expect(rowHeader?.textContent).toContain('PROJ-1');
     expect(rowHeader?.textContent).toContain('Build the grid');
@@ -79,33 +130,33 @@ describe('WeeklyGrid', () => {
   });
 
   it('gives each data cell an aria-label with day name + ticket', () => {
-    render(<WeeklyGrid grid={gridWithOneRow()} />);
+    renderGrid(<WeeklyGrid grid={gridWithOneRow()} />);
     expect(
       screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'),
     ).toBeTruthy();
   });
 
   it('renders a per-day totals row', () => {
-    render(<WeeklyGrid grid={gridWithOneRow()} />);
+    renderGrid(<WeeklyGrid grid={gridWithOneRow()} />);
     const totalsRow = screen.getByRole('row', { name: /Daily totals/i });
     expect(within(totalsRow).getByText('4.0')).toBeTruthy();
   });
 
   it('renders day headers + totals but no data rows for an empty week', () => {
-    render(<WeeklyGrid grid={emptyGrid()} />);
+    renderGrid(<WeeklyGrid grid={emptyGrid()} />);
     expect(screen.getAllByRole('columnheader').length).toBeGreaterThanOrEqual(7);
     expect(screen.queryByText(/Build the grid/)).toBeNull();
   });
 
   it('shows the add-subtask affordance and the mark-week-done placeholder', () => {
-    render(<WeeklyGrid grid={emptyGrid()} />);
+    renderGrid(<WeeklyGrid grid={emptyGrid()} />);
     expect(screen.getByText(/Add a subtask to this week/)).toBeTruthy();
     const markDone = screen.getByRole('button', { name: /Mark week as done/i });
     expect(markDone).toBeTruthy();
   });
 
   it('the mark-week-done placeholder is disabled (Story 4.5 owns behavior)', () => {
-    render(<WeeklyGrid grid={emptyGrid()} />);
+    renderGrid(<WeeklyGrid grid={emptyGrid()} />);
     const markDone = screen.getByRole('button', {
       name: /Mark week as done/i,
     }) as HTMLButtonElement;
@@ -122,7 +173,7 @@ describe('WeeklyGrid', () => {
       'neutral',
       'neutral',
     ];
-    render(<WeeklyGrid grid={gridWithOneRow()} dayStatuses={statuses} />);
+    renderGrid(<WeeklyGrid grid={gridWithOneRow()} dayStatuses={statuses} />);
     const cell = screen.getByLabelText('Monday, complete');
     expect(cell).toBeTruthy();
     expect(cell.querySelector('svg')).toBeTruthy(); // lucide Check
@@ -140,7 +191,7 @@ describe('WeeklyGrid', () => {
       'neutral',
       'neutral',
     ];
-    render(<WeeklyGrid grid={gridWithOneRow()} dayStatuses={statuses} />);
+    renderGrid(<WeeklyGrid grid={gridWithOneRow()} dayStatuses={statuses} />);
     const cell = screen.getByLabelText('Monday, below target');
     expect(cell).toBeTruthy();
     expect(cell.querySelector('svg')).toBeTruthy(); // lucide AlertCircle
@@ -158,7 +209,7 @@ describe('WeeklyGrid', () => {
       'neutral',
       'neutral',
     ];
-    render(<WeeklyGrid grid={gridWithOneRow()} dayStatuses={statuses} />);
+    renderGrid(<WeeklyGrid grid={gridWithOneRow()} dayStatuses={statuses} />);
     const cell = screen.getByLabelText('Tuesday, PTO');
     expect(cell).toBeTruthy();
     expect(cell.className).toContain('text-state-success');
@@ -175,7 +226,7 @@ describe('WeeklyGrid', () => {
       'neutral',
       'neutral',
     ];
-    render(<WeeklyGrid grid={emptyGrid()} dayStatuses={statuses} />);
+    renderGrid(<WeeklyGrid grid={emptyGrid()} dayStatuses={statuses} />);
     expect(screen.queryByLabelText(/below target/)).toBeNull();
     expect(screen.queryByLabelText(/, complete/)).toBeNull();
     const totalsRow = screen.getByRole('row', { name: /Daily totals/i });
@@ -183,14 +234,14 @@ describe('WeeklyGrid', () => {
   });
 
   it('renders neutral totals when dayStatuses is omitted (back-compat)', () => {
-    render(<WeeklyGrid grid={gridWithOneRow()} />);
+    renderGrid(<WeeklyGrid grid={gridWithOneRow()} />);
     const totalsRow = screen.getByRole('row', { name: /Daily totals/i });
     expect(within(totalsRow).getByText('4.0')).toBeTruthy();
     expect(totalsRow.querySelector('svg')).toBeNull();
   });
 
   it('appends a local all-em-dash row when a ticket is picked, deduping by key', () => {
-    render(<WeeklyGrid grid={emptyGrid()} />);
+    renderGrid(<WeeklyGrid grid={emptyGrid()} />);
     fireEvent.click(screen.getByText(/Add a subtask to this week/));
     fireEvent.click(screen.getByText('mock-pick'));
     expect(screen.getByText(/A new ticket/)).toBeTruthy();
@@ -199,5 +250,91 @@ describe('WeeklyGrid', () => {
     fireEvent.click(screen.getByText(/Add a subtask to this week/));
     fireEvent.click(screen.getByText('mock-pick'));
     expect(screen.getAllByText(/A new ticket/)).toHaveLength(1);
+  });
+
+  it('clicking an empty cell and entering hours POSTs a worklog (AC #2/#5)', async () => {
+    const onMutated = vi.fn();
+    renderGrid(<WeeklyGrid grid={emptyGrid()} onMutated={onMutated} />);
+    // Add a local row, then fill its Monday cell.
+    fireEvent.click(screen.getByText(/Add a subtask to this week/));
+    fireEvent.click(screen.getByText('mock-pick'));
+    const cellBtn = screen.getByLabelText('Hours for Monday, NEW-1 A new ticket');
+    fireEvent.click(cellBtn);
+    const input = screen.getByLabelText('Hours for Monday, NEW-1 A new ticket');
+    fireEvent.change(input, { target: { value: '3' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(postWorklogMock).toHaveBeenCalledWith('NEW-1', {
+        timeSpentSeconds: hoursToSeconds(3),
+        started: expect.any(String),
+      });
+    });
+    await waitFor(() => expect(onMutated).toHaveBeenCalled());
+  });
+
+  it('tints body data cells by their day status (carry-through, AC #9)', () => {
+    const statuses: DayStatus[] = [
+      'complete',
+      'neutral',
+      'below-target',
+      'neutral',
+      'neutral',
+      'neutral',
+      'neutral',
+    ];
+    renderGrid(<WeeklyGrid grid={gridWithOneRow()} dayStatuses={statuses} />);
+    const monCell = screen
+      .getByLabelText('Hours for Monday, PROJ-1 Build the grid')
+      .closest('td')!;
+    expect(monCell.className).toContain('bg-state-success-subtle');
+    expect(monCell.className).toContain('motion-safe:transition-colors');
+    const wedCell = screen
+      .getByLabelText('Hours for Wednesday, PROJ-1 Build the grid')
+      .closest('td')!;
+    expect(wedCell.className).toContain('bg-state-danger-subtle');
+  });
+
+  it('keeps body cells in native left-to-right DOM order (Tab order, AC #10)', () => {
+    renderGrid(<WeeklyGrid grid={gridWithOneRow()} />);
+    const labels = screen
+      .getAllByLabelText(/^Hours for /)
+      .map((el) => el.getAttribute('aria-label'));
+    expect(labels.slice(0, 3)).toEqual([
+      'Hours for Monday, PROJ-1 Build the grid',
+      'Hours for Tuesday, PROJ-1 Build the grid',
+      'Hours for Wednesday, PROJ-1 Build the grid',
+    ]);
+  });
+
+  it('row ⋯ Remove from week hides an empty (local) row with no network call', () => {
+    renderGrid(<WeeklyGrid grid={emptyGrid()} />);
+    fireEvent.click(screen.getByText(/Add a subtask to this week/));
+    fireEvent.click(screen.getByText('mock-pick'));
+    expect(screen.getByText(/A new ticket/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Row actions for NEW-1' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Remove from week/ }));
+
+    expect(screen.queryByText(/A new ticket/)).toBeNull();
+    expect(deleteWorklogMock).not.toHaveBeenCalled();
+  });
+
+  it('row ⋯ Remove from week on a row with hours confirms, then deletes every worklog', async () => {
+    const onMutated = vi.fn();
+    renderGrid(<WeeklyGrid grid={gridWithOneRow()} onMutated={onMutated} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Row actions for PROJ-1' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Remove from week/ }));
+    // Inline confirm chip appears.
+    expect(screen.getByText('Remove all entries for PROJ-1?')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+
+    await waitFor(() => {
+      expect(deleteWorklogMock).toHaveBeenCalledWith('PROJ-1', 'w-mon');
+      expect(deleteWorklogMock).toHaveBeenCalledWith('PROJ-1', 'w-wed');
+    });
+    await waitFor(() => expect(onMutated).toHaveBeenCalled());
+    expect(sendMessageMock).toHaveBeenCalledWith('badge-update', { hoursMissing: 0 });
   });
 });

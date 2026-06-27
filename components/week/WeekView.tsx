@@ -1,5 +1,6 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { format, parseISO, isValid } from 'date-fns';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { WeeklyGrid } from '@/components/week/WeeklyGrid';
 import { useWeekWorklogs } from '@/hooks/useWeekWorklogs';
@@ -59,6 +60,14 @@ export function WeekView({ weekOf }: Props): React.ReactElement {
   }, []);
 
   const query = useWeekWorklogs(weekOf);
+  const queryClient = useQueryClient();
+
+  // After a successful cell/row mutation, invalidate the week query so the grid,
+  // totals, and 4.2 day-status colors re-derive from authoritative data (AC #8).
+  // Do NOT hand-mutate query.data — invalidation is the source of truth.
+  const handleMutated = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['week-worklogs', weekOf] });
+  }, [queryClient, weekOf]);
 
   const grid = useMemo(() => {
     if (!query.data) return null;
@@ -107,6 +116,7 @@ export function WeekView({ weekOf }: Props): React.ReactElement {
         ) : grid ? (
           <WeeklyGrid
             grid={grid}
+            onMutated={handleMutated}
             {...(dayStatuses ? { dayStatuses } : {})}
           />
         ) : null}

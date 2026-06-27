@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -10,7 +10,13 @@ vi.mock('@/hooks/useWeekWorklogs', () => ({
 }));
 
 vi.mock('@/components/week/WeeklyGrid', () => ({
-  WeeklyGrid: () => <div data-testid="weekly-grid">grid</div>,
+  WeeklyGrid: ({ onMutated }: { onMutated?: () => void }) => (
+    <div data-testid="weekly-grid">
+      <button type="button" onClick={() => onMutated?.()}>
+        trigger-mutated
+      </button>
+    </div>
+  ),
 }));
 
 const targetHoursGet = vi.fn(async () => 8);
@@ -28,13 +34,14 @@ const { hoursToSeconds } = await import('@/lib/hours');
 
 function renderView(weekOf = '2026-06-15') {
   const client = new QueryClient();
-  return render(
+  const utils = render(
     React.createElement(
       QueryClientProvider,
       { client },
       React.createElement(WeekView, { weekOf }),
     ),
   );
+  return { ...utils, client };
 }
 
 describe('WeekView', () => {
@@ -79,6 +86,34 @@ describe('WeekView', () => {
     // 28 logged / (8 * 5 = 40) target — value spans a <span> + text node.
     expect(screen.getByText('28')).toBeTruthy();
     expect(screen.getByText(/\/ 40h/)).toBeTruthy();
+  });
+
+  it('invalidates the week query when the grid reports a mutation (AC #8)', async () => {
+    useWeekWorklogsMock.mockReturnValue({
+      isPending: false,
+      isError: false,
+      data: [
+        {
+          key: 'PROJ-1',
+          summary: 'A',
+          worklogs: [
+            {
+              id: 'w1',
+              timeSpentSeconds: hoursToSeconds(8),
+              started: '2026-06-15T09:00:00.000+0000',
+            },
+          ],
+        },
+      ],
+    });
+    const { client } = renderView('2026-06-15');
+    const invalidateSpy = vi.spyOn(client, 'invalidateQueries');
+    fireEvent.click(await screen.findByText('trigger-mutated'));
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ['week-worklogs', '2026-06-15'],
+      });
+    });
   });
 
   it('shows the Connect to Jira fallback on auth-expired', async () => {

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { hoursToSeconds } from '@/lib/hours';
 import type { WeekIssueWorklogs } from '@/lib/jira-types';
-import type { WeekGrid, WeekGridRow } from '@/lib/week-grid';
-import { buildWeekGrid, computeDayStatuses } from '@/lib/week-grid';
+import type { WeekGrid, WeekGridCell, WeekGridRow } from '@/lib/week-grid';
+import { buildWeekGrid, cellEditability, computeDayStatuses } from '@/lib/week-grid';
 
 const WEEK_OF = '2026-06-15'; // Monday
 
@@ -187,6 +187,66 @@ describe('buildWeekGrid', () => {
     });
     expect(grid.rows).toHaveLength(0);
   });
+
+  it('retains per-cell worklog ids + started, and mirrors seconds into cellsSeconds', () => {
+    const issues: WeekIssueWorklogs[] = [
+      {
+        key: 'PROJ-1',
+        summary: 'Task A',
+        worklogs: [
+          // Mon: two same-day worklogs → one multi-worklog cell.
+          { id: 'w-mon-1', timeSpentSeconds: hoursToSeconds(4), started: '2026-06-15T09:00:00.000+0000' },
+          { id: 'w-mon-2', timeSpentSeconds: hoursToSeconds(2), started: '2026-06-15T13:00:00.000+0000' },
+          // Wed: a single worklog → editable.
+          { id: 'w-wed-1', timeSpentSeconds: hoursToSeconds(1), started: '2026-06-17T09:00:00.000+0000' },
+        ],
+      },
+    ];
+    const grid = buildWeekGrid(issues, {
+      weekOf: WEEK_OF,
+      catchAllProjectKey: 'KNP',
+      ptoSubtaskKey: 'KNP-1',
+    });
+    const r = grid.rows[0]!;
+
+    // Mon cell: summed seconds, two worklog ids (multi).
+    expect(r.cells[0]!.seconds).toBe(hoursToSeconds(6));
+    expect(r.cells[0]!.worklogs.map((w) => w.id)).toEqual(['w-mon-1', 'w-mon-2']);
+    expect(r.cells[0]!.worklogs[0]!.startedISO).toBe('2026-06-15T09:00:00.000+0000');
+
+    // Tue cell: empty.
+    expect(r.cells[1]!.seconds).toBe(0);
+    expect(r.cells[1]!.worklogs).toEqual([]);
+
+    // Wed cell: single worklog.
+    expect(r.cells[2]!.worklogs.map((w) => w.id)).toEqual(['w-wed-1']);
+
+    // cellsSeconds is a faithful derived mirror of cells[i].seconds (4.2 contract).
+    expect(r.cellsSeconds).toEqual(r.cells.map((c) => c.seconds));
+  });
+
+  it('classifies cell editability: empty / single / multi', () => {
+    const issues: WeekIssueWorklogs[] = [
+      {
+        key: 'PROJ-1',
+        summary: 'A',
+        worklogs: [
+          { id: 'w1', timeSpentSeconds: hoursToSeconds(4), started: '2026-06-15T09:00:00.000+0000' }, // Mon single
+          { id: 'w2', timeSpentSeconds: hoursToSeconds(2), started: '2026-06-16T09:00:00.000+0000' }, // Tue
+          { id: 'w3', timeSpentSeconds: hoursToSeconds(1), started: '2026-06-16T13:00:00.000+0000' }, // Tue → multi
+        ],
+      },
+    ];
+    const grid = buildWeekGrid(issues, {
+      weekOf: WEEK_OF,
+      catchAllProjectKey: 'KNP',
+      ptoSubtaskKey: 'KNP-1',
+    });
+    const r = grid.rows[0]!;
+    expect(cellEditability(r.cells[0]!)).toBe('single'); // Mon
+    expect(cellEditability(r.cells[1]!)).toBe('multi'); // Tue (2 worklogs)
+    expect(cellEditability(r.cells[2]!)).toBe('empty'); // Wed (none)
+  });
 });
 
 const DAYS: WeekGrid['days'] = [
@@ -204,7 +264,11 @@ function row(
   cellsSeconds: number[],
 ): WeekGridRow {
   const rowTotalSeconds = cellsSeconds.reduce((s, c) => s + c, 0);
-  return { key: 'X-1', summary: 'r', category, cellsSeconds, rowTotalSeconds };
+  const cells: WeekGridCell[] = cellsSeconds.map((seconds) => ({
+    seconds,
+    worklogs: seconds > 0 ? [{ id: `id-${seconds}`, startedISO: undefined }] : [],
+  }));
+  return { key: 'X-1', summary: 'r', category, cells, cellsSeconds, rowTotalSeconds };
 }
 
 function gridOf(

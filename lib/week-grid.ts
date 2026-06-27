@@ -16,14 +16,62 @@ export const DAYS_PER_WEEK = 7;
 
 export type WeekGridCategory = 'task' | 'catch-all' | 'pto';
 
+/**
+ * One underlying worklog that contributes to a cell (Story 4.3). `startedISO`
+ * is the worklog's own `started` timestamp — reused verbatim for a PUT so an
+ * inline edit does not move the worklog's time-of-day. Optional because a
+ * worklog can lack `started` (excluded from bucketing, but kept defensive).
+ */
+export type WeekGridCellWorklog = {
+  id: string;
+  startedISO: string | undefined;
+};
+
+/**
+ * A single (subtask, day) cell (Story 4.3). `seconds` is the summed duration;
+ * `worklogs` carries each contributing worklog's id + `started` so the cell can
+ * issue a PUT/DELETE against a specific worklog. 0 worklogs → POST (empty cell);
+ * exactly 1 → editable PUT/DELETE; >1 → read-only (multi-worklog ambiguity, AC #4).
+ */
+export type WeekGridCell = {
+  seconds: number;
+  worklogs: WeekGridCellWorklog[];
+};
+
 export type WeekGridRow = {
   key: string;
   summary: string;
   category: WeekGridCategory;
-  /** Seconds logged per day, index 0 = Monday .. index 6 = Sunday. */
+  /** Per-day cells, index 0 = Monday .. index 6 = Sunday. */
+  cells: WeekGridCell[];
+  /**
+   * Seconds logged per day, index 0 = Monday .. index 6 = Sunday. Derived
+   * mirror of `cells[i].seconds`, retained so Story 4.2's `computeDayStatuses`
+   * (and its tests) keep working unchanged.
+   */
   cellsSeconds: number[];
   rowTotalSeconds: number;
 };
+
+/** How a cell may be edited inline (Story 4.3). */
+export type CellEditability = 'empty' | 'single' | 'multi';
+
+/**
+ * Classify a cell by how many worklogs it aggregates:
+ * - `empty`  — 0 worklogs → click POSTs a new worklog.
+ * - `single` — exactly 1 → editable (PUT to update, DELETE to clear).
+ * - `multi`  — >1 → read-only here (which worklog to PUT/DELETE is ambiguous).
+ */
+export function cellEditability(cell: WeekGridCell): CellEditability {
+  const count = cell.worklogs.length;
+  if (count === 0) return 'empty';
+  if (count === 1) return 'single';
+  return 'multi';
+}
+
+function emptyCell(): WeekGridCell {
+  return { seconds: 0, worklogs: [] };
+}
 
 export type WeekGrid = {
   /** ISO date strings, index 0 = Monday .. index 6 = Sunday. */
@@ -99,7 +147,7 @@ export function buildWeekGrid(
   const rows: WeekGridRow[] = [];
 
   for (const issue of issues) {
-    const cellsSeconds = new Array<number>(DAYS_PER_WEEK).fill(0);
+    const cells: WeekGridCell[] = Array.from({ length: DAYS_PER_WEEK }, emptyCell);
     let rowTotalSeconds = 0;
 
     for (const worklog of issue.worklogs) {
@@ -116,7 +164,10 @@ export function buildWeekGrid(
       );
       if (dayIndex < 0) continue;
 
-      cellsSeconds[dayIndex] = (cellsSeconds[dayIndex] ?? 0) + worklog.timeSpentSeconds;
+      const cell = cells[dayIndex];
+      if (!cell) continue; // defensive: dayIndex is always in [0, 6)
+      cell.seconds += worklog.timeSpentSeconds;
+      cell.worklogs.push({ id: worklog.id, startedISO: worklog.started });
       rowTotalSeconds += worklog.timeSpentSeconds;
       dayTotalsSeconds[dayIndex] = (dayTotalsSeconds[dayIndex] ?? 0) + worklog.timeSpentSeconds;
     }
@@ -127,7 +178,9 @@ export function buildWeekGrid(
       key: issue.key,
       summary: issue.summary,
       category: categorize(issue.key, catchAllProjectKey, ptoSubtaskKey),
-      cellsSeconds,
+      cells,
+      // Derived mirror — keep in sync with cells[i].seconds for 4.2.
+      cellsSeconds: cells.map((c) => c.seconds),
       rowTotalSeconds,
     });
   }
