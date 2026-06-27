@@ -80,7 +80,7 @@ development_status:
   epic-3-retrospective: optional
 
   # Epic 4: Weekly Review & Mark-as-Done
-  epic-4: in-progress
+  epic-4: done
   4-1-week-view-shell-7-day-grid-with-subtask-rows: done
   4-2-per-day-color-coding-status-icons: done
   4-3-inline-cell-editing-add-remove-edit-hours: done
