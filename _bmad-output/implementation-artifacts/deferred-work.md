@@ -71,3 +71,7 @@
 - Catch-all `useQuery` retries non-retriable errors (403/404/parse-error) up to 3× in prod via the project-wide default retry policy. Shared by hierarchy/search queries. [entrypoints/popup/main.tsx:12]
 - Successful PTO worklog is recorded into the logged-today list only inside a cancellable 200ms `setTimeout`; latent risk if a parent ever unmounts `PtoQuickAction` (currently always rendered). [components/today/PtoQuickAction.tsx:122]
 - Half-day PTO button lacks the spinner/✓ in-flight feedback the Full-day button shows (both are disabled during the post, so no correctness impact). [components/today/PtoQuickAction.tsx:236]
+## Deferred from: code review of story-3.3 (2026-06-27)
+
+- SW cold-start can yield no banner on the first Jira page load until the next navigation. Graceful (never crashes), AC #8 permits "no banner", recovery is navigation-gated; a content-side retry is out of scope. [entrypoints/content.ts]
+- Pressing Escape (or an SPA re-render) during an in-flight submit re-renders the banner and drops the ✓ confirmation, though the worklog still posts. Minor UX only; the in-flight guard prevents the double-post hazard and the write is durable. [entrypoints/content.ts:248-250]

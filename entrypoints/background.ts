@@ -9,8 +9,13 @@
  * install. Everything else is wired in subsequent stories.
  */
 import { updateBadge } from '@/lib/badge';
+import {
+  handleBannerStateRequest,
+  handleLogWorklogRequest,
+  handleOpenPopup,
+} from '@/lib/banner-sw';
 import { log } from '@/lib/log';
-import { onMessage, sendMessage } from '@/lib/messages';
+import { onMessage, onRequest, sendMessage } from '@/lib/messages';
 import {
   handleNotificationClick,
   maybeShowDailyReminder,
@@ -167,6 +172,15 @@ export default defineBackground(async () => {
   // drains) broadcasting `badge-update`. The payload's `hoursMissing` is a
   // placeholder and is ignored — updateBadge recomputes authoritatively.
   onMessage('badge-update', () => updateBadge());
+
+  // Inline banner (Story 3.3): the content script asks the SW for the current
+  // deficit (reusing the badge's single source) and posts worklogs through the
+  // SW scheduler. The content script cannot do either in-page.
+  onRequest('banner-state', (req) => handleBannerStateRequest(req));
+  onRequest('log-worklog-request', (req) => handleLogWorklogRequest(req));
+
+  // The content script cannot call chrome.action.openPopup itself; route via SW.
+  onMessage('open-popup', () => handleOpenPopup());
 
   // Refresh the badge once on service-worker boot so it is correct after the
   // SW wakes. updateBadge is a no-op (clears) when disconnected.

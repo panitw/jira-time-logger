@@ -36,7 +36,13 @@ vi.mock('@/lib/log', () => ({
 // workdaysSoFar / currentCycleRange are pure — use the real module so the
 // orchestrator math stays anchored to the real Monday boundary, but pin
 // "today" via a fake timer where it matters.
-const { updateBadge, computeHoursMissing, BADGE_DANGER_COLOR } = await import('./badge');
+const {
+  updateBadge,
+  computeHoursMissing,
+  getWeekHoursMissing,
+  getWeekDeficit,
+  BADGE_DANGER_COLOR,
+} = await import('./badge');
 const { secondsToHours, hoursToSeconds } = await import('./hours');
 const { workdaysSoFar } = await import('./cycle-range');
 
@@ -268,5 +274,72 @@ describe('updateBadge orchestration', () => {
       new Error('badge boom'),
     );
     await expect(updateBadge()).resolves.toBeUndefined();
+  });
+});
+
+describe('getWeekHoursMissing / getWeekDeficit (shared deficit, Story 3.3)', () => {
+  function pinWednesday(): void {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 5, 17, 10, 0, 0)); // Wed → 3 workdays * 8 = 24
+  }
+
+  it('returns the rounded positive deficit when behind', async () => {
+    pinWednesday();
+    fetchWeekMock.mockResolvedValue({
+      kind: 'ok',
+      value: [{ timeSpentSeconds: hoursToSeconds(10) }],
+    });
+    expect(await getWeekHoursMissing()).toBe(14); // 24 - 10
+  });
+
+  it('returns 0 when caught up', async () => {
+    pinWednesday();
+    fetchWeekMock.mockResolvedValue({
+      kind: 'ok',
+      value: [{ timeSpentSeconds: hoursToSeconds(24) }],
+    });
+    expect(await getWeekHoursMissing()).toBe(0);
+  });
+
+  it('returns 0 when a sub-1h deficit rounds to 0 (never negative, never <1)', async () => {
+    pinWednesday();
+    fetchWeekMock.mockResolvedValue({
+      kind: 'ok',
+      value: [{ timeSpentSeconds: hoursToSeconds(23.7) }],
+    });
+    expect(await getWeekHoursMissing()).toBe(0);
+  });
+
+  it('returns null when disconnected (no banner, AC #8) and does NOT fetch', async () => {
+    hasValidAuthMock.mockReturnValue(false);
+    expect(await getWeekHoursMissing()).toBeNull();
+    expect(fetchWeekMock).not.toHaveBeenCalled();
+  });
+
+  it('returns null when the week is marked done', async () => {
+    pinWednesday();
+    store.set('local:weekMarkedDone', true);
+    fetchWeekMock.mockResolvedValue({ kind: 'ok', value: [] });
+    expect(await getWeekHoursMissing()).toBeNull();
+    expect(fetchWeekMock).not.toHaveBeenCalled();
+  });
+
+  it('returns null on a transient fetch error (no stale banner)', async () => {
+    pinWednesday();
+    fetchWeekMock.mockResolvedValue({ kind: 'rate-limited', retryAfterMs: 1000 });
+    expect(await getWeekHoursMissing()).toBeNull();
+  });
+
+  it('getWeekDeficit discriminates cleared vs unknown vs deficit', async () => {
+    pinWednesday();
+    hasValidAuthMock.mockReturnValue(false);
+    expect(await getWeekDeficit()).toEqual({ kind: 'cleared', reason: 'disconnected' });
+
+    hasValidAuthMock.mockReturnValue(true);
+    fetchWeekMock.mockResolvedValue({ kind: 'network', message: 'x' });
+    expect((await getWeekDeficit()).kind).toBe('unknown');
+
+    fetchWeekMock.mockResolvedValue({ kind: 'ok', value: [] });
+    expect(await getWeekDeficit()).toEqual({ kind: 'deficit', hours: 24 });
   });
 });

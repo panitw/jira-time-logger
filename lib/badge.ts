@@ -75,27 +75,40 @@ export async function isCurrentWeekMarkedDone(): Promise<boolean> {
 }
 
 /**
- * Orchestrate a single badge update (AC #1, #2, #3, #6).
+ * The shared current-week deficit signal. Discriminates the cases the badge AND
+ * the banner both need to distinguish (Story 3.3, Task 3):
  *
- * Guaranteed not to throw — the alarm/message handlers must never crash the
- * service worker. On a transient fetch error the previous badge state is left
- * untouched (do not blank it on a single failed remote fetch).
+ *   - `cleared`  — disconnected OR week marked done → clear the badge / no banner.
+ *   - `unknown`  — a transient fetch error → leave the badge untouched / no banner.
+ *   - `deficit`  — a real computed deficit, ROUNDED. `hours >= 1` means behind
+ *                  (render red badge / show banner); `hours === 0` means caught
+ *                  up (clear badge / no banner). Values in (0, 0.5) round to 0,
+ *                  so `hours` is never a contradictory red "0h".
  */
-export async function updateBadge(): Promise<void> {
+export type WeekDeficit =
+  | { kind: 'cleared'; reason: 'disconnected' | 'marked-done' }
+  | { kind: 'unknown'; reason: string }
+  | { kind: 'deficit'; hours: number };
+
+/**
+ * Compute the current-week deficit once, for both the toolbar badge (Story 3.1)
+ * and the inline banner (Story 3.3). This is the SINGLE source of the deficit:
+ * the banner's `hoursMissing` is exactly this number. Never throws.
+ *
+ * Mirrors the badge's gating order: disconnected → marked-done → fetch →
+ * compute → round with the `Math.round(deficit) >= 1` threshold.
+ */
+export async function getWeekDeficit(): Promise<WeekDeficit> {
   try {
-    // AC #6 — disconnected: clear and do NOT fetch.
+    // Disconnected: do NOT fetch.
     const bundle = await getAuth();
     if (!hasValidAuth(bundle)) {
-      await clearBadge();
-      log.info('badge.update.skipped', { reason: 'disconnected' });
-      return;
+      return { kind: 'cleared', reason: 'disconnected' };
     }
 
-    // AC #3 — week marked done: clear regardless of deficit.
+    // Week marked done: treat as caught up regardless of the real deficit.
     if (await isCurrentWeekMarkedDone()) {
-      await clearBadge();
-      log.info('badge.update.skipped', { reason: 'marked-done' });
-      return;
+      return { kind: 'cleared', reason: 'marked-done' };
     }
 
     const targetHours = await targetHoursItem.getValue();
@@ -104,9 +117,8 @@ export async function updateBadge(): Promise<void> {
 
     const result = await fetchCurrentUserWeekWorklogs(range);
     if (result.kind !== 'ok') {
-      // Transient error — leave the existing badge untouched (do not blank).
-      log.warn('badge.update.failed', { kind: result.kind });
-      return;
+      // Transient error — do not blank the badge / do not show a stale banner.
+      return { kind: 'unknown', reason: result.kind };
     }
 
     const totalLoggedSeconds = result.value.reduce(
@@ -119,12 +131,54 @@ export async function updateBadge(): Promise<void> {
       totalLoggedSeconds,
     });
 
-    // Render only when the rounded badge value is >= 1h. A deficit in (0, 0.5)
-    // rounds to 0 and would otherwise paint a contradictory red "0h" badge, so
-    // treat it as caught-up and clear instead.
-    if (Math.round(deficit) >= 1) {
-      await renderDeficitBadge(deficit);
-      log.info('badge.update.success', { deficit: Math.round(deficit) });
+    const rounded = Math.round(deficit);
+    return { kind: 'deficit', hours: rounded >= 1 ? rounded : 0 };
+  } catch (e) {
+    return { kind: 'unknown', reason: String(e) };
+  }
+}
+
+/**
+ * The rounded hours the worker still owes this week, for the banner's
+ * `banner-state` response (Story 3.3, Task 3):
+ *
+ *   - a positive number → show the banner with that many hours.
+ *   - `0`  → caught up → no banner (AC #2).
+ *   - `null` → disconnected / auth-expired / transient fetch error → no banner
+ *     (AC #8). The content script never distinguishes WHY — it just hides.
+ */
+export async function getWeekHoursMissing(): Promise<number | null> {
+  const deficit = await getWeekDeficit();
+  if (deficit.kind === 'deficit') return deficit.hours;
+  return null;
+}
+
+/**
+ * Orchestrate a single badge update (AC #1, #2, #3, #6).
+ *
+ * Guaranteed not to throw — the alarm/message handlers must never crash the
+ * service worker. On a transient fetch error the previous badge state is left
+ * untouched (do not blank it on a single failed remote fetch).
+ */
+export async function updateBadge(): Promise<void> {
+  try {
+    const deficit = await getWeekDeficit();
+
+    if (deficit.kind === 'cleared') {
+      await clearBadge();
+      log.info('badge.update.skipped', { reason: deficit.reason });
+      return;
+    }
+
+    if (deficit.kind === 'unknown') {
+      // Transient error — leave the existing badge untouched (do not blank).
+      log.warn('badge.update.failed', { kind: deficit.reason });
+      return;
+    }
+
+    if (deficit.hours >= 1) {
+      await renderDeficitBadge(deficit.hours);
+      log.info('badge.update.success', { deficit: deficit.hours });
     } else {
       await clearBadge();
       log.info('badge.update.success', { deficit: 0 });
