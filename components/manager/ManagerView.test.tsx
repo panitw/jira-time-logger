@@ -17,6 +17,17 @@ vi.mock('@/hooks/useManagerRow', () => ({
     refetch: vi.fn(),
   }),
 }));
+// ManagerMatrix (Story 5.4) reads `targetHours` from settings in a `useEffect`;
+// mock the storage boundary so the async `getValue()` resolves cleanly instead
+// of hitting the unmocked `@wxt-dev/storage` chrome API.
+vi.mock('@/lib/storage/settings', () => ({
+  targetHoursItem: { getValue: () => Promise.resolve(8) },
+}));
+// ManagerMatrix also fetches approvals per Epic; with no rows resolved this is
+// never invoked, but mock it defensively so the matrix never touches the parser.
+vi.mock('@/hooks/useEpicApprovals', () => ({
+  useEpicApprovals: () => ({ data: [], isError: false, isPending: false }),
+}));
 
 const { ManagerView } = await import('./ManagerView');
 

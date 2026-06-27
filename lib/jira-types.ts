@@ -248,13 +248,16 @@ export type JiraIssueLookup = z.infer<typeof JiraIssueLookupSchema>;
  * records (with `updated`) so Story 5.5 can filter them client-side for the
  * drill-down and Story 5.4 can dirty-detect. Do NOT collapse to totals only.
  *
- * Forward-compat: Story 5.4 will add a `restrictedCount` for visibility-
- * restricted worklogs excluded from the rollup — not computed here.
+ * `restrictedCount` (Story 5.4) is the per-Epic count of visibility-restricted
+ * worklogs the manager cannot see — derived from the worklog endpoint's `total`
+ * minus the number of worklogs actually returned. Always a finite, non-negative
+ * integer (0 when nothing is hidden or the endpoint omits `total`).
  */
 export type ReportEpicWorklogs = {
   epicKey: string;
   epicSummary: string;
   totalSeconds: number;
+  restrictedCount: number;
   worklogs: Array<{
     ticketKey: string;
     ticketSummary: string;
@@ -262,4 +265,16 @@ export type ReportEpicWorklogs = {
     started?: string;
     updated?: string;
   }>;
+};
+
+/**
+ * One report row's resolved matrix data (Story 5.4): the per-Epic groups plus
+ * the row-summed `restrictedCount` (the "⚠ N restricted" chip count). Wrapping
+ * the array keeps the per-Epic lock overlay (each `ReportEpicWorklogs`'s own
+ * `restrictedCount`) and the row chip in one return value.
+ */
+export type ReportCycleWorklogs = {
+  epics: ReportEpicWorklogs[];
+  /** Sum of every Epic's `restrictedCount` for this report this cycle. */
+  restrictedCount: number;
 };

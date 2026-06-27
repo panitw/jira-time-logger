@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { CycleRange } from '@/lib/cycle-range';
 import { getCurrentCycleId } from '@/lib/cycle-range';
 import { fetchReportCycleWorklogsByEpic } from '@/lib/jira-client';
-import type { ReportEpicWorklogs } from '@/lib/jira-types';
+import type { ReportCycleWorklogs } from '@/lib/jira-types';
 import { log } from '@/lib/log';
 import type { JiraError } from '@/lib/result';
 import type { CycleId } from '@/lib/storage/view-state';
@@ -38,7 +38,7 @@ export function useManagerRow(
   cycleId: CycleId,
   range: CycleRange,
 ) {
-  return useQuery<ReportEpicWorklogs[], JiraError>({
+  return useQuery<ReportCycleWorklogs, JiraError>({
     // `range` is intentionally NOT in the key: it is a pure, deterministic
     // function of `cycleId` (see ManagerMatrix's `range` useMemo), so a given
     // cycleId always maps to the same range. Adding it would only risk drift if

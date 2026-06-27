@@ -1,18 +1,25 @@
 import { format, parse, parseISO, isValid } from 'date-fns';
+import { Check, AlertCircle, RefreshCw, Lock } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { useEpicApprovals } from '@/hooks/useEpicApprovals';
 import { useManagerReports } from '@/hooks/useManagerReports';
 import { useManagerRow } from '@/hooks/useManagerRow';
 import { currentCycleRange } from '@/lib/cycle-range';
-import type { ReportEpicWorklogs } from '@/lib/jira-types';
+import { approvalAtFor } from '@/lib/dirty-detect';
+import type { ReportCycleWorklogs, ReportEpicWorklogs } from '@/lib/jira-types';
 import {
   buildMatrixColumns,
   cellSeconds,
   formatCellHours,
+  computeRowStatus,
+  computeCellStatus,
   EMPTY_CELL,
+  type CellStatus,
   type MatrixRowInput,
 } from '@/lib/manager-matrix';
 import type { DirectReport } from '@/lib/storage/direct-reports';
+import { targetHoursItem } from '@/lib/storage/settings';
 import type { CycleId } from '@/lib/storage/view-state';
 
 const STRINGS = {
@@ -30,12 +37,79 @@ const STRINGS = {
   errorTitle: "Couldn't load your reports",
   errorBody: 'Check your connection and try again.',
   tryAgain: 'Try again',
+  // Status copy (UX-DR30/31): honest, descriptive, no exclamation marks.
+  belowTarget: 'below target',
+  needsReapproval: 'needs re-approval',
+  approved: 'approved',
+  onTarget: 'on target',
+  restrictedCell: 'Some worklogs on this Epic have restricted visibility you can’t see',
+  restrictedChip: (n: number) => `⚠ ${n} restricted`,
+  restrictedChipTitle:
+    'Some worklogs in this row have restricted visibility you can’t see',
+  ariaApproved: (person: string, epicKey: string, hours: string) =>
+    `${person}, ${epicKey}, ${hours} hours, approved`,
+  ariaOnTarget: (person: string, epicKey: string, hours: string) =>
+    `${person}, ${epicKey}, ${hours} hours, on target`,
+  ariaGap: (person: string, epicKey: string, hours: string) =>
+    `${person}, ${epicKey}, ${hours} hours, below target`,
+  ariaDirty: (person: string, epicKey: string, hours: string) =>
+    `${person}, ${epicKey}, ${hours} hours, approved but worklogs changed, needs re-approval`,
+  ariaNeutral: (person: string, epicKey: string, hours: string) =>
+    `${person}, ${epicKey}, ${hours} hours`,
+  ariaEmpty: (person: string, epicKey: string) =>
+    `${person}, ${epicKey}, no hours logged`,
+  ariaRestrictedSuffix: ', restricted visibility',
 };
 
 /** Past this many Epic columns the data region scrolls; the person column stays. */
 const SCROLL_COLUMN_THRESHOLD = 4;
 /** Staggered-reveal step per row (the canonical Motion-table value, UX-DR7). */
 const STAGGER_MS = 100;
+/** lucide icon size for the cell status/lock icons (matches Story 4.2). */
+const ICON_SIZE = 16;
+/** Default per-workday target hours when the setting is unset (matches WeekView). */
+const DEFAULT_TARGET_HOURS = 8;
+
+/**
+ * The diagonal-stripe overlay that gives the dirty (warning) state a non-color
+ * signal (NFR12 / UX a11y: "yellow stripe uses diagonal lines, not just yellow
+ * bg"). A low-contrast amber `repeating-linear-gradient` over
+ * `bg-state-warning-subtle`, tuned so the `RefreshCw` icon and hours stay
+ * legible. Kept in one place — no per-cell duplication.
+ */
+const DIRTY_STRIPE_STYLE: React.CSSProperties = {
+  backgroundImage:
+    'repeating-linear-gradient(45deg, transparent 0 6px, rgba(202,138,4,0.18) 6px 8px)',
+};
+
+/** Tailwind bg/text token pair per colored status (HYPHENATED `state-*`). */
+const STATUS_CLASSES: Record<CellStatus, string> = {
+  approved: 'bg-state-success text-white border border-state-success',
+  'on-target': 'bg-state-success-subtle text-state-success',
+  gap: 'bg-state-danger-subtle text-state-danger',
+  dirty: 'bg-state-warning-subtle text-state-warning',
+  'unapproved-neutral': 'text-neutral-900',
+};
+
+/**
+ * Count past-or-today Mon–Fri workdays within `[start, min(today, end)]`. Used
+ * for the row-grain target comparison (`targetHours × workdaysElapsed`). A pure
+ * count over an injected window — the clock is read once at the component level
+ * (`today`), never inside `lib/`.
+ */
+function workdaysElapsedInWindow(start: Date, end: Date, today: Date): number {
+  const last = today < end ? today : end;
+  if (last < start) return 0;
+  let count = 0;
+  const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const lastDay = new Date(last.getFullYear(), last.getMonth(), last.getDate());
+  while (cursor <= lastDay) {
+    const day = cursor.getDay();
+    if (day !== 0 && day !== 6) count += 1;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return count;
+}
 
 function openOptions(): void {
   chrome.runtime.openOptionsPage();
@@ -66,23 +140,31 @@ export function ManagerMatrix({ cycle, onSwitchToToday }: Props): React.ReactEle
 
   // The parent owns the cross-row column set because columns are the union of
   // every Epic any report touched. Each row lifts its resolved data up here.
-  const [resolved, setResolved] = useState<Map<string, ReportEpicWorklogs[]>>(
+  const [resolved, setResolved] = useState<Map<string, ReportCycleWorklogs>>(
     () => new Map(),
   );
 
   const handleResolved = useCallback(
-    (accountId: string, epics: ReportEpicWorklogs[]) => {
+    (accountId: string, data: ReportCycleWorklogs) => {
       setResolved((prev) => {
         // Skip when the row reported the same data reference — guards against a
         // re-render storm if a row re-renders without new query data.
-        if (prev.get(accountId) === epics) return prev;
+        if (prev.get(accountId) === data) return prev;
         const next = new Map(prev);
-        next.set(accountId, epics);
+        next.set(accountId, data);
         return next;
       });
     },
     [],
   );
+
+  // Per-workday target (settings, default 8) and the local `today` (NOT UTC) for
+  // the row-grain target comparison. Clock read once here; the pure status fns
+  // receive `today`/`workdaysElapsed`/`targetHours` injected.
+  const [targetHours, setTargetHours] = useState(DEFAULT_TARGET_HOURS);
+  useEffect(() => {
+    void targetHoursItem.getValue().then((v) => setTargetHours(v ?? DEFAULT_TARGET_HOURS));
+  }, []);
 
   const reports = reportsQuery.data;
 
@@ -106,10 +188,17 @@ export function ManagerMatrix({ cycle, onSwitchToToday }: Props): React.ReactEle
   const columns = useMemo(() => {
     const rows: MatrixRowInput[] = sortedReports.map((r) => ({
       accountId: r.accountId,
-      epics: resolved.get(r.accountId) ?? [],
+      epics: resolved.get(r.accountId)?.epics ?? [],
     }));
     return buildMatrixColumns(rows);
   }, [sortedReports, resolved]);
+
+  // Past-or-today Mon–Fri count in the cycle window — injected into the pure
+  // row-status fn. Memoized on the resolved range so it is stable per render.
+  const workdaysElapsed = useMemo(
+    () => workdaysElapsedInWindow(range.start, range.end, new Date()),
+    [range],
+  );
 
   const cycleTitle = formatCycleTitle(cycle);
 
@@ -214,6 +303,8 @@ export function ManagerMatrix({ cycle, onSwitchToToday }: Props): React.ReactEle
                 range={range}
                 columns={columns}
                 revealIndex={i}
+                targetHours={targetHours}
+                workdaysElapsed={workdaysElapsed}
                 onResolved={handleResolved}
               />
             ))}
@@ -249,7 +340,9 @@ type RowProps = {
   range: { start: Date; end: Date };
   columns: string[];
   revealIndex: number;
-  onResolved: (accountId: string, epics: ReportEpicWorklogs[]) => void;
+  targetHours: number;
+  workdaysElapsed: number;
+  onResolved: (accountId: string, data: ReportCycleWorklogs) => void;
 };
 
 function ManagerMatrixRow({
@@ -258,6 +351,8 @@ function ManagerMatrixRow({
   range,
   columns,
   revealIndex,
+  targetHours,
+  workdaysElapsed,
   onResolved,
 }: RowProps): React.ReactElement {
   const query = useManagerRow(report.accountId, cycle, range);
@@ -271,13 +366,25 @@ function ManagerMatrixRow({
   // Staggered reveal: ~100ms/row ease-out under motion-safe; static otherwise.
   const revealStyle = { animationDelay: `${revealIndex * STAGGER_MS}ms` };
 
+  const restrictedCount = query.data?.restrictedCount ?? 0;
   const personHeader = (
     <th
       scope="row"
-      className="sticky left-0 z-10 max-w-[140px] truncate bg-white px-2 py-1 text-left font-normal text-neutral-900"
+      className="sticky left-0 z-10 max-w-[160px] bg-white px-2 py-1 text-left font-normal text-neutral-900"
       title={report.displayName}
     >
-      {report.displayName}
+      <span className="flex items-center gap-1">
+        <span className="truncate">{report.displayName}</span>
+        {restrictedCount > 0 ? (
+          <span
+            className="shrink-0 rounded bg-state-warning-subtle px-1 text-[10px] font-medium text-state-warning"
+            title={STRINGS.restrictedChipTitle}
+            aria-label={STRINGS.restrictedChipTitle}
+          >
+            {STRINGS.restrictedChip(restrictedCount)}
+          </span>
+        ) : null}
+      </span>
     </th>
   );
 
@@ -315,7 +422,13 @@ function ManagerMatrixRow({
     );
   }
 
-  const epics = query.data ?? [];
+  const epics = query.data?.epics ?? [];
+
+  // Row-grain on-target/gap status (AC 4): the report's TOTAL seconds across all
+  // Epics vs `targetHours × workdaysElapsed`. Each non-empty cell inherits this;
+  // the per-(report, Epic) approved/dirty states layer on top.
+  const rowSeconds = epics.reduce((sum, e) => sum + e.totalSeconds, 0);
+  const rowStatus = computeRowStatus(rowSeconds, { targetHours, workdaysElapsed });
 
   // When the WHOLE matrix has no columns (nobody logged anything this cycle),
   // each row shows a single per-row "(no hours logged this cycle)" placeholder
@@ -341,27 +454,115 @@ function ManagerMatrixRow({
       style={revealStyle}
     >
       {personHeader}
-      {columns.map((epicKey) => {
-        const seconds = cellSeconds(epics, epicKey);
-        const display = formatCellHours(seconds);
-        // An em-dash cell means the report logged nothing on this Epic — say so
-        // explicitly rather than announcing "0 hours" (which an AT user can't
-        // distinguish from a genuine zero). Cells with hours use AC 4's format.
-        const ariaLabel =
-          display === EMPTY_CELL
-            ? `${report.displayName}, ${epicKey}, no hours logged`
-            : `${report.displayName}, ${epicKey}, ${display} hours`;
-        return (
-          <td
-            key={epicKey}
-            className="px-2 py-1 text-right font-mono text-neutral-900"
-            aria-label={ariaLabel}
-          >
-            {display}
-          </td>
-        );
-      })}
+      {columns.map((epicKey) => (
+        <MatrixCell
+          key={epicKey}
+          epicKey={epicKey}
+          epics={epics}
+          report={report}
+          cycle={cycle}
+          rowStatus={rowStatus}
+        />
+      ))}
     </tr>
+  );
+}
+
+type CellProps = {
+  epicKey: string;
+  epics: ReportEpicWorklogs[];
+  report: DirectReport;
+  cycle: CycleId;
+  rowStatus: CellStatus;
+};
+
+/**
+ * One `(report, Epic)` data cell. Fetches the Epic's approvals via
+ * `useEpicApprovals` (one query per Epic key, deduped across rows by TanStack),
+ * resolves this report's approval anchor, computes the `CellStatus`, and paints
+ * it with the AC-6 color token + lucide icon + aria-label + visible status text.
+ * Color is NEVER the sole signal (NFR12). An approval-fetch failure for this
+ * Epic degrades the cell to its worklog-only status (treated as unapproved); the
+ * hours still render.
+ */
+function MatrixCell({
+  epicKey,
+  epics,
+  report,
+  cycle,
+  rowStatus,
+}: CellProps): React.ReactElement {
+  const approvalsQuery = useEpicApprovals(epicKey, cycle);
+
+  const seconds = cellSeconds(epics, epicKey);
+  const display = formatCellHours(seconds);
+  const isEmpty = display === EMPTY_CELL;
+
+  // Resolve this report's approval anchor for the cell's (user, cycle). On a
+  // failed approval fetch the list is empty → null anchor → unapproved.
+  const approvals = approvalsQuery.data ?? [];
+  const approvalAt = approvalAtFor(approvals, report.accountId, cycle);
+
+  const status: CellStatus = isEmpty
+    ? 'unapproved-neutral'
+    : computeCellStatus({ epics, epicKey, approvalAt, rowStatus });
+
+  const restricted =
+    epics.find((e) => e.epicKey === epicKey)?.restrictedCount ?? 0;
+  const locked = restricted > 0;
+
+  const baseAria = isEmpty
+    ? STRINGS.ariaEmpty(report.displayName, epicKey)
+    : status === 'approved'
+      ? STRINGS.ariaApproved(report.displayName, epicKey, display)
+      : status === 'on-target'
+        ? STRINGS.ariaOnTarget(report.displayName, epicKey, display)
+        : status === 'gap'
+          ? STRINGS.ariaGap(report.displayName, epicKey, display)
+          : status === 'dirty'
+            ? STRINGS.ariaDirty(report.displayName, epicKey, display)
+            : STRINGS.ariaNeutral(report.displayName, epicKey, display);
+  const ariaLabel = locked ? `${baseAria}${STRINGS.ariaRestrictedSuffix}` : baseAria;
+
+  const statusText =
+    status === 'gap'
+      ? STRINGS.belowTarget
+      : status === 'dirty'
+        ? STRINGS.needsReapproval
+        : null;
+
+  const cellStyle = status === 'dirty' ? DIRTY_STRIPE_STYLE : undefined;
+
+  return (
+    <td
+      className={`relative px-2 py-1 text-right font-mono motion-safe:transition-colors motion-safe:duration-200 ${STATUS_CLASSES[status]}`}
+      style={cellStyle}
+      aria-label={ariaLabel}
+    >
+      <span className="flex items-center justify-end gap-1">
+        {status === 'approved' || status === 'on-target' ? (
+          <Check size={ICON_SIZE} aria-hidden />
+        ) : status === 'gap' ? (
+          <AlertCircle size={ICON_SIZE} aria-hidden />
+        ) : status === 'dirty' ? (
+          <RefreshCw size={ICON_SIZE} aria-hidden />
+        ) : null}
+        <span className={isEmpty ? 'text-neutral-500' : undefined}>{display}</span>
+        {locked ? (
+          <span
+            className="inline-flex shrink-0 text-neutral-500"
+            title={STRINGS.restrictedCell}
+            aria-label={STRINGS.restrictedCell}
+            role="img"
+          >
+            <Lock size={ICON_SIZE} aria-hidden />
+          </span>
+        ) : null}
+      </span>
+      {statusText ? (
+        <span className="block text-[10px] leading-tight">{statusText}</span>
+      ) : null}
+    </td>
   );
 }
 

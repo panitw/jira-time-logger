@@ -20,6 +20,7 @@ import {
   type JiraWorklog,
   type WeekIssueWorklogs,
   type ReportEpicWorklogs,
+  type ReportCycleWorklogs,
 } from '@/lib/jira-types';
 import { log } from '@/lib/log';
 import { refreshTokens } from '@/lib/oauth/refresh';
@@ -625,7 +626,7 @@ async function resolveEpicForParent(
 export async function fetchReportCycleWorklogsByEpic(
   reportAccountId: string,
   range: CycleRange,
-): Promise<Result<ReportEpicWorklogs[], JiraError>> {
+): Promise<Result<ReportCycleWorklogs, JiraError>> {
   const startDate = toJqlDate(range.start);
   const endDate = toJqlDate(range.end);
   const jql = `worklogAuthor = "${reportAccountId}" AND worklogDate >= "${startDate}" AND worklogDate <= "${endDate}"`;
@@ -674,6 +675,20 @@ export async function fetchReportCycleWorklogsByEpic(
       return worklogResult;
     }
 
+    // Visibility-restricted detection (Story 5.4): the worklog-list endpoint
+    // counts ALL worklogs on the issue in `total`, but only returns the entries
+    // this manager is permitted to see. The endpoint call is scoped to one cycle
+    // window (`startedAfter`/`startedBefore`) with no `maxResults`, so the
+    // returned page IS the full visible set — `total - returnedLen` (clamped) is
+    // the count of worklogs hidden from this manager. A missing `total` → 0
+    // (never guess, never throw). Bias toward presence over an exact count: the
+    // delta is an upper-bound indicator (see Story 5.4 Dev Notes / Final Report
+    // design note on window-scoping).
+    const returnedLen = worklogResult.value.worklogs.length;
+    const total = worklogResult.value.total;
+    const issueRestricted =
+      total === undefined ? 0 : Math.max(0, total - returnedLen);
+
     const records: MatrixWorklogRecord[] = [];
     let issueSeconds = 0;
     for (const worklog of worklogResult.value.worklogs) {
@@ -695,21 +710,29 @@ export async function fetchReportCycleWorklogsByEpic(
       });
     }
 
-    if (records.length === 0) continue;
+    // Skip a subtask that contributed neither visible hours NOR a restricted
+    // signal — it adds nothing to the matrix. A subtask with restricted-only
+    // worklogs (no visible records) still surfaces a per-Epic lock, so its Epic
+    // column is created/updated.
+    if (records.length === 0 && issueRestricted === 0) continue;
 
     const existing = groups.get(epic.epicKey);
     if (existing) {
       existing.totalSeconds += issueSeconds;
+      existing.restrictedCount += issueRestricted;
       existing.worklogs.push(...records);
     } else {
       groups.set(epic.epicKey, {
         epicKey: epic.epicKey,
         epicSummary: epic.epicSummary,
         totalSeconds: issueSeconds,
+        restrictedCount: issueRestricted,
         worklogs: records,
       });
     }
   }
 
-  return ok(Array.from(groups.values()));
+  const epics = Array.from(groups.values());
+  const restrictedCount = epics.reduce((sum, e) => sum + e.restrictedCount, 0);
+  return ok({ epics, restrictedCount });
 }

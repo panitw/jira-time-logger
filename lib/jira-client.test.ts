@@ -885,11 +885,13 @@ describe('fetchReportCycleWorklogsByEpic', () => {
     const result = await fetchReportCycleWorklogsByEpic(REPORT_ID, range);
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') {
-      expect(result.value).toHaveLength(1);
-      const epic = result.value[0]!;
+      expect(result.value.epics).toHaveLength(1);
+      expect(result.value.restrictedCount).toBe(0);
+      const epic = result.value.epics[0]!;
       expect(epic.epicKey).toBe('PROJ-1');
       expect(epic.epicSummary).toBe('Epic One');
       expect(epic.totalSeconds).toBe(3600); // only the report's worklog counts
+      expect(epic.restrictedCount).toBe(0);
       expect(epic.worklogs).toHaveLength(1);
       expect(epic.worklogs[0]!.ticketKey).toBe('PROJ-100');
       expect(epic.worklogs[0]!.ticketSummary).toBe('Subtask A');
@@ -945,10 +947,10 @@ describe('fetchReportCycleWorklogsByEpic', () => {
     const result = await fetchReportCycleWorklogsByEpic(REPORT_ID, range);
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') {
-      expect(result.value).toHaveLength(1);
+      expect(result.value.epics).toHaveLength(1);
       // Hours are bucketed under the top-most resolvable parent, never dropped.
-      expect(result.value[0]!.epicKey).toBe('PROJ-20');
-      expect(result.value[0]!.totalSeconds).toBe(1800);
+      expect(result.value.epics[0]!.epicKey).toBe('PROJ-20');
+      expect(result.value.epics[0]!.totalSeconds).toBe(1800);
     }
   });
 
@@ -992,7 +994,7 @@ describe('fetchReportCycleWorklogsByEpic', () => {
     const result = await fetchReportCycleWorklogsByEpic(REPORT_ID, range);
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') {
-      expect(result.value).toHaveLength(0);
+      expect(result.value.epics).toHaveLength(0);
     }
   });
 
@@ -1000,7 +1002,10 @@ describe('fetchReportCycleWorklogsByEpic', () => {
     fetchMock.mockResolvedValueOnce(okJson({ issues: [] }));
     const result = await fetchReportCycleWorklogsByEpic(REPORT_ID, range);
     expect(result.kind).toBe('ok');
-    if (result.kind === 'ok') expect(result.value).toHaveLength(0);
+    if (result.kind === 'ok') {
+      expect(result.value.epics).toHaveLength(0);
+      expect(result.value.restrictedCount).toBe(0);
+    }
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -1047,5 +1052,177 @@ describe('fetchReportCycleWorklogsByEpic', () => {
       });
     const result = await fetchReportCycleWorklogsByEpic(REPORT_ID, range);
     expect(result.kind).toBe('not-found');
+  });
+
+  it('computes restrictedCount from total > returned worklogs.length (per-Epic + row sum)', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        okJson({
+          issues: [
+            {
+              id: '1',
+              key: 'PROJ-100',
+              fields: {
+                summary: 'Subtask A',
+                parent: { id: '1', key: 'PROJ-1', fields: { summary: 'Epic One' } },
+              },
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        okJson({
+          id: '1',
+          key: 'PROJ-1',
+          fields: { summary: 'Epic One', issuetype: { id: '6', name: 'Epic', subtask: false } },
+        }),
+      )
+      // total = 3, but only 1 visible worklog for this manager → 2 restricted.
+      .mockResolvedValueOnce(
+        okJson({
+          total: 3,
+          worklogs: [
+            {
+              id: 'wl-1',
+              timeSpentSeconds: 3600,
+              started: '2026-05-05T09:00:00.000+0000',
+              author: { accountId: REPORT_ID },
+            },
+          ],
+        }),
+      );
+
+    const result = await fetchReportCycleWorklogsByEpic(REPORT_ID, range);
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value.epics).toHaveLength(1);
+      expect(result.value.epics[0]!.restrictedCount).toBe(2);
+      expect(result.value.restrictedCount).toBe(2);
+    }
+  });
+
+  it('treats an undefined total as restrictedCount 0 (never guesses, never throws)', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        okJson({
+          issues: [
+            {
+              id: '1',
+              key: 'PROJ-100',
+              fields: {
+                summary: 'Subtask A',
+                parent: { id: '1', key: 'PROJ-1', fields: { summary: 'Epic One' } },
+              },
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        okJson({
+          id: '1',
+          key: 'PROJ-1',
+          fields: { summary: 'Epic One', issuetype: { id: '6', name: 'Epic', subtask: false } },
+        }),
+      )
+      // No `total` field → restrictedCount 0.
+      .mockResolvedValueOnce(
+        okJson({
+          worklogs: [
+            {
+              id: 'wl-1',
+              timeSpentSeconds: 3600,
+              started: '2026-05-05T09:00:00.000+0000',
+              author: { accountId: REPORT_ID },
+            },
+          ],
+        }),
+      );
+
+    const result = await fetchReportCycleWorklogsByEpic(REPORT_ID, range);
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value.epics[0]!.restrictedCount).toBe(0);
+      expect(result.value.restrictedCount).toBe(0);
+    }
+  });
+
+  it('sums restrictedCount across multiple subtasks into the row total', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        okJson({
+          issues: [
+            {
+              id: '1',
+              key: 'PROJ-100',
+              fields: {
+                summary: 'Subtask A',
+                parent: { id: '1', key: 'PROJ-1', fields: { summary: 'Epic One' } },
+              },
+            },
+            {
+              id: '2',
+              key: 'PROJ-200',
+              fields: {
+                summary: 'Subtask B',
+                parent: { id: '2', key: 'PROJ-2', fields: { summary: 'Epic Two' } },
+              },
+            },
+          ],
+        }),
+      )
+      // grandparent lookups: both parents are top-level Epics.
+      .mockResolvedValueOnce(
+        okJson({
+          id: '1',
+          key: 'PROJ-1',
+          fields: { summary: 'Epic One', issuetype: { id: '6', name: 'Epic', subtask: false } },
+        }),
+      )
+      // worklog for PROJ-100: total 2, 1 visible → 1 restricted.
+      .mockResolvedValueOnce(
+        okJson({
+          total: 2,
+          worklogs: [
+            {
+              id: 'wl-1',
+              timeSpentSeconds: 3600,
+              started: '2026-05-05T09:00:00.000+0000',
+              author: { accountId: REPORT_ID },
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        okJson({
+          id: '2',
+          key: 'PROJ-2',
+          fields: { summary: 'Epic Two', issuetype: { id: '6', name: 'Epic', subtask: false } },
+        }),
+      )
+      // worklog for PROJ-200: total 4, 1 visible → 3 restricted.
+      .mockResolvedValueOnce(
+        okJson({
+          total: 4,
+          worklogs: [
+            {
+              id: 'wl-2',
+              timeSpentSeconds: 3600,
+              started: '2026-05-06T09:00:00.000+0000',
+              author: { accountId: REPORT_ID },
+            },
+          ],
+        }),
+      );
+
+    const result = await fetchReportCycleWorklogsByEpic(REPORT_ID, range);
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value.restrictedCount).toBe(4);
+      const byKey = Object.fromEntries(
+        result.value.epics.map((e) => [e.epicKey, e.restrictedCount]),
+      );
+      expect(byKey['PROJ-1']).toBe(1);
+      expect(byKey['PROJ-2']).toBe(3);
+    }
   });
 });

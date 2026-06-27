@@ -2,13 +2,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { ReportEpicWorklogs } from '@/lib/jira-types';
+import type { ApprovalComment } from '@/lib/comment-schema';
+import type { ReportCycleWorklogs, ReportEpicWorklogs } from '@/lib/jira-types';
 import type { DirectReport } from '@/lib/storage/direct-reports';
 
 // --- Mocks for the data hooks the matrix composes -------------------------
 
 const reportsMock = vi.fn();
 const rowMock = vi.fn();
+const approvalsMock = vi.fn();
 
 vi.mock('@/hooks/useManagerReports', () => ({
   useManagerReports: () => reportsMock(),
@@ -16,6 +18,20 @@ vi.mock('@/hooks/useManagerReports', () => ({
 
 vi.mock('@/hooks/useManagerRow', () => ({
   useManagerRow: (accountId: string) => rowMock(accountId),
+}));
+
+vi.mock('@/hooks/useEpicApprovals', () => ({
+  useEpicApprovals: (epicKey: string) => approvalsMock(epicKey),
+}));
+
+// The matrix reads `targetHours` from settings in a `useEffect`. Mock the
+// storage boundary so the async `getValue()` resolves cleanly instead of
+// hitting the unmocked `@wxt-dev/storage` chrome API (which throws an
+// unhandled rejection after the component mounts).
+const targetHoursMock = vi.fn<() => Promise<number | null>>();
+
+vi.mock('@/lib/storage/settings', () => ({
+  targetHoursItem: { getValue: () => targetHoursMock() },
 }));
 
 const { ManagerMatrix } = await import('./ManagerMatrix');
@@ -35,6 +51,29 @@ function reportsOk(reports: DirectReport[]) {
   return { isPending: false, isError: false, data: reports };
 }
 
+/** Build a resolved-row wrapper from a per-Epic group list (restrictedCount summed). */
+function cycleData(epics: ReportEpicWorklogs[]): ReportCycleWorklogs {
+  return {
+    epics,
+    restrictedCount: epics.reduce((s, e) => s + e.restrictedCount, 0),
+  };
+}
+
+function epic(
+  epicKey: string,
+  totalSeconds: number,
+  over: Partial<ReportEpicWorklogs> = {},
+): ReportEpicWorklogs {
+  return {
+    epicKey,
+    epicSummary: `${epicKey} summary`,
+    totalSeconds,
+    restrictedCount: 0,
+    worklogs: [],
+    ...over,
+  };
+}
+
 function rowState(state: {
   status: 'pending' | 'error' | 'success';
   data?: ReportEpicWorklogs[];
@@ -43,10 +82,14 @@ function rowState(state: {
     isPending: state.status === 'pending',
     isError: state.status === 'error',
     isSuccess: state.status === 'success',
-    data: state.data,
+    data: state.data ? cycleData(state.data) : undefined,
     error: state.status === 'error' ? { kind: 'network' } : undefined,
     refetch: vi.fn(),
   };
+}
+
+function approvalsState(data: ApprovalComment[] = []) {
+  return { isPending: false, isError: false, isSuccess: true, data, error: undefined };
 }
 
 const REPORTS: DirectReport[] = [
@@ -58,6 +101,12 @@ describe('ManagerMatrix', () => {
   beforeEach(() => {
     reportsMock.mockReset();
     rowMock.mockReset();
+    approvalsMock.mockReset();
+    // Default: no approvals on any Epic (cells are worklog-only).
+    approvalsMock.mockReturnValue(approvalsState([]));
+    // Default per-workday target hours (settings boundary).
+    targetHoursMock.mockReset();
+    targetHoursMock.mockResolvedValue(8);
   });
 
   it('renders the cycle title from the cycle prop', () => {
@@ -71,11 +120,11 @@ describe('ManagerMatrix', () => {
     reportsMock.mockReturnValue(reportsOk(REPORTS));
     const bobRow = rowState({
       status: 'success',
-      data: [{ epicKey: 'PROJ-1', epicSummary: 'E1', totalSeconds: 64 * 3600, worklogs: [] }],
+      data: [epic('PROJ-1', 64 * 3600)],
     });
     const amyRow = rowState({
       status: 'success',
-      data: [{ epicKey: 'PROJ-2', epicSummary: 'E2', totalSeconds: 12.5 * 3600, worklogs: [] }],
+      data: [epic('PROJ-2', 12.5 * 3600)],
     });
     rowMock.mockImplementation((accountId: string) =>
       accountId === 'r-bob' ? bobRow : amyRow,
@@ -103,10 +152,7 @@ describe('ManagerMatrix', () => {
     rowMock.mockReturnValue(
       rowState({
         status: 'success',
-        data: [
-          { epicKey: 'PROJ-1', epicSummary: 'E1', totalSeconds: 64 * 3600, worklogs: [] },
-          { epicKey: 'PROJ-2', epicSummary: 'E2', totalSeconds: 0, worklogs: [] },
-        ],
+        data: [epic('PROJ-1', 64 * 3600), epic('PROJ-2', 0)],
       }),
     );
     renderMatrix();
@@ -160,31 +206,135 @@ describe('ManagerMatrix', () => {
     expect(screen.getByText(/no hours logged this cycle/i)).toBeTruthy();
   });
 
-  it('carries a per-cell aria-label "<Person>, <EpicKey>, <hours> hours"', () => {
+  it('carries a per-cell aria-label with the hours + status (on target above the boundary)', () => {
+    reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+    // 250h far exceeds 8h × ~22 May workdays → on-target.
+    rowMock.mockReturnValue(
+      rowState({ status: 'success', data: [epic('PROJ-1', 250 * 3600)] }),
+    );
+    renderMatrix();
+    expect(screen.getByLabelText('Bob, PROJ-1, 250 hours, on target')).toBeTruthy();
+  });
+
+  it('leaves the row-end action area empty (no Approve/Re-approve button — 5.6/5.7 seam)', () => {
+    reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+    rowMock.mockReturnValue(
+      rowState({ status: 'success', data: [epic('PROJ-1', 64 * 3600)] }),
+    );
+    renderMatrix();
+    expect(screen.queryByRole('button', { name: /approve|re-approve/i })).toBeNull();
+  });
+
+  it('renders an approved cell with a Check icon + approved aria-label when an approval exists and no later edit', () => {
     reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
     rowMock.mockReturnValue(
       rowState({
         status: 'success',
-        data: [{ epicKey: 'PROJ-1', epicSummary: 'E1', totalSeconds: 64 * 3600, worklogs: [] }],
+        data: [
+          epic('PROJ-1', 64 * 3600, {
+            worklogs: [
+              {
+                ticketKey: 'PROJ-1-1',
+                ticketSummary: 's',
+                seconds: 64 * 3600,
+                updated: '2026-05-10T00:00:00.000Z',
+              },
+            ],
+          }),
+        ],
+      }),
+    );
+    const approval: ApprovalComment = {
+      v: 1,
+      user: 'r-bob',
+      cycle: '2026-05',
+      by: 'mgr',
+      at: '2026-05-20T00:00:00.000Z',
+      restrictedCount: 0,
+      checksum: 'x',
+    };
+    approvalsMock.mockReturnValue(approvalsState([approval]));
+    const { container } = renderMatrix();
+    expect(screen.getByLabelText(/Bob, PROJ-1, 64 hours, approved/)).toBeTruthy();
+    // Approved is dark-green bg + white text.
+    expect(container.querySelector('.bg-state-success.text-white')).toBeTruthy();
+  });
+
+  it('renders a dirty cell (RefreshCw + needs re-approval) when a worklog changed after approval', () => {
+    reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+    rowMock.mockReturnValue(
+      rowState({
+        status: 'success',
+        data: [
+          epic('PROJ-1', 64 * 3600, {
+            worklogs: [
+              {
+                ticketKey: 'PROJ-1-1',
+                ticketSummary: 's',
+                seconds: 64 * 3600,
+                updated: '2026-05-25T00:00:00.000Z', // after the approval
+              },
+            ],
+          }),
+        ],
+      }),
+    );
+    const approval: ApprovalComment = {
+      v: 1,
+      user: 'r-bob',
+      cycle: '2026-05',
+      by: 'mgr',
+      at: '2026-05-20T00:00:00.000Z',
+      restrictedCount: 0,
+      checksum: 'x',
+    };
+    approvalsMock.mockReturnValue(approvalsState([approval]));
+    const { container } = renderMatrix();
+    expect(screen.getByLabelText(/needs re-approval/)).toBeTruthy();
+    expect(screen.getByText('needs re-approval')).toBeTruthy();
+    expect(container.querySelector('.bg-state-warning-subtle')).toBeTruthy();
+  });
+
+  it('renders a below-target row with AlertCircle + "below target"', () => {
+    reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+    // 10h is far below 8h × ~22 May workdays → gap.
+    rowMock.mockReturnValue(
+      rowState({ status: 'success', data: [epic('PROJ-1', 10 * 3600)] }),
+    );
+    const { container } = renderMatrix();
+    expect(screen.getByText('below target')).toBeTruthy();
+    expect(screen.getByLabelText(/below target/)).toBeTruthy();
+    expect(container.querySelector('.bg-state-danger-subtle')).toBeTruthy();
+  });
+
+  it('keeps an empty cell neutral with the "no hours logged" label (never red)', () => {
+    reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+    rowMock.mockReturnValue(
+      rowState({
+        status: 'success',
+        data: [epic('PROJ-1', 10 * 3600), epic('PROJ-2', 0)],
       }),
     );
     renderMatrix();
-    expect(screen.getByLabelText('Bob, PROJ-1, 64 hours')).toBeTruthy();
+    // PROJ-2 logged nothing → neutral "no hours logged".
+    expect(screen.getByLabelText('Bob, PROJ-2, no hours logged')).toBeTruthy();
   });
 
-  it('has NO status colors, status icons, or approve buttons (5.4–5.8 scope guard)', () => {
+  it('shows a Lock overlay on a restricted cell AND the row chip "⚠ N restricted"', () => {
     reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
     rowMock.mockReturnValue(
       rowState({
         status: 'success',
-        data: [{ epicKey: 'PROJ-1', epicSummary: 'E1', totalSeconds: 64 * 3600, worklogs: [] }],
+        data: [epic('PROJ-1', 64 * 3600, { restrictedCount: 2 })],
       }),
     );
-    const { container } = renderMatrix();
-    expect(screen.queryByRole('button', { name: /approve/i })).toBeNull();
-    // No success/danger status background classes leaked from the week grid.
-    expect(container.querySelector('.bg-state-success-subtle')).toBeNull();
-    expect(container.querySelector('.bg-state-danger-subtle')).toBeNull();
+    renderMatrix();
+    // Cell aria-label appends ", restricted visibility" to the cell label.
+    expect(
+      screen.getByLabelText('Bob, PROJ-1, 64 hours, below target, restricted visibility'),
+    ).toBeTruthy();
+    // Row chip beside the name.
+    expect(screen.getByText('⚠ 2 restricted')).toBeTruthy();
   });
 
   it('enables a horizontal-scroll wrapper when more than 4 Epic columns exist', async () => {
@@ -192,12 +342,7 @@ describe('ManagerMatrix', () => {
     rowMock.mockReturnValue(
       rowState({
         status: 'success',
-        data: ['A-1', 'B-2', 'C-3', 'D-4', 'E-5'].map((k) => ({
-          epicKey: k,
-          epicSummary: k,
-          totalSeconds: 3600,
-          worklogs: [],
-        })),
+        data: ['A-1', 'B-2', 'C-3', 'D-4', 'E-5'].map((k) => epic(k, 3600)),
       }),
     );
     const { container } = renderMatrix();
