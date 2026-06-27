@@ -1,3 +1,8 @@
+## Deferred from: code review of 5-8-non-canonical-manager-read-only-mode (2026-06-27)
+
+- Canonical-manager fetch fires for empty (zero-hours) rows whose Approve is already disabled by `isEmpty` — N extra `GET /rest/api/3/user?expand=manager` calls per popup open with no UI effect. Spec Task 3 prescribes the unconditional `useCanApprove(report.accountId, managerAccountId)` call; row emptiness is only known after the per-row epics query resolves. Pure efficiency; no correctness impact; out of scope for this story. [components/manager/ManagerMatrix.tsx:478]
+- Transient canonicality lookup error renders the definitive non-canonical tooltip (with the "their manager" fallback) to what may be the real canonical manager, rather than a "couldn't verify" message. Behavior (disabled) is safe and spec-mandated fail-closed (AC5); distinguishing the error case from a true permission denial is a product/UX copy decision and a spec deviation. Revisit if users report confusion. [components/manager/ManagerMatrix.tsx:634]
+
 ## Deferred from: code review of 5-2-modetoggle-worker-manager-tab-in-popup (2026-06-27)
 
 - `isCachedShape` validates only `Array.isArray(reports)`, not element shape, so a malformed/legacy cache entry could pass through junk `DirectReport` objects. No impact today (only writer is the typed `setCachedDirectReports`; `hasDirectReports` reads only `.length`). Add element-shape validation when Story 5.3's matrix consumes `accountId`/`displayName`. [lib/storage/direct-reports.ts:33]

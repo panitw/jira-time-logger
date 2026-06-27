@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApproveButton } from './ApproveButton';
 import { DrillDownPanel } from './DrillDownPanel';
 import { Button } from '@/components/ui/button';
+import { useCanApprove } from '@/hooks/useCanApprove';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useEpicApprovals } from '@/hooks/useEpicApprovals';
 import { useManagerReports } from '@/hooks/useManagerReports';
@@ -469,6 +470,13 @@ function ManagerMatrixRow({
 }: RowProps): React.ReactElement {
   const query = useManagerRow(report.accountId, cycle, range);
 
+  // FR36 (Story 5.8): is the current user the report's CANONICAL manager? An
+  // independent per-report verification — the row set being canonical-only today
+  // is not relied upon, so Approve is correctly gated read-only the moment a
+  // non-canonical report surfaces (broadened row set, or a mid-session `manager`
+  // change). Fails closed to non-canonical on any error / absent manager.
+  const canApproveQuery = useCanApprove(report.accountId, managerAccountId);
+
   // Lift resolved per-row data to the parent so it can derive the union columns.
   useEffect(() => {
     if (query.data) onResolved(report.accountId, query.data);
@@ -614,6 +622,27 @@ function ManagerMatrixRow({
   // The row-end Approve action (Story 5.6). Disabled while the manager accountId
   // is still resolving (no `by` yet) — surfaced as a tooltip, never mystery-
   // disabled. The empty-row disable is handled inside ApproveButton.
+  //
+  // Canonicality gate (Story 5.8, AC8): OR the non-canonical reason into the
+  // existing precedence chain — unresolved current-user (`'Resolving your
+  // account…'`) wins so a transient load is never mislabeled a permission denial;
+  // then, while canonicality is still loading, fail closed to that same resolving
+  // copy (never enable Approve for a yet-unproven row — avoids a flash of an
+  // enabled button for a non-canonical user); then the non-canonical tooltip;
+  // else enabled (undefined). ApproveButton owns the empty-row disable.
+  const isCurrentUserUnresolved =
+    managerAccountId === undefined || managerAccountId === '';
+  const canonicalManagerName = canApproveQuery.data?.canonicalManagerName ?? null;
+  const nonCanonicalReason = `Only ${report.displayName}'s canonical manager (${
+    canonicalManagerName ?? 'their manager'
+  }) can approve their cycle. You can read but not approve here.`;
+  const approveDisabledReason: string | undefined = isCurrentUserUnresolved
+    ? 'Resolving your account…'
+    : !canApproveQuery.isSuccess
+      ? 'Resolving your account…'
+      : canApproveQuery.data.isCanonical
+        ? undefined
+        : nonCanonicalReason;
   const approveCell = (
     <td className="px-2 py-1 text-right align-middle">
       <ApproveButton
@@ -627,11 +656,7 @@ function ManagerMatrixRow({
         restrictedCount={restrictedCount}
         mode={anyDirty ? 'reapprove' : 'approve'}
         priorApprovalAt={priorApprovalAt}
-        disabledReason={
-          managerAccountId === undefined || managerAccountId === ''
-            ? 'Resolving your account…'
-            : undefined
-        }
+        disabledReason={approveDisabledReason}
       />
     </td>
   );

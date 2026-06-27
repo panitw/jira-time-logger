@@ -1,5 +1,5 @@
 # generated: 2026-05-11 22:45:02
-# last_updated: 2026-06-27 (code-review: 5-7 → done)
+# last_updated: 2026-06-27 (Story 5-8 → done; code review passed)
 # project: jira-time-logger
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-11 22:45:02
-last_updated: 2026-06-27 (code-review: 5-7 → done)
+last_updated: 2026-06-27 (Story 5-8 created → ready-for-dev; completes Epic 5)
 project: jira-time-logger
 # 2026-06-21: Story 2-7 created (ready-for-dev) — completes Epic 2
 # 2026-06-21: Story 3-1 created (ready-for-dev); Epic 3 → in-progress
@@ -51,6 +51,7 @@ project: jira-time-logger
 # 2026-06-27: Story 5-4 created (ready-for-dev)
 # 2026-06-27: Story 5-5 created (ready-for-dev)
 # 2026-06-27: Story 5-7 created (ready-for-dev)
+# 2026-06-27: Story 5-8 created (ready-for-dev) — completes Epic 5
 project_key: NOKEY
 tracking_system: file-system
 story_location: "{project-root}/_bmad-output/implementation-artifacts"
@@ -103,7 +104,7 @@ development_status:
   5-5-drill-down-panel-per-ticket-evidence-with-visibility-warning: done
   5-6-approve-cycle-per-epic-fan-out-posting-of-versioned-comments: done
   5-7-re-approve-dirty-cycles: done
-  5-8-non-canonical-manager-read-only-mode: backlog
+  5-8-non-canonical-manager-read-only-mode: done
   epic-5-retrospective: optional
 
   # Epic 6: Release Polish — Accessibility Audit, Edge Validation, Distribution

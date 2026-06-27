@@ -12,6 +12,7 @@ const reportsMock = vi.fn();
 const rowMock = vi.fn();
 const approvalsMock = vi.fn();
 const currentUserMock = vi.fn();
+const canApproveMock = vi.fn();
 
 vi.mock('@/hooks/useManagerReports', () => ({
   useManagerReports: () => reportsMock(),
@@ -20,6 +21,25 @@ vi.mock('@/hooks/useManagerReports', () => ({
 vi.mock('@/hooks/useCurrentUser', () => ({
   useCurrentUser: () => currentUserMock(),
 }));
+
+// FR36 canonicality gate (Story 5.8). Per-report mock keyed on accountId so a
+// mixed canonical / non-canonical matrix can be exercised; default canonical.
+vi.mock('@/hooks/useCanApprove', () => ({
+  useCanApprove: (accountId: string) => canApproveMock(accountId),
+}));
+
+/** A resolved canonicality query result (default: canonical, current user IS the manager). */
+function canApproveState(
+  isCanonical: boolean,
+  canonicalManagerName: string | null = isCanonical ? 'Me' : 'Other Manager',
+) {
+  return {
+    isSuccess: true,
+    isPending: false,
+    isError: false,
+    data: { isCanonical, canonicalManagerName },
+  };
+}
 
 // ApproveButton talks to the SW via sendRequest — mock the boundary so the row's
 // Approve button mounts without touching chrome.runtime.
@@ -122,6 +142,10 @@ describe('ManagerMatrix', () => {
     // Default: the current manager's accountId resolved.
     currentUserMock.mockReset();
     currentUserMock.mockReturnValue({ isPending: false, isError: false, data: 'mgr-1' });
+    // Default: the current user IS the canonical manager of every row (Story 5.8) —
+    // preserves the existing enabled-Approve behavior of the 5.6/5.7 tests.
+    canApproveMock.mockReset();
+    canApproveMock.mockReturnValue(canApproveState(true));
     sendRequestMock.mockReset();
   });
 
@@ -241,6 +265,93 @@ describe('ManagerMatrix', () => {
     const approve = screen.getByRole('button', { name: 'Approve Bob' });
     expect(approve).toBeTruthy();
     expect((approve as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  // --- Story 5.8: non-canonical manager read-only mode (FR36, AC1/AC2/AC5/AC8) ---
+
+  it('disables Approve with the exact non-canonical tooltip when the user is NOT the canonical manager (AC1)', () => {
+    reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+    rowMock.mockReturnValue(
+      rowState({ status: 'success', data: [epic('PROJ-1', 64 * 3600)] }),
+    );
+    canApproveMock.mockReturnValue(canApproveState(false, 'Carol Boss'));
+    renderMatrix();
+    const approve = screen.getByRole('button', { name: 'Approve Bob' }) as HTMLButtonElement;
+    expect(approve.disabled).toBe(true);
+    expect(approve.title).toBe(
+      "Only Bob's canonical manager (Carol Boss) can approve their cycle. You can read but not approve here.",
+    );
+  });
+
+  it('uses the "their manager" fallback in the tooltip when the canonical name is unprovable (fail-closed, AC5)', () => {
+    reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+    rowMock.mockReturnValue(
+      rowState({ status: 'success', data: [epic('PROJ-1', 64 * 3600)] }),
+    );
+    canApproveMock.mockReturnValue(canApproveState(false, null));
+    renderMatrix();
+    const approve = screen.getByRole('button', { name: 'Approve Bob' }) as HTMLButtonElement;
+    expect(approve.disabled).toBe(true);
+    expect(approve.title).toBe(
+      "Only Bob's canonical manager (their manager) can approve their cycle. You can read but not approve here.",
+    );
+  });
+
+  it('keeps Approve enabled for a canonical row alongside a disabled non-canonical row (mixed matrix, AC2)', () => {
+    reportsMock.mockReturnValue(
+      reportsOk([
+        { accountId: 'r-bob', displayName: 'Bob' },
+        { accountId: 'r-amy', displayName: 'Amy' },
+      ]),
+    );
+    rowMock.mockReturnValue(
+      rowState({ status: 'success', data: [epic('PROJ-1', 64 * 3600)] }),
+    );
+    // Bob: canonical (enabled). Amy: non-canonical (disabled + tooltip).
+    canApproveMock.mockImplementation((accountId: string) =>
+      accountId === 'r-bob' ? canApproveState(true) : canApproveState(false, 'Dave Lead'),
+    );
+    renderMatrix();
+    expect((screen.getByRole('button', { name: 'Approve Bob' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+    const amy = screen.getByRole('button', { name: 'Approve Amy' }) as HTMLButtonElement;
+    expect(amy.disabled).toBe(true);
+    expect(amy.title).toBe(
+      "Only Amy's canonical manager (Dave Lead) can approve their cycle. You can read but not approve here.",
+    );
+  });
+
+  it('disables Approve while canonicality is still loading (no enabled flash before it is proven)', () => {
+    reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+    rowMock.mockReturnValue(
+      rowState({ status: 'success', data: [epic('PROJ-1', 64 * 3600)] }),
+    );
+    canApproveMock.mockReturnValue({
+      isSuccess: false,
+      isPending: true,
+      isError: false,
+      data: undefined,
+    });
+    renderMatrix();
+    const approve = screen.getByRole('button', { name: 'Approve Bob' }) as HTMLButtonElement;
+    expect(approve.disabled).toBe(true);
+    expect(approve.title).toBe('Resolving your account…');
+  });
+
+  it("keeps 'Resolving your account…' precedence when the current-user accountId is unresolved (AC8)", () => {
+    reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+    rowMock.mockReturnValue(
+      rowState({ status: 'success', data: [epic('PROJ-1', 64 * 3600)] }),
+    );
+    // Current user still resolving — even if canonicality somehow resolved
+    // non-canonical, the resolving copy must win (not a permission denial).
+    currentUserMock.mockReturnValue({ isPending: true, isError: false, data: undefined });
+    canApproveMock.mockReturnValue(canApproveState(false, 'Someone'));
+    renderMatrix();
+    const approve = screen.getByRole('button', { name: 'Approve Bob' }) as HTMLButtonElement;
+    expect(approve.disabled).toBe(true);
+    expect(approve.title).toBe('Resolving your account…');
   });
 
   it('disables the Approve button for an empty row (no touched Epics to fan out)', () => {
