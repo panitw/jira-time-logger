@@ -68,7 +68,7 @@ development_status:
   epic-2-retrospective: optional
 
   # Epic 3: Daily Awareness — Badge, Reminder, Banner
-  epic-3: in-progress
+  epic-3: done
   3-1-toolbar-badge-counter: done
   3-2-daily-push-notification: done
   3-3-inline-jira-banner-with-daily-dismiss-contextual-quick-log: done
