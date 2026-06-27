@@ -96,7 +96,7 @@ development_status:
   epic-4-retrospective: optional
 
   # Epic 5: Manager Approval & Approval Protocol
-  epic-5: in-progress
+  epic-5: done
   5-1-approval-comment-schema-checksum-parser: done
   5-2-modetoggle-worker-manager-tab-in-popup: done
   5-3-manager-matrix-person-epic-grid-with-progressive-per-row-render: done
