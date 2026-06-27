@@ -1,18 +1,46 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import * as React from 'react';
+import { describe, it, expect, vi } from 'vitest';
 
-import { ManagerView } from './ManagerView';
+// ManagerView now renders the real ManagerMatrix; mock the data hooks so the
+// component tree mounts without touching the network.
+vi.mock('@/hooks/useManagerReports', () => ({
+  useManagerReports: () => ({ isPending: false, isError: false, data: [] }),
+}));
+vi.mock('@/hooks/useManagerRow', () => ({
+  useManagerRow: () => ({
+    isPending: true,
+    isError: false,
+    isSuccess: false,
+    data: undefined,
+    refetch: vi.fn(),
+  }),
+}));
 
-describe('ManagerView (placeholder)', () => {
-  it('renders the heading and a body line', () => {
-    render(<ManagerView cycle="2026-06" />);
-    expect(screen.getByText('Manager')).toBeTruthy();
+const { ManagerView } = await import('./ManagerView');
+
+function renderView(props: React.ComponentProps<typeof ManagerView>) {
+  const client = new QueryClient();
+  return render(
+    <QueryClientProvider client={client}>
+      <ManagerView {...props} />
+    </QueryClientProvider>,
+  );
+}
+
+describe('ManagerView', () => {
+  it('renders the matrix (cycle title) instead of the old placeholder', () => {
+    renderView({ cycle: '2026-06', onSwitchToToday: () => {} });
+    expect(screen.getByText(/June 2026/)).toBeTruthy();
     expect(
-      screen.getByText('The approval matrix for your reports will appear here.'),
-    ).toBeTruthy();
+      screen.queryByText('The approval matrix for your reports will appear here.'),
+    ).toBeNull();
   });
 
   it('accepts the cycle prop without throwing', () => {
-    expect(() => render(<ManagerView cycle="2026-06-15" />)).not.toThrow();
+    expect(() =>
+      renderView({ cycle: '2026-06-15', onSwitchToToday: () => {} }),
+    ).not.toThrow();
   });
 });

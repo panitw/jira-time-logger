@@ -47,6 +47,7 @@ const {
   deleteWorklog,
   fetchCurrentUserWeekWorklogs,
   fetchCurrentUserWeekWorklogsByIssue,
+  fetchReportCycleWorklogsByEpic,
 } = await import('./jira-client');
 const { z } = await import('zod');
 
@@ -800,5 +801,251 @@ describe('fetchCurrentUserWeekWorklogsByIssue', () => {
     const result = await fetchCurrentUserWeekWorklogsByIssue(range);
     expect(result.kind).toBe('forbidden');
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('fetchReportCycleWorklogsByEpic', () => {
+  const REPORT_ID = 'acct-report';
+  const range = {
+    start: new Date(2026, 4, 1, 0, 0, 0, 0), // Fri May 1
+    end: new Date(2026, 4, 31, 23, 59, 59, 999), // Sun May 31
+  };
+
+  function okJson(body: unknown) {
+    return { ok: true, status: 200, headers: { get: () => null }, json: async () => body };
+  }
+
+  beforeEach(async () => {
+    fetchMock.mockReset();
+    await resetAuthBundle();
+  });
+
+  it('scopes the JQL to the report (worklogAuthor = "<accountId>", not currentUser())', async () => {
+    fetchMock
+      .mockResolvedValueOnce(okJson({ issues: [] })); // search returns nothing → no further calls
+
+    const result = await fetchReportCycleWorklogsByEpic(REPORT_ID, range);
+    expect(result.kind).toBe('ok');
+    const searchUrl = String(fetchMock.mock.calls[0]![0]);
+    expect(searchUrl).toContain(encodeURIComponent(`worklogAuthor = "${REPORT_ID}"`));
+    expect(searchUrl).not.toContain(encodeURIComponent('currentUser()'));
+  });
+
+  it('groups the report worklogs by parent Epic with key/summary + per-ticket records preserved', async () => {
+    fetchMock
+      // search: one subtask under a Story; the search `parent` is the Story (PROJ-10)
+      .mockResolvedValueOnce(
+        okJson({
+          issues: [
+            {
+              id: '1',
+              key: 'PROJ-100',
+              fields: {
+                summary: 'Subtask A',
+                issuetype: { id: '10', name: 'Sub-task', subtask: true },
+                parent: { id: '10', key: 'PROJ-10', fields: { summary: 'Story A' } },
+              },
+            },
+          ],
+        }),
+      )
+      // grandparent lookup for PROJ-10 → its parent is the Epic PROJ-1
+      .mockResolvedValueOnce(
+        okJson({
+          id: '10',
+          key: 'PROJ-10',
+          fields: {
+            summary: 'Story A',
+            issuetype: { id: '7', name: 'Story', subtask: false },
+            parent: { id: '1', key: 'PROJ-1', fields: { summary: 'Epic One' } },
+          },
+        }),
+      )
+      // worklog list for PROJ-100
+      .mockResolvedValueOnce(
+        okJson({
+          worklogs: [
+            {
+              id: 'wl-1',
+              timeSpentSeconds: 3600,
+              started: '2026-05-05T09:00:00.000+0000',
+              updated: '2026-05-05T10:00:00.000+0000',
+              author: { accountId: REPORT_ID },
+            },
+            {
+              id: 'wl-2',
+              timeSpentSeconds: 7200,
+              started: '2026-05-06T09:00:00.000+0000',
+              author: { accountId: 'someone-else' },
+            },
+          ],
+        }),
+      );
+
+    const result = await fetchReportCycleWorklogsByEpic(REPORT_ID, range);
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value).toHaveLength(1);
+      const epic = result.value[0]!;
+      expect(epic.epicKey).toBe('PROJ-1');
+      expect(epic.epicSummary).toBe('Epic One');
+      expect(epic.totalSeconds).toBe(3600); // only the report's worklog counts
+      expect(epic.worklogs).toHaveLength(1);
+      expect(epic.worklogs[0]!.ticketKey).toBe('PROJ-100');
+      expect(epic.worklogs[0]!.ticketSummary).toBe('Subtask A');
+      expect(epic.worklogs[0]!.seconds).toBe(3600);
+      expect(epic.worklogs[0]!.updated).toBe('2026-05-05T10:00:00.000+0000');
+      expect(epic.worklogs[0]!.started).toBe('2026-05-05T09:00:00.000+0000');
+    }
+  });
+
+  it('buckets subtasks with no resolvable Epic under their top-most resolvable parent', async () => {
+    fetchMock
+      // search: subtask whose parent (PROJ-20) has no further parent (parent IS the top)
+      .mockResolvedValueOnce(
+        okJson({
+          issues: [
+            {
+              id: '2',
+              key: 'PROJ-200',
+              fields: {
+                summary: 'Orphan subtask',
+                issuetype: { id: '10', name: 'Sub-task', subtask: true },
+                parent: { id: '20', key: 'PROJ-20', fields: { summary: 'Lonely Story' } },
+              },
+            },
+          ],
+        }),
+      )
+      // grandparent lookup for PROJ-20 → no parent (it is its own top)
+      .mockResolvedValueOnce(
+        okJson({
+          id: '20',
+          key: 'PROJ-20',
+          fields: {
+            summary: 'Lonely Story',
+            issuetype: { id: '7', name: 'Story', subtask: false },
+          },
+        }),
+      )
+      // worklog list for PROJ-200
+      .mockResolvedValueOnce(
+        okJson({
+          worklogs: [
+            {
+              id: 'wl-3',
+              timeSpentSeconds: 1800,
+              started: '2026-05-10T09:00:00.000+0000',
+              author: { accountId: REPORT_ID },
+            },
+          ],
+        }),
+      );
+
+    const result = await fetchReportCycleWorklogsByEpic(REPORT_ID, range);
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value).toHaveLength(1);
+      // Hours are bucketed under the top-most resolvable parent, never dropped.
+      expect(result.value[0]!.epicKey).toBe('PROJ-20');
+      expect(result.value[0]!.totalSeconds).toBe(1800);
+    }
+  });
+
+  it('omits worklogs outside the cycle window', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        okJson({
+          issues: [
+            {
+              id: '1',
+              key: 'PROJ-100',
+              fields: {
+                summary: 'Subtask A',
+                parent: { id: '1', key: 'PROJ-1', fields: { summary: 'Epic One' } },
+              },
+            },
+          ],
+        }),
+      )
+      // grandparent lookup PROJ-1 → it is an Epic with no parent
+      .mockResolvedValueOnce(
+        okJson({
+          id: '1',
+          key: 'PROJ-1',
+          fields: { summary: 'Epic One', issuetype: { id: '6', name: 'Epic', subtask: false } },
+        }),
+      )
+      .mockResolvedValueOnce(
+        okJson({
+          worklogs: [
+            {
+              id: 'wl-old',
+              timeSpentSeconds: 3600,
+              started: '2026-04-20T09:00:00.000+0000', // prior month
+              author: { accountId: REPORT_ID },
+            },
+          ],
+        }),
+      );
+
+    const result = await fetchReportCycleWorklogsByEpic(REPORT_ID, range);
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value).toHaveLength(0);
+    }
+  });
+
+  it('returns empty when the report logged on nothing', async () => {
+    fetchMock.mockResolvedValueOnce(okJson({ issues: [] }));
+    const result = await fetchReportCycleWorklogsByEpic(REPORT_ID, range);
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') expect(result.value).toHaveLength(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('propagates the JiraError when the search fails', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      headers: { get: () => null },
+      json: async () => ({}),
+    });
+    const result = await fetchReportCycleWorklogsByEpic(REPORT_ID, range);
+    expect(result.kind).toBe('forbidden');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('propagates the JiraError when a worklog fetch fails', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        okJson({
+          issues: [
+            {
+              id: '1',
+              key: 'PROJ-100',
+              fields: {
+                summary: 'Subtask A',
+                parent: { id: '1', key: 'PROJ-1', fields: { summary: 'Epic One' } },
+              },
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        okJson({
+          id: '1',
+          key: 'PROJ-1',
+          fields: { summary: 'Epic One', issuetype: { id: '6', name: 'Epic', subtask: false } },
+        }),
+      )
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        headers: { get: () => null },
+        json: async () => ({}),
+      });
+    const result = await fetchReportCycleWorklogsByEpic(REPORT_ID, range);
+    expect(result.kind).toBe('not-found');
   });
 });

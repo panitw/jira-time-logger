@@ -15,8 +15,11 @@ import {
   JiraSearchSchema,
   JiraWorklogListSchema,
   JiraWorklogSchema,
+  JiraMatrixSearchSchema,
+  JiraIssueLookupSchema,
   type JiraWorklog,
   type WeekIssueWorklogs,
+  type ReportEpicWorklogs,
 } from '@/lib/jira-types';
 import { log } from '@/lib/log';
 import { refreshTokens } from '@/lib/oauth/refresh';
@@ -558,4 +561,155 @@ export async function fetchCurrentUserWeekWorklogsByIssue(
   }
 
   return ok(collected);
+}
+
+/** One worklog the matrix retains, flattened to the matrix data contract. */
+type MatrixWorklogRecord = ReportEpicWorklogs['worklogs'][number];
+
+/**
+ * Resolve the Epic column a subtask rolls up to (Story 5.3).
+ *
+ * The report-scoped search returns the subtask's *direct* `parent` (usually the
+ * Story/Task), not its Epic. We resolve the Epic with at most one extra lookup
+ * per distinct parent key — `getEpic(parentKey)` returns the parent's own
+ * `parent` (the Epic). If the parent has no further parent (it IS the top of
+ * the chain), the hours bucket under that top-most resolvable key rather than
+ * being dropped (audit integrity). Lookups are memoized in `cache` so a column
+ * shared by many subtasks costs one request.
+ *
+ * Subtasks missing a `parent` entirely fall back to a synthetic bucket keyed on
+ * their own key — hours are never lost.
+ */
+async function resolveEpicForParent(
+  parentKey: string,
+  parentSummary: string,
+  cache: Map<string, { epicKey: string; epicSummary: string }>,
+): Promise<Result<{ epicKey: string; epicSummary: string }, JiraError>> {
+  const cached = cache.get(parentKey);
+  if (cached) return ok(cached);
+
+  const lookup = await jiraGet(
+    `rest/api/3/issue/${encodeURIComponent(parentKey)}?fields=key,summary,parent,issuetype`,
+    JiraIssueLookupSchema,
+  );
+  if (lookup.kind !== 'ok') {
+    return lookup;
+  }
+
+  const grandparent = lookup.value.fields.parent;
+  const resolved = grandparent
+    ? {
+        epicKey: grandparent.key,
+        epicSummary: grandparent.fields?.summary ?? grandparent.key,
+      }
+    : { epicKey: parentKey, epicSummary: parentSummary };
+
+  cache.set(parentKey, resolved);
+  return ok(resolved);
+}
+
+/**
+ * Fetch one report's worklogs in the cycle, grouped by owning Epic (Story 5.3).
+ *
+ * Sibling of `fetchCurrentUserWeekWorklogsByIssue` — do NOT collapse the two.
+ * Differences: (a) the JQL is scoped to the *report* via
+ * `worklogAuthor = "<accountId>"` (NOT `currentUser()`); (b) retained worklogs
+ * are filtered to `author.accountId === reportAccountId`; (c) each worklogged
+ * subtask is rolled up to its parent **Epic** (the matrix column), preserving
+ * the per-ticket records (with `updated`) so Stories 5.4/5.5 can consume them.
+ *
+ * All HTTP routes through `jiraGet` (scheduler + auth + 401-refresh + Zod +
+ * Result) — never raw `fetch`. Returns one `ReportEpicWorklogs` per Epic the
+ * report touched in the cycle. Empty when the report logged nothing.
+ */
+export async function fetchReportCycleWorklogsByEpic(
+  reportAccountId: string,
+  range: CycleRange,
+): Promise<Result<ReportEpicWorklogs[], JiraError>> {
+  const startDate = toJqlDate(range.start);
+  const endDate = toJqlDate(range.end);
+  const jql = `worklogAuthor = "${reportAccountId}" AND worklogDate >= "${startDate}" AND worklogDate <= "${endDate}"`;
+  // `parent`/`issuetype` are requested so each subtask can roll up to its Epic.
+  const searchPath = `rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&maxResults=100&fields=${encodeURIComponent('key,summary,parent,issuetype')}`;
+
+  const searchResult = await jiraGet(searchPath, JiraMatrixSearchSchema);
+  if (searchResult.kind !== 'ok') {
+    return searchResult;
+  }
+
+  const startMs = range.start.getTime();
+  const endMs = range.end.getTime();
+  const startedAfter = startMs - 1;
+  const startedBefore = endMs + 1;
+
+  // Epic-resolution cache shared across all subtasks in this fetch.
+  const epicCache = new Map<string, { epicKey: string; epicSummary: string }>();
+  // epicKey → accumulating group.
+  const groups = new Map<string, ReportEpicWorklogs>();
+
+  for (const issue of searchResult.value.issues) {
+    // Resolve the Epic column for this subtask. A subtask with no parent at all
+    // buckets under its own key so its hours are never dropped.
+    let epic: { epicKey: string; epicSummary: string };
+    const parent = issue.fields.parent;
+    if (parent) {
+      const resolved = await resolveEpicForParent(
+        parent.key,
+        parent.fields?.summary ?? parent.key,
+        epicCache,
+      );
+      if (resolved.kind !== 'ok') {
+        return resolved;
+      }
+      epic = resolved.value;
+    } else {
+      epic = { epicKey: issue.key, epicSummary: issue.fields.summary };
+    }
+
+    const worklogResult = await jiraGet(
+      `rest/api/3/issue/${encodeURIComponent(issue.key)}/worklog?startedAfter=${startedAfter}&startedBefore=${startedBefore}`,
+      JiraWorklogListSchema,
+    );
+    if (worklogResult.kind !== 'ok') {
+      return worklogResult;
+    }
+
+    const records: MatrixWorklogRecord[] = [];
+    let issueSeconds = 0;
+    for (const worklog of worklogResult.value.worklogs) {
+      if (worklog.author?.accountId !== reportAccountId) continue;
+      if (worklog.started) {
+        const startedMs = new Date(worklog.started).getTime();
+        if (!Number.isFinite(startedMs) || startedMs < startMs || startedMs > endMs) {
+          continue;
+        }
+      }
+      const seconds = worklog.timeSpentSeconds;
+      issueSeconds += seconds;
+      records.push({
+        ticketKey: issue.key,
+        ticketSummary: issue.fields.summary,
+        seconds,
+        ...(worklog.started ? { started: worklog.started } : {}),
+        ...(worklog.updated ? { updated: worklog.updated } : {}),
+      });
+    }
+
+    if (records.length === 0) continue;
+
+    const existing = groups.get(epic.epicKey);
+    if (existing) {
+      existing.totalSeconds += issueSeconds;
+      existing.worklogs.push(...records);
+    } else {
+      groups.set(epic.epicKey, {
+        epicKey: epic.epicKey,
+        epicSummary: epic.epicSummary,
+        totalSeconds: issueSeconds,
+        worklogs: records,
+      });
+    }
+  }
+
+  return ok(Array.from(groups.values()));
 }

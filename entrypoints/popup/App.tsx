@@ -203,6 +203,7 @@ export function App(): React.ReactElement {
           <TabsContent value={STRINGS.tabValueManager}>
             <ManagerView
               cycle={view.kind === 'manager-matrix' ? view.cycle : getCurrentCycleId(approvalCycle)}
+              onSwitchToToday={() => handleTabChange(STRINGS.tabValueToday)}
             />
           </TabsContent>
         )}

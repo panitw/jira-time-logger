@@ -190,3 +190,76 @@ export type JiraHierarchyIssue = z.infer<typeof JiraHierarchyIssueSchema>;
 export const JiraHierarchySearchSchema = z.object({
   issues: z.array(JiraHierarchyIssueSchema),
 });
+
+// ---- Manager matrix (Story 5.3): report-scoped, Epic-grouped worklogs ----
+
+/**
+ * A single issue from the report-scoped worklog search (Story 5.3). Carries the
+ * direct `parent` (typically the Story/Task one level above a subtask) so the
+ * matrix can roll a logged subtask up to its owning Epic. Tolerant of extra
+ * fields. The `parent` nested `fields` is optional because Jira occasionally
+ * omits it on the search projection.
+ */
+export const JiraMatrixIssueSchema = z.object({
+  id: z.string(),
+  key: z.string(),
+  fields: z.object({
+    summary: z.string(),
+    issuetype: z
+      .object({
+        id: z.string().optional(),
+        name: z.string().optional(),
+        subtask: z.boolean().optional(),
+      })
+      .optional(),
+    parent: z
+      .object({
+        id: z.string().optional(),
+        key: z.string(),
+        // `summary` is optional even when `fields` is present: Jira can return a
+        // parent whose summary is redacted/restricted. Requiring it would turn
+        // one restricted parent into a whole-row "Couldn't load". The rollup
+        // falls back to the parent key when summary is absent.
+        fields: z.object({ summary: z.string().optional() }).optional(),
+      })
+      .optional(),
+  }),
+});
+
+export type JiraMatrixIssue = z.infer<typeof JiraMatrixIssueSchema>;
+
+export const JiraMatrixSearchSchema = z.object({
+  issues: z.array(JiraMatrixIssueSchema),
+});
+
+/**
+ * Single-issue lookup used to walk one level up the hierarchy (subtask →
+ * Story/Task → Epic). The report-scoped search only returns the *direct*
+ * parent, so the matrix resolves the grandparent (the Epic) with one lookup per
+ * distinct parent key. Same tolerant shape as `JiraMatrixIssueSchema`.
+ */
+export const JiraIssueLookupSchema = JiraMatrixIssueSchema;
+
+export type JiraIssueLookup = z.infer<typeof JiraIssueLookupSchema>;
+
+/**
+ * One Epic column's data for a single report (Story 5.3). `totalSeconds` is the
+ * per-(report, Epic) roll-up; `worklogs` PRESERVES the underlying per-ticket
+ * records (with `updated`) so Story 5.5 can filter them client-side for the
+ * drill-down and Story 5.4 can dirty-detect. Do NOT collapse to totals only.
+ *
+ * Forward-compat: Story 5.4 will add a `restrictedCount` for visibility-
+ * restricted worklogs excluded from the rollup — not computed here.
+ */
+export type ReportEpicWorklogs = {
+  epicKey: string;
+  epicSummary: string;
+  totalSeconds: number;
+  worklogs: Array<{
+    ticketKey: string;
+    ticketSummary: string;
+    seconds: number;
+    started?: string;
+    updated?: string;
+  }>;
+};
