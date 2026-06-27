@@ -8,6 +8,7 @@
  * For Story 1.1 the service worker only opens the options page on first
  * install. Everything else is wired in subsequent stories.
  */
+import { handleApproveCycle } from '@/lib/approve-sw';
 import { updateBadge } from '@/lib/badge';
 import {
   handleBannerStateRequest,
@@ -178,6 +179,11 @@ export default defineBackground(async () => {
   // SW scheduler. The content script cannot do either in-page.
   onRequest('banner-state', (req) => handleBannerStateRequest(req));
   onRequest('log-worklog-request', (req) => handleLogWorklogRequest(req));
+
+  // Manager approve-cycle fan-out (Story 5.6): the popup cannot post comments
+  // in-page (it would bypass the SW scheduler), so the SW runs the per-Epic
+  // sequential fan-out and replies with the confirmed/failed/enqueued sets.
+  onRequest('approve-cycle', (req) => handleApproveCycle(req));
 
   // The content script cannot call chrome.action.openPopup itself; route via SW.
   onMessage('open-popup', () => handleOpenPopup());

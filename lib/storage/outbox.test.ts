@@ -23,10 +23,12 @@ vi.mock('wxt/utils/storage', () => ({
 }));
 
 const postWorklogMock = vi.fn();
+const postCommentMock = vi.fn();
 const updateWorklogMock = vi.fn();
 const deleteWorklogMock = vi.fn();
 vi.mock('@/lib/jira-client', () => ({
   postWorklog: (...args: unknown[]) => postWorklogMock(...args),
+  postComment: (...args: unknown[]) => postCommentMock(...args),
   updateWorklog: (...args: unknown[]) => updateWorklogMock(...args),
   deleteWorklog: (...args: unknown[]) => deleteWorklogMock(...args),
 }));
@@ -51,6 +53,7 @@ const {
 
 const mockClient = {
   postWorklog: postWorklogMock as never,
+  postComment: postCommentMock as never,
   updateWorklog: updateWorklogMock as never,
   deleteWorklog: deleteWorklogMock as never,
 };
@@ -59,6 +62,7 @@ describe('outbox queue helpers', () => {
   beforeEach(async () => {
     store.clear();
     postWorklogMock.mockReset();
+    postCommentMock.mockReset();
     updateWorklogMock.mockReset();
     deleteWorklogMock.mockReset();
   });
@@ -143,6 +147,7 @@ describe('runOutboxRetryPass', () => {
   beforeEach(async () => {
     store.clear();
     postWorklogMock.mockReset();
+    postCommentMock.mockReset();
     updateWorklogMock.mockReset();
     deleteWorklogMock.mockReset();
   });
@@ -273,6 +278,61 @@ describe('runOutboxRetryPass', () => {
     expect(deleteWorklogMock).not.toHaveBeenCalled();
     const items = await list();
     expect(items.every((e) => e.status === 'failed')).toBe(true);
+  });
+
+  it('comment-kind enqueue persists and replays to postComment (Story 5.6)', async () => {
+    const commentBody = {
+      body: {
+        type: 'doc' as const,
+        version: 1 as const,
+        content: [
+          { type: 'paragraph' as const, content: [{ type: 'text' as const, text: 'approval' }] },
+        ],
+      },
+    };
+    await enqueue({
+      kind: 'comment',
+      endpoint: 'rest/api/3/issue/EP-1/comment',
+      issueKey: 'EP-1',
+      body: commentBody,
+    });
+    // It persists as a `comment` entry.
+    const stored = await list();
+    expect(stored).toHaveLength(1);
+    expect(stored[0]!.kind).toBe('comment');
+
+    postCommentMock.mockResolvedValueOnce({ kind: 'ok', value: { id: 'c-1' } });
+    const res = await runOutboxRetryPass(mockClient);
+    expect(res.drained).toBe(1);
+    expect(postCommentMock).toHaveBeenCalledWith('EP-1', commentBody);
+    expect(await list()).toEqual([]);
+  });
+
+  it('comment-kind with no body → failed immediately, never sent to Jira', async () => {
+    await outboxItem.setValue([
+      { id: 'c', kind: 'comment', endpoint: 'e', issueKey: 'EP-1', attemptCount: 0, status: 'pending', enqueuedAt: 'now' },
+    ] as never);
+    const res = await runOutboxRetryPass(mockClient);
+    expect(res.drained).toBe(0);
+    expect(postCommentMock).not.toHaveBeenCalled();
+    const items = await list();
+    expect(items[0]!.status).toBe('failed');
+  });
+
+  it('comment-kind transient failure increments attemptCount then drains', async () => {
+    const body = { body: { type: 'doc', version: 1, content: [] } };
+    await enqueue({ kind: 'comment', endpoint: 'e', issueKey: 'EP-1', body });
+    postCommentMock.mockResolvedValueOnce({ kind: 'network', cause: 'offline' });
+    let res = await runOutboxRetryPass(mockClient);
+    expect(res.drained).toBe(0);
+    const items = await list();
+    expect(items[0]!.attemptCount).toBe(1);
+    expect(items[0]!.status).toBe('pending');
+
+    postCommentMock.mockResolvedValueOnce({ kind: 'ok', value: { id: 'c' } });
+    res = await runOutboxRetryPass(mockClient);
+    expect(res.drained).toBe(1);
+    expect(await list()).toEqual([]);
   });
 
   it('drain-in-progress guard: a concurrent pass short-circuits (no double replay)', async () => {

@@ -41,6 +41,7 @@ vi.mock('@/lib/oauth/refresh', () => ({
 const {
   jiraPost,
   postWorklog,
+  postComment,
   jiraPut,
   jiraDelete,
   updateWorklog,
@@ -252,6 +253,115 @@ describe('postWorklog', () => {
       timeSpentSeconds: 3600,
       started: '2026-06-21T09:00:00.000+0000',
     });
+    expect(result.kind).toBe('parse-error');
+  });
+});
+
+describe('postComment', () => {
+  const adfBody = {
+    body: {
+      type: 'doc' as const,
+      version: 1 as const,
+      content: [
+        { type: 'paragraph' as const, content: [{ type: 'text' as const, text: 'approval' }] },
+      ],
+    },
+  };
+
+  beforeEach(async () => {
+    fetchMock.mockReset();
+    await resetAuthBundle();
+  });
+
+  it('POSTs to the issue comment endpoint with the { body: <AdfDoc> } shape', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      headers: { get: () => null },
+      json: async () => ({ id: 'c-1', created: '2026-06-27T10:00:00.000+0000', body: {} }),
+    });
+
+    const result = await postComment('PROJ-123', adfBody);
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value.id).toBe('c-1');
+      expect(result.value.created).toBe('2026-06-27T10:00:00.000+0000');
+    }
+
+    const callArgs = fetchMock.mock.calls[0]!;
+    const url = callArgs[0] as string;
+    expect(url).toContain('rest/api/3/issue/PROJ-123/comment');
+    expect(callArgs[1].method).toBe('POST');
+    const sent = JSON.parse(callArgs[1].body);
+    // ADF is nested under `body`, NOT the flat worklog shape.
+    expect(sent.body.type).toBe('doc');
+    expect(sent.body.content[0].content[0].text).toBe('approval');
+  });
+
+  it('url-encodes the issue key', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      headers: { get: () => null },
+      json: async () => ({ id: 'c-2', created: '2026-06-27T10:00:00.000+0000', body: {} }),
+    });
+    await postComment('PRO J/1', adfBody);
+    const url = fetchMock.mock.calls[0]![0] as string;
+    expect(url).toContain('rest/api/3/issue/PRO%20J%2F1/comment');
+  });
+
+  it('returns rate-limited on 429', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 429,
+      headers: { get: () => '5' },
+      json: async () => ({}),
+    });
+    const result = await postComment('PROJ-1', adfBody);
+    expect(result.kind).toBe('rate-limited');
+  });
+
+  it('returns network on a 5xx', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      headers: { get: () => null },
+      text: async () => 'boom',
+    });
+    const result = await postComment('PROJ-1', adfBody);
+    expect(result.kind).toBe('network');
+  });
+
+  it('returns forbidden on 403', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      headers: { get: () => null },
+      json: async () => ({}),
+    });
+    const result = await postComment('PROJ-1', adfBody);
+    expect(result.kind).toBe('forbidden');
+  });
+
+  it('returns not-found on 404', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      headers: { get: () => null },
+      json: async () => ({}),
+    });
+    const result = await postComment('PROJ-1', adfBody);
+    expect(result.kind).toBe('not-found');
+  });
+
+  it('returns parse-error on schema drift', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      headers: { get: () => null },
+      json: async () => ({ wrong: 'shape' }),
+    });
+    const result = await postComment('PROJ-1', adfBody);
     expect(result.kind).toBe('parse-error');
   });
 });

@@ -11,9 +11,21 @@ import type { DirectReport } from '@/lib/storage/direct-reports';
 const reportsMock = vi.fn();
 const rowMock = vi.fn();
 const approvalsMock = vi.fn();
+const currentUserMock = vi.fn();
 
 vi.mock('@/hooks/useManagerReports', () => ({
   useManagerReports: () => reportsMock(),
+}));
+
+vi.mock('@/hooks/useCurrentUser', () => ({
+  useCurrentUser: () => currentUserMock(),
+}));
+
+// ApproveButton talks to the SW via sendRequest — mock the boundary so the row's
+// Approve button mounts without touching chrome.runtime.
+const sendRequestMock = vi.fn();
+vi.mock('@/lib/messages', () => ({
+  sendRequest: (...a: unknown[]) => sendRequestMock(...a),
 }));
 
 vi.mock('@/hooks/useManagerRow', () => ({
@@ -107,6 +119,10 @@ describe('ManagerMatrix', () => {
     // Default per-workday target hours (settings boundary).
     targetHoursMock.mockReset();
     targetHoursMock.mockResolvedValue(8);
+    // Default: the current manager's accountId resolved.
+    currentUserMock.mockReset();
+    currentUserMock.mockReturnValue({ isPending: false, isError: false, data: 'mgr-1' });
+    sendRequestMock.mockReset();
   });
 
   it('renders the cycle title from the cycle prop', () => {
@@ -216,13 +232,81 @@ describe('ManagerMatrix', () => {
     expect(screen.getByLabelText('Bob, PROJ-1, 250 hours, on target')).toBeTruthy();
   });
 
-  it('leaves the row-end action area empty (no Approve/Re-approve button — 5.6/5.7 seam)', () => {
+  it('renders a row-end "Approve <Person>" button for a row with hours (Story 5.6)', () => {
     reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
     rowMock.mockReturnValue(
       rowState({ status: 'success', data: [epic('PROJ-1', 64 * 3600)] }),
     );
     renderMatrix();
-    expect(screen.queryByRole('button', { name: /approve|re-approve/i })).toBeNull();
+    const approve = screen.getByRole('button', { name: 'Approve Bob' });
+    expect(approve).toBeTruthy();
+    expect((approve as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('disables the Approve button for an empty row (no touched Epics to fan out)', () => {
+    // A row that resolved with NO epics (logged nothing) but with columns from
+    // another report → renders ── cells + a disabled Approve. Use STABLE row
+    // objects per account (a fresh object per render would make the parent's
+    // resolved-map effect loop, since it dedupes by reference).
+    const bobRow = rowState({ status: 'success', data: [] });
+    const amyRow = rowState({ status: 'success', data: [epic('PROJ-1', 8 * 3600)] });
+    rowMock.mockImplementation((accountId: string) =>
+      accountId === 'r-bob' ? bobRow : amyRow,
+    );
+    reportsMock.mockReturnValue(
+      reportsOk([
+        { accountId: 'r-bob', displayName: 'Bob' },
+        { accountId: 'r-amy', displayName: 'Amy' },
+      ]),
+    );
+    renderMatrix();
+    const approve = screen.getByRole('button', { name: 'Approve Bob' }) as HTMLButtonElement;
+    expect(approve.disabled).toBe(true);
+  });
+
+  it('shows the "X of N done" progress chip in the header', () => {
+    reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+    rowMock.mockReturnValue(
+      rowState({ status: 'success', data: [epic('PROJ-1', 64 * 3600)] }),
+    );
+    renderMatrix();
+    // No approvals → 0 done of 1 report.
+    expect(screen.getByTestId('matrix-progress').textContent).toBe('0 of 1 done');
+  });
+
+  it('counts a row as done in the progress chip when its only touched Epic is approved', async () => {
+    reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+    rowMock.mockReturnValue(
+      rowState({
+        status: 'success',
+        data: [
+          epic('PROJ-1', 64 * 3600, {
+            worklogs: [
+              {
+                ticketKey: 'PROJ-1-1',
+                ticketSummary: 's',
+                seconds: 64 * 3600,
+                updated: '2026-05-10T00:00:00.000Z',
+              },
+            ],
+          }),
+        ],
+      }),
+    );
+    const approval: ApprovalComment = {
+      v: 1,
+      user: 'r-bob',
+      cycle: '2026-05',
+      by: 'mgr',
+      at: '2026-05-20T00:00:00.000Z',
+      restrictedCount: 0,
+      checksum: 'x',
+    };
+    approvalsMock.mockReturnValue(approvalsState([approval]));
+    renderMatrix();
+    await waitFor(() =>
+      expect(screen.getByTestId('matrix-progress').textContent).toBe('1 of 1 done'),
+    );
   });
 
   it('renders an approved cell with a Check icon + approved aria-label when an approval exists and no later edit', () => {
@@ -437,12 +521,13 @@ describe('ManagerMatrix', () => {
     );
     renderMatrix();
     fireEvent.click(screen.getByRole('button', { name: /Bob, PROJ-1/ }));
-    expect(screen.getByText('Bob · PROJ-1 · May 2026')).toBeTruthy();
-    // No approve-family action or progress chip in the read-only panel.
+    const panel = screen.getByRole('dialog');
+    expect(within(panel).getByText('Bob · PROJ-1 · May 2026')).toBeTruthy();
+    // The drill-down panel itself stays READ-ONLY: the Approve action lives in
+    // the matrix row, never inside the panel (Story 5.5/5.6 boundary).
     expect(
-      screen.queryByRole('button', { name: /approve|re-approve|done/i }),
+      within(panel).queryByRole('button', { name: /approve|re-approve|done/i }),
     ).toBeNull();
-    expect(screen.queryByText(/of \d+ done/i)).toBeNull();
   });
 
   it('surfaces the per-Epic VisibilityWarning chip inside the panel when restrictedCount > 0', () => {

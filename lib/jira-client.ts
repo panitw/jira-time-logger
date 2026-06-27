@@ -9,15 +9,18 @@
  *   - Parses responses with Zod schemas from jira-types.ts
  */
 import { type z } from 'zod';
+import { type AdfDoc } from '@/lib/adf';
 import { type CycleRange } from '@/lib/cycle-range';
 import {
   JiraMyselfSchema,
   JiraSearchSchema,
   JiraWorklogListSchema,
   JiraWorklogSchema,
+  JiraCommentSchema,
   JiraMatrixSearchSchema,
   JiraIssueLookupSchema,
   type JiraWorklog,
+  type JiraComment,
   type WeekIssueWorklogs,
   type ReportEpicWorklogs,
   type ReportCycleWorklogs,
@@ -137,6 +140,26 @@ export async function postWorklog(
     JiraWorklogSchema,
   );
 }
+/**
+ * Post a comment to a Jira issue (Story 5.6 approval fan-out).
+ *
+ * POST /rest/api/3/issue/{issueKey}/comment
+ * UNLIKE the flat worklog body, the v3 comment body nests the ADF document
+ * under a `body` key: `{ body: <AdfDoc> }`. Routing through `jiraPost` inherits
+ * auth + 401-refresh + scheduler + Result mapping for free.
+ * Returns the created comment object (`id`, `created`, `body`).
+ */
+export async function postComment(
+  issueKey: string,
+  body: { body: AdfDoc },
+): Promise<Result<JiraComment, JiraError>> {
+  return jiraPost(
+    `rest/api/3/issue/${encodeURIComponent(issueKey)}/comment`,
+    body,
+    JiraCommentSchema,
+  );
+}
+
 export async function jiraPost<T>(
   path: string,
   body: unknown,

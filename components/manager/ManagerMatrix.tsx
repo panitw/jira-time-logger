@@ -1,8 +1,10 @@
 import { parse, parseISO, isValid } from 'date-fns';
 import { Check, AlertCircle, RefreshCw, Lock } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ApproveButton } from './ApproveButton';
 import { DrillDownPanel } from './DrillDownPanel';
 import { Button } from '@/components/ui/button';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useEpicApprovals } from '@/hooks/useEpicApprovals';
 import { useManagerReports } from '@/hooks/useManagerReports';
 import { useManagerRow } from '@/hooks/useManagerRow';
@@ -27,7 +29,9 @@ import type { CycleId } from '@/lib/storage/view-state';
 const STRINGS = {
   headingPrefix: 'Manager',
   reportCount: (n: number) => `${n} ${n === 1 ? 'report' : 'reports'}`,
+  progress: (done: number, total: number) => `${done} of ${total} done`,
   personColHeader: 'Person',
+  actionColHeader: 'Action',
   noReportsTitle: "You're not configured as anyone's manager in Jira.",
   noReportsCta: 'Switch to Worker view',
   noHours: '(no hours logged this cycle)',
@@ -125,12 +129,34 @@ type Props = {
 
 export function ManagerMatrix({ cycle, onSwitchToToday }: Props): React.ReactElement {
   const reportsQuery = useManagerReports();
+  // The current manager's accountId — the `by` field of every approval payload
+  // (Story 5.6). Undefined until resolved / on error; the row's ApproveButton is
+  // disabled until it is known.
+  const currentUserQuery = useCurrentUser();
+  const managerAccountId = currentUserQuery.data;
 
   // The parent owns the cross-row column set because columns are the union of
   // every Epic any report touched. Each row lifts its resolved data up here.
   const [resolved, setResolved] = useState<Map<string, ReportCycleWorklogs>>(
     () => new Map(),
   );
+
+  // Per-row "every touched-Epic cell resolves to approved" signal, lifted from
+  // each row (derived from the SAME `useEpicApprovals` anchors the cells use).
+  // Drives the "X of N done" progress chip — server-state derived, not a local
+  // approved flag flipped on the approve action.
+  const [approvedRows, setApprovedRows] = useState<Map<string, boolean>>(
+    () => new Map(),
+  );
+
+  const handleApprovalState = useCallback((accountId: string, allApproved: boolean) => {
+    setApprovedRows((prev) => {
+      if (prev.get(accountId) === allApproved) return prev;
+      const next = new Map(prev);
+      next.set(accountId, allApproved);
+      return next;
+    });
+  }, []);
 
   // The matrix owns ONE drill-down panel (Story 5.5). A cell click lifts its
   // target here; the panel reads the chosen Epic's already-resolved records
@@ -302,9 +328,20 @@ export function ManagerMatrix({ cycle, onSwitchToToday }: Props): React.ReactEle
         })
       : undefined;
 
+  // "X of N done": N = report count; done = rows whose every touched-Epic cell
+  // resolves to approved (lifted from each row's cell anchors).
+  const doneCount = sortedReports.reduce(
+    (n, r) => n + (approvedRows.get(r.accountId) ? 1 : 0),
+    0,
+  );
+
   return (
     <div className="motion-safe:animate-fade-in">
-      <Header cycleTitle={cycleTitle} reportCount={sortedReports.length} />
+      <Header
+        cycleTitle={cycleTitle}
+        reportCount={sortedReports.length}
+        doneCount={doneCount}
+      />
       <div
         className={`mt-3 ${scrolls ? 'overflow-x-auto' : ''}`}
         data-testid="matrix-scroll"
@@ -327,6 +364,12 @@ export function ManagerMatrix({ cycle, onSwitchToToday }: Props): React.ReactEle
                   {epicKey}
                 </th>
               ))}
+              <th
+                scope="col"
+                className="px-2 py-1 text-right text-xs font-medium text-neutral-500"
+              >
+                {STRINGS.actionColHeader}
+              </th>
             </tr>
           </thead>
           <tbody aria-live="polite">
@@ -335,13 +378,16 @@ export function ManagerMatrix({ cycle, onSwitchToToday }: Props): React.ReactEle
                 key={report.accountId}
                 report={report}
                 cycle={cycle}
+                cycleTitle={cycleTitle}
                 range={range}
                 columns={columns}
                 revealIndex={i}
                 targetHours={targetHours}
                 workdaysElapsed={workdaysElapsed}
+                managerAccountId={managerAccountId}
                 onResolved={handleResolved}
                 onOpen={handleOpenCell}
+                onApprovalState={handleApprovalState}
               />
             ))}
           </tbody>
@@ -366,9 +412,12 @@ export function ManagerMatrix({ cycle, onSwitchToToday }: Props): React.ReactEle
 function Header({
   cycleTitle,
   reportCount,
+  doneCount,
 }: {
   cycleTitle: string;
   reportCount?: number;
+  /** Count of fully-approved rows for the "X of N done" progress chip. */
+  doneCount?: number;
 }): React.ReactElement {
   return (
     <div className="flex items-baseline justify-between gap-2">
@@ -376,7 +425,12 @@ function Header({
         {STRINGS.headingPrefix} · {cycleTitle}
       </h2>
       {reportCount !== undefined ? (
-        <span className="text-xs text-neutral-500">{STRINGS.reportCount(reportCount)}</span>
+        <span className="flex items-baseline gap-2 text-xs text-neutral-500">
+          <span data-testid="matrix-progress">
+            {STRINGS.progress(doneCount ?? 0, reportCount)}
+          </span>
+          <span>{STRINGS.reportCount(reportCount)}</span>
+        </span>
       ) : null}
     </div>
   );
@@ -385,25 +439,33 @@ function Header({
 type RowProps = {
   report: DirectReport;
   cycle: CycleId;
+  cycleTitle: string;
   range: { start: Date; end: Date };
   columns: string[];
   revealIndex: number;
   targetHours: number;
   workdaysElapsed: number;
+  /** The current manager's accountId (`by`); undefined until resolved. */
+  managerAccountId: string | undefined;
   onResolved: (accountId: string, data: ReportCycleWorklogs) => void;
   onOpen: (report: DirectReport, epicKey: string) => void;
+  /** Report this row's "every touched-Epic cell approved" signal to the parent. */
+  onApprovalState: (accountId: string, allApproved: boolean) => void;
 };
 
 function ManagerMatrixRow({
   report,
   cycle,
+  cycleTitle,
   range,
   columns,
   revealIndex,
   targetHours,
   workdaysElapsed,
+  managerAccountId,
   onResolved,
   onOpen,
+  onApprovalState,
 }: RowProps): React.ReactElement {
   const query = useManagerRow(report.accountId, cycle, range);
 
@@ -412,7 +474,45 @@ function ManagerMatrixRow({
     if (query.data) onResolved(report.accountId, query.data);
   }, [query.data, report.accountId, onResolved]);
 
-  const colSpan = Math.max(columns.length, 1);
+  // Per-Epic cell status, lifted from each MatrixCell, so the row can decide
+  // whether EVERY touched-Epic cell resolves to approved (the "done" signal for
+  // the progress chip) without re-querying the approval anchors here.
+  const [cellStatuses, setCellStatuses] = useState<Map<string, CellStatus>>(
+    () => new Map(),
+  );
+  const handleCellStatus = useCallback((epicKey: string, status: CellStatus) => {
+    setCellStatuses((prev) => {
+      if (prev.get(epicKey) === status) return prev;
+      const next = new Map(prev);
+      next.set(epicKey, status);
+      return next;
+    });
+  }, []);
+
+  // The resolved Epic groups (empty until the row query settles). Computed ABOVE
+  // the loading/error early returns so the approval-state effect below is an
+  // unconditional hook (rules-of-hooks).
+  const epics = query.data?.epics ?? [];
+
+  // The fan-out target set (AC3): every Epic this report touched this cycle,
+  // with the per-Epic restrictedCount the cell reported (checksum-covered).
+  const touchedEpics = epics.map((e) => ({
+    epicKey: e.epicKey,
+    restrictedCount: e.restrictedCount,
+  }));
+
+  // A row is "done" when it has at least one touched Epic AND every touched-Epic
+  // cell resolves to `approved` (derived from the cell statuses lifted above).
+  const allApproved =
+    touchedEpics.length > 0 &&
+    touchedEpics.every((e) => cellStatuses.get(e.epicKey) === 'approved');
+  useEffect(() => {
+    onApprovalState(report.accountId, allApproved);
+  }, [allApproved, report.accountId, onApprovalState]);
+
+  // +1 for the trailing row-action (Approve) column so the pending/error/empty
+  // single-cell states keep the table rectangular.
+  const colSpan = Math.max(columns.length, 1) + 1;
   // Staggered reveal: ~100ms/row ease-out under motion-safe; static otherwise.
   const revealStyle = { animationDelay: `${revealIndex * STAGGER_MS}ms` };
 
@@ -472,13 +572,34 @@ function ManagerMatrixRow({
     );
   }
 
-  const epics = query.data?.epics ?? [];
-
   // Row-grain on-target/gap status (AC 4): the report's TOTAL seconds across all
   // Epics vs `targetHours × workdaysElapsed`. Each non-empty cell inherits this;
   // the per-(report, Epic) approved/dirty states layer on top.
   const rowSeconds = epics.reduce((sum, e) => sum + e.totalSeconds, 0);
   const rowStatus = computeRowStatus(rowSeconds, { targetHours, workdaysElapsed });
+
+  // The row-end Approve action (Story 5.6). Disabled while the manager accountId
+  // is still resolving (no `by` yet) — surfaced as a tooltip, never mystery-
+  // disabled. The empty-row disable is handled inside ApproveButton.
+  const approveCell = (
+    <td className="px-2 py-1 text-right align-middle">
+      <ApproveButton
+        personName={report.displayName}
+        user={report.accountId}
+        by={managerAccountId ?? ''}
+        cycle={cycle}
+        cycleTitle={cycleTitle}
+        epics={touchedEpics}
+        rowSeconds={rowSeconds}
+        restrictedCount={restrictedCount}
+        disabledReason={
+          managerAccountId === undefined || managerAccountId === ''
+            ? 'Resolving your account…'
+            : undefined
+        }
+      />
+    </td>
+  );
 
   // When the WHOLE matrix has no columns (nobody logged anything this cycle),
   // each row shows a single per-row "(no hours logged this cycle)" placeholder
@@ -494,6 +615,7 @@ function ManagerMatrixRow({
         <td colSpan={1} className="px-2 py-1 text-xs text-neutral-500">
           {STRINGS.noHours}
         </td>
+        {approveCell}
       </tr>
     );
   }
@@ -513,8 +635,10 @@ function ManagerMatrixRow({
           cycle={cycle}
           rowStatus={rowStatus}
           onOpen={onOpen}
+          onStatus={handleCellStatus}
         />
       ))}
+      {approveCell}
     </tr>
   );
 }
@@ -526,6 +650,8 @@ type CellProps = {
   cycle: CycleId;
   rowStatus: CellStatus;
   onOpen: (report: DirectReport, epicKey: string) => void;
+  /** Report this cell's resolved CellStatus up to the row (progress chip). */
+  onStatus: (epicKey: string, status: CellStatus) => void;
 };
 
 /**
@@ -544,6 +670,7 @@ function MatrixCell({
   cycle,
   rowStatus,
   onOpen,
+  onStatus,
 }: CellProps): React.ReactElement {
   const approvalsQuery = useEpicApprovals(epicKey, cycle);
 
@@ -559,6 +686,12 @@ function MatrixCell({
   const status: CellStatus = isEmpty
     ? 'unapproved-neutral'
     : computeCellStatus({ epics, epicKey, approvalAt, rowStatus });
+
+  // Report the resolved status up so the row can derive its "all approved"
+  // (done) signal from the SAME anchors the cell paints with.
+  useEffect(() => {
+    onStatus(epicKey, status);
+  }, [epicKey, status, onStatus]);
 
   const restricted =
     epics.find((e) => e.epicKey === epicKey)?.restrictedCount ?? 0;

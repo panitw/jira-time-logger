@@ -14,8 +14,10 @@
  */
 import { storage } from 'wxt/utils/storage';
 import { z } from 'zod';
+import type { AdfDoc } from '@/lib/adf';
 import {
   postWorklog,
+  postComment,
   updateWorklog,
   deleteWorklog,
 } from '@/lib/jira-client';
@@ -24,12 +26,16 @@ import type { JiraError, Result } from '@/lib/result';
 
 export const MAX_ATTEMPTS = 10;
 
-export type OutboxKind = 'post' | 'put' | 'delete';
+// `comment` (Story 5.6) is the approval fan-out's deferred-retry op: a failed
+// approval comment POST enqueues its already-serialized body so the SW retry
+// posts the byte-identical, checksum-valid approval. `kind` is the replay
+// dispatcher (`endpoint` is stored but ignored on replay).
+export type OutboxKind = 'post' | 'put' | 'delete' | 'comment';
 export type OutboxStatus = 'pending' | 'failed';
 
 export const OutboxEntrySchema = z.object({
   id: z.string(),
-  kind: z.enum(['post', 'put', 'delete']),
+  kind: z.enum(['post', 'put', 'delete', 'comment']),
   endpoint: z.string(),
   body: z.unknown().optional(),
   issueKey: z.string(),
@@ -136,22 +142,27 @@ export async function clearOutbox(): Promise<void> {
  */
 export type OutboxJiraClient = {
   postWorklog: typeof postWorklog;
+  postComment: typeof postComment;
   updateWorklog: typeof updateWorklog;
   deleteWorklog: typeof deleteWorklog;
 };
 
 const defaultClient: OutboxJiraClient = {
   postWorklog,
+  postComment,
   updateWorklog,
   deleteWorklog,
 };
 
-// The stored body is opaque (`unknown`) on read; it is replayed verbatim. Posts
-// never carry a comment in our enqueue paths; edits carry an already-built ADF
-// object. We cast at the replay boundary since the value is trusted (we wrote
-// it) and jira-client re-serializes it as-is.
+// The stored body is opaque (`unknown`) on read; it is replayed verbatim. A
+// `post`/`put` carries a flat worklog body (edits carry an already-built ADF
+// `comment`); a `comment` op (Story 5.6 approval fan-out) carries the nested
+// `{ body: <AdfDoc> }` approval-comment body. We cast at the replay boundary
+// since the value is trusted (we wrote it) and jira-client re-serializes it
+// as-is.
 type PutBody = { timeSpentSeconds: number; started: string; comment?: unknown };
 type PostBody = { timeSpentSeconds: number; started: string; comment?: string };
+type CommentBody = { body: AdfDoc };
 
 /** A malformed entry can never succeed — treat as a non-retryable error so the
  * drain marks it `failed` immediately instead of looping to MAX_ATTEMPTS (a
@@ -166,6 +177,10 @@ function replay(
   if (entry.kind === 'post') {
     if (entry.body === undefined) return Promise.resolve(MALFORMED);
     return client.postWorklog(entry.issueKey, entry.body as PostBody);
+  }
+  if (entry.kind === 'comment') {
+    if (entry.body === undefined) return Promise.resolve(MALFORMED);
+    return client.postComment(entry.issueKey, entry.body as CommentBody);
   }
   if (entry.kind === 'put') {
     if (!entry.worklogId || entry.body === undefined) {

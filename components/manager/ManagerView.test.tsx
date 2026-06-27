@@ -8,6 +8,11 @@ import { describe, it, expect, vi } from 'vitest';
 vi.mock('@/hooks/useManagerReports', () => ({
   useManagerReports: () => ({ isPending: false, isError: false, data: [] }),
 }));
+// ManagerMatrix (Story 5.6) resolves the current manager's accountId for the
+// approve `by` field; mock it so the matrix never hits the network.
+vi.mock('@/hooks/useCurrentUser', () => ({
+  useCurrentUser: () => ({ isPending: false, isError: false, data: 'mgr-1' }),
+}));
 vi.mock('@/hooks/useManagerRow', () => ({
   useManagerRow: () => ({
     isPending: true,

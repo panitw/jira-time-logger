@@ -139,6 +139,33 @@ export const LogWorklogResponseSchema = z.object({
   status: z.enum(['ok', 'pending', 'error']),
 });
 
+// Story 5.6 — approve a report's cycle: the popup asks the SW to fan a
+// versioned-checksum approval comment out to every touched Epic. The request
+// carries the touched-Epic set with each Epic's per-row `restrictedCount`
+// (checksum-covered); the response reports which Epics were confirmed, which
+// failed, and which of the failed were enqueued for a deferred outbox retry.
+export const ApproveCycleRequestSchema = z.object({
+  // `user`/`by`/`cycle` are checksum-covered audit fields that land in a
+  // permanent approval comment — reject empties so a blank-approver or
+  // blank-subject approval can never be written (e.g. an unresolved manager
+  // accountId arriving as ''). The fan-out also fail-closes here: an invalid
+  // request never reaches `approveCycle`.
+  user: z.string().min(1),
+  cycle: z.string().min(1),
+  by: z.string().min(1),
+  epics: z.array(
+    z.object({
+      epicKey: z.string().min(1),
+      restrictedCount: z.number().int().nonnegative(),
+    }),
+  ),
+});
+export const ApproveCycleResponseSchema = z.object({
+  confirmed: z.array(z.string()),
+  failed: z.array(z.string()),
+  enqueued: z.array(z.string()),
+});
+
 export type RequestRegistry = {
   'banner-state': {
     request: z.infer<typeof BannerStateRequestSchema>;
@@ -147,6 +174,10 @@ export type RequestRegistry = {
   'log-worklog-request': {
     request: z.infer<typeof LogWorklogRequestSchema>;
     response: z.infer<typeof LogWorklogResponseSchema>;
+  };
+  'approve-cycle': {
+    request: z.infer<typeof ApproveCycleRequestSchema>;
+    response: z.infer<typeof ApproveCycleResponseSchema>;
   };
 };
 
@@ -165,6 +196,10 @@ const REQUEST_SCHEMAS: {
   'log-worklog-request': {
     request: LogWorklogRequestSchema,
     response: LogWorklogResponseSchema,
+  },
+  'approve-cycle': {
+    request: ApproveCycleRequestSchema,
+    response: ApproveCycleResponseSchema,
   },
 };
 

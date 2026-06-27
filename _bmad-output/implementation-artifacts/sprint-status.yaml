@@ -1,5 +1,5 @@
 # generated: 2026-05-11 22:45:02
-# last_updated: 2026-06-27 (code-review: 5-5 → done)
+# last_updated: 2026-06-27 (code-review: 5-6 → done)
 # project: jira-time-logger
 # project_key: NOKEY
 # tracking_system: file-system
@@ -100,7 +100,7 @@ development_status:
   5-3-manager-matrix-person-epic-grid-with-progressive-per-row-render: done
   5-4-cell-coloring-dirty-detection-visibility-warnings: done
   5-5-drill-down-panel-per-ticket-evidence-with-visibility-warning: done
-  5-6-approve-cycle-per-epic-fan-out-posting-of-versioned-comments: backlog
+  5-6-approve-cycle-per-epic-fan-out-posting-of-versioned-comments: done
   5-7-re-approve-dirty-cycles: backlog
   5-8-non-canonical-manager-read-only-mode: backlog
   epic-5-retrospective: optional
