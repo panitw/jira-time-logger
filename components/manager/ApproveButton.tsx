@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { format, parseISO, isValid } from 'date-fns';
 import { Check, Info } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -32,14 +33,26 @@ import { sendRequest } from '@/lib/messages';
 
 type TouchedEpic = { epicKey: string; restrictedCount: number };
 
+/** The button's interaction mode: a normal first approval vs a dirty re-approval. */
+export type ApproveMode = 'approve' | 'reapprove';
+
 const STRINGS = {
   approve: (person: string) => `Approve ${person}`,
+  reapprove: (person: string) => `Re-approve ${person}`,
   approveShort: 'Approve',
+  reapproveShort: 'Re-approve',
   cancel: 'Cancel',
   done: '✓ Done',
   approving: 'Approving…',
-  summary: (person: string, cycleTitle: string, hours: string, n: number) =>
-    `Approve ${person}'s ${cycleTitle}: ${hours}h across ${n} ${n === 1 ? 'Epic' : 'Epics'}`,
+  summary: (
+    verb: string,
+    person: string,
+    cycleTitle: string,
+    hours: string,
+    n: number,
+  ) => `${verb} ${person}'s ${cycleTitle}: ${hours}h across ${n} ${n === 1 ? 'Epic' : 'Epics'}`,
+  supersede: (formattedAt: string) =>
+    `Re-approving — supersedes prior approval from ${formattedAt}`,
   restricted: (n: number) =>
     `⚠ ${n} restricted-visibility worklog${n === 1 ? '' : 's'} excluded from your view; ` +
     `${n === 1 ? 'its' : 'their'} count will be captured in the approval metadata for audit.`,
@@ -59,6 +72,19 @@ const STRINGS = {
 function formatHours(totalSeconds: number): string {
   const hours = secondsToHours(totalSeconds);
   return hours.toFixed(1).replace(/\.0$/, '');
+}
+
+/**
+ * Format the prior approval `at` for the supersede line. Human-readable and
+ * unambiguous (date + time). NEVER throws: a missing or unparseable ISO falls
+ * back to the raw string (or a neutral placeholder when entirely absent) so the
+ * cosmetic supersede line can never block re-approval (Story 5.7 Dev Notes).
+ */
+function formatPriorApprovalAt(at: string | undefined): string {
+  if (!at) return 'an earlier approval';
+  const parsed = parseISO(at);
+  if (!isValid(parsed)) return at;
+  return format(parsed, 'MMM d, yyyy h:mm a');
 }
 
 type ApproveButtonState = 'ready' | 'approving' | 'done' | 'partial';
@@ -87,6 +113,19 @@ type Props = {
    * empty-row and in-flight checks below).
    */
   disabledReason?: string | undefined;
+  /**
+   * `'approve'` (default) = first approval (primary brand-purple button).
+   * `'reapprove'` = the row is dirty; render a SECONDARY-tier "Re-approve
+   * <Person>" button and add the supersede line to the confirm dialog. The
+   * write path is identical in both modes (Story 5.7).
+   */
+  mode?: ApproveMode;
+  /**
+   * The dirty row's existing approval anchor (`at`), used ONLY in `reapprove`
+   * mode for the cosmetic supersede dialog line. Missing/unparseable values
+   * fall back gracefully and never block re-approval.
+   */
+  priorApprovalAt?: string | undefined;
 };
 
 export function ApproveButton({
@@ -99,6 +138,8 @@ export function ApproveButton({
   rowSeconds,
   restrictedCount,
   disabledReason,
+  mode = 'approve',
+  priorApprovalAt,
 }: Props): React.ReactElement {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -209,18 +250,28 @@ export function ApproveButton({
   // The disabled reason surfaces as a tooltip — never a mystery-disabled button.
   const title = disabledReason ?? (isEmpty ? 'No hours logged this cycle to approve' : undefined);
 
+  // Re-approve is a deliberate corrective action: secondary tier (NOT brand
+  // primary), distinct label, and a supersede dialog line. The state machine,
+  // mutation, and write payload are identical to first approval.
+  const isReapprove = mode === 'reapprove';
+  const label = isReapprove ? STRINGS.reapprove(personName) : STRINGS.approve(personName);
+  const commitLabel = isReapprove ? STRINGS.reapproveShort : STRINGS.approveShort;
+  const dialogTitle = isReapprove
+    ? STRINGS.summary('Re-approve', personName, cycleTitle, formatHours(rowSeconds), total)
+    : STRINGS.summary('Approve', personName, cycleTitle, formatHours(rowSeconds), total);
+
   return (
     <>
       <Button
-        variant="primary"
+        variant={isReapprove ? 'secondary' : 'primary'}
         size="sm"
         disabled={disabled}
         onClick={() => setOpen(true)}
         title={title}
-        aria-label={STRINGS.approve(personName)}
+        aria-label={label}
         data-testid="approve-button"
       >
-        {inFlight ? STRINGS.approving : STRINGS.approve(personName)}
+        {inFlight ? STRINGS.approving : label}
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -231,10 +282,13 @@ export function ApproveButton({
           aria-describedby={undefined}
         >
           <DialogHeader>
-            <DialogTitle>
-              {STRINGS.summary(personName, cycleTitle, formatHours(rowSeconds), total)}
-            </DialogTitle>
+            <DialogTitle>{dialogTitle}</DialogTitle>
           </DialogHeader>
+          {isReapprove ? (
+            <p className="text-sm text-neutral-700" data-testid="approve-supersede-line">
+              {STRINGS.supersede(formatPriorApprovalAt(priorApprovalAt))}
+            </p>
+          ) : null}
           {restrictedCount > 0 ? (
             <p className="text-sm text-state-warning" data-testid="approve-restricted-line">
               {STRINGS.restricted(restrictedCount)}
@@ -245,7 +299,7 @@ export function ApproveButton({
               {STRINGS.cancel}
             </Button>
             <Button variant="primary" size="sm" onClick={handleConfirm}>
-              {STRINGS.approveShort}
+              {commitLabel}
             </Button>
           </DialogFooter>
         </DialogContent>

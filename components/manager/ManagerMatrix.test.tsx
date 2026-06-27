@@ -379,6 +379,165 @@ describe('ManagerMatrix', () => {
     expect(container.querySelector('.bg-state-warning-subtle')).toBeTruthy();
   });
 
+  // --- Story 5.7: dirty rows drive the re-approve mode --------------------
+
+  it('a row with a dirty cell renders a secondary "Re-approve <Person>" button (not Approve)', () => {
+    reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+    rowMock.mockReturnValue(
+      rowState({
+        status: 'success',
+        data: [
+          epic('PROJ-1', 64 * 3600, {
+            worklogs: [
+              {
+                ticketKey: 'PROJ-1-1',
+                ticketSummary: 's',
+                seconds: 64 * 3600,
+                updated: '2026-05-25T00:00:00.000Z', // after the approval → dirty
+              },
+            ],
+          }),
+        ],
+      }),
+    );
+    const approval: ApprovalComment = {
+      v: 1,
+      user: 'r-bob',
+      cycle: '2026-05',
+      by: 'mgr',
+      at: '2026-05-20T08:30:00.000Z',
+      restrictedCount: 0,
+      checksum: 'x',
+    };
+    approvalsMock.mockReturnValue(approvalsState([approval]));
+    renderMatrix();
+    const btn = screen.getByRole('button', { name: 'Re-approve Bob' });
+    expect(btn).toBeTruthy();
+    // A dirty row never shows the primary "Approve <Person>" too.
+    expect(screen.queryByRole('button', { name: 'Approve Bob' })).toBeNull();
+    // Secondary tier, not brand-purple.
+    expect(btn.className).toContain('bg-transparent');
+    expect(btn.className).not.toContain('bg-accent');
+  });
+
+  it('a dirty row threads the prior approval at into the re-approve supersede line', () => {
+    reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+    rowMock.mockReturnValue(
+      rowState({
+        status: 'success',
+        data: [
+          epic('PROJ-1', 64 * 3600, {
+            worklogs: [
+              {
+                ticketKey: 'PROJ-1-1',
+                ticketSummary: 's',
+                seconds: 64 * 3600,
+                updated: '2026-05-25T00:00:00.000Z',
+              },
+            ],
+          }),
+        ],
+      }),
+    );
+    const approval: ApprovalComment = {
+      v: 1,
+      user: 'r-bob',
+      cycle: '2026-05',
+      by: 'mgr',
+      at: '2026-05-20T08:30:00.000Z',
+      restrictedCount: 0,
+      checksum: 'x',
+    };
+    approvalsMock.mockReturnValue(approvalsState([approval]));
+    renderMatrix();
+    fireEvent.click(screen.getByRole('button', { name: 'Re-approve Bob' }));
+    const supersede = screen.getByTestId('approve-supersede-line');
+    expect(supersede.textContent).toMatch(/supersedes prior approval from/i);
+    expect(supersede.textContent).toMatch(/May 20, 2026/);
+  });
+
+  it('a non-dirty unapproved row stays a primary "Approve <Person>" button', () => {
+    reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+    rowMock.mockReturnValue(
+      rowState({ status: 'success', data: [epic('PROJ-1', 64 * 3600)] }),
+    );
+    // No approvals → unapproved (not dirty).
+    renderMatrix();
+    expect(screen.getByRole('button', { name: 'Approve Bob' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Re-approve Bob' })).toBeNull();
+  });
+
+  it('a row dirty on some cells with a NEW unapproved Epic re-approves the FULL touched set (AC6)', async () => {
+    reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+    rowMock.mockReturnValue(
+      rowState({
+        status: 'success',
+        data: [
+          // PROJ-1: approved then edited → dirty.
+          epic('PROJ-1', 64 * 3600, {
+            worklogs: [
+              {
+                ticketKey: 'PROJ-1-1',
+                ticketSummary: 's',
+                seconds: 64 * 3600,
+                updated: '2026-05-25T00:00:00.000Z',
+              },
+            ],
+          }),
+          // PROJ-2: a newly-touched Epic, never approved (no approval comment).
+          epic('PROJ-2', 8 * 3600, {
+            worklogs: [
+              {
+                ticketKey: 'PROJ-2-1',
+                ticketSummary: 's2',
+                seconds: 8 * 3600,
+                updated: '2026-05-26T00:00:00.000Z',
+              },
+            ],
+          }),
+        ],
+      }),
+    );
+    // Only PROJ-1 has an approval; PROJ-2 has none.
+    approvalsMock.mockImplementation((epicKey: string) =>
+      epicKey === 'PROJ-1'
+        ? approvalsState([
+            {
+              v: 1,
+              user: 'r-bob',
+              cycle: '2026-05',
+              by: 'mgr',
+              at: '2026-05-20T08:30:00.000Z',
+              restrictedCount: 0,
+              checksum: 'x',
+            },
+          ])
+        : approvalsState([]),
+    );
+    sendRequestMock.mockResolvedValueOnce({
+      confirmed: ['PROJ-1', 'PROJ-2'],
+      failed: [],
+      enqueued: [],
+    });
+    renderMatrix();
+    // The whole row is in re-approve mode because at least one cell is dirty.
+    fireEvent.click(screen.getByRole('button', { name: 'Re-approve Bob' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Re-approve' }));
+    await waitFor(() =>
+      // The fan-out posts to the FULL current touched set (both Epics), not just
+      // the dirty one — recomputed at click time.
+      expect(sendRequestMock).toHaveBeenCalledWith('approve-cycle', {
+        user: 'r-bob',
+        cycle: '2026-05',
+        by: 'mgr-1',
+        epics: [
+          { epicKey: 'PROJ-1', restrictedCount: 0 },
+          { epicKey: 'PROJ-2', restrictedCount: 0 },
+        ],
+      }),
+    );
+  });
+
   it('renders a below-target row with AlertCircle + "below target"', () => {
     reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
     // 10h is far below 8h × ~22 May workdays → gap.

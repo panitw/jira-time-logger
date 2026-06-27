@@ -172,6 +172,92 @@ describe('ApproveButton', () => {
     expect(chip.getAttribute('title')).toMatch(/re-approve/i);
   });
 
+  // --- Story 5.7: re-approve mode -----------------------------------------
+
+  it('renders a secondary-tier "Re-approve <Person>" button in reapprove mode', () => {
+    renderButton({ mode: 'reapprove', priorApprovalAt: '2026-05-20T08:30:00.000Z' });
+    const btn = screen.getByTestId('approve-button');
+    expect(btn.textContent).toContain('Re-approve Bob');
+    expect(btn.getAttribute('aria-label')).toBe('Re-approve Bob');
+    // Secondary tier: transparent bg + neutral border, NOT brand-purple.
+    expect(btn.className).toContain('bg-transparent');
+    expect(btn.className).toContain('border-neutral-200');
+    expect(btn.className).not.toContain('bg-accent');
+  });
+
+  it('reapprove dialog shows the supersede line with the formatted prior at', () => {
+    renderButton({ mode: 'reapprove', priorApprovalAt: '2026-05-20T08:30:00.000Z' });
+    fireEvent.click(screen.getByTestId('approve-button'));
+    // Verb becomes "Re-approve" in the summary.
+    expect(screen.getByText("Re-approve Bob's May 2026: 40h across 2 Epics")).toBeTruthy();
+    const supersede = screen.getByTestId('approve-supersede-line');
+    expect(supersede.textContent).toMatch(/supersedes prior approval from/i);
+    // Human-readable formatted date, not the raw ISO.
+    expect(supersede.textContent).toMatch(/May 20, 2026/);
+    expect(supersede.textContent).not.toContain('2026-05-20T08:30:00.000Z');
+  });
+
+  it('reapprove with a missing/unparseable prior at never crashes (cosmetic fallback)', () => {
+    renderButton({ mode: 'reapprove', priorApprovalAt: undefined });
+    fireEvent.click(screen.getByTestId('approve-button'));
+    const supersede = screen.getByTestId('approve-supersede-line');
+    expect(supersede.textContent).toMatch(/supersedes prior approval from/i);
+    // Falls back to a neutral placeholder rather than throwing.
+    expect(supersede.textContent).toMatch(/an earlier approval/i);
+  });
+
+  it('reapprove falls back to the raw ISO when the prior at is unparseable', () => {
+    renderButton({ mode: 'reapprove', priorApprovalAt: 'not-a-date' });
+    fireEvent.click(screen.getByTestId('approve-button'));
+    expect(screen.getByTestId('approve-supersede-line').textContent).toContain('not-a-date');
+  });
+
+  it('reapprove fires the SAME approve-cycle payload and success → ✓ Done', async () => {
+    sendRequestMock.mockResolvedValueOnce({
+      confirmed: ['EP-1', 'EP-2'],
+      failed: [],
+      enqueued: [],
+    });
+    renderButton({ mode: 'reapprove', priorApprovalAt: '2026-05-20T08:30:00.000Z' });
+    fireEvent.click(screen.getByTestId('approve-button'));
+    fireEvent.click(screen.getByRole('button', { name: 'Re-approve' }));
+
+    await waitFor(() => expect(screen.getByTestId('approve-done')).toBeTruthy());
+    expect(sendRequestMock).toHaveBeenCalledWith('approve-cycle', {
+      user: 'r-bob',
+      cycle: '2026-05',
+      by: 'mgr-1',
+      epics: [
+        { epicKey: 'EP-1', restrictedCount: 0 },
+        { epicKey: 'EP-2', restrictedCount: 0 },
+      ],
+    });
+  });
+
+  it('reapprove partial → the same "Approval partial" chip', async () => {
+    sendRequestMock.mockResolvedValueOnce({
+      confirmed: ['EP-1'],
+      failed: ['EP-2'],
+      enqueued: ['EP-2'],
+    });
+    renderButton({ mode: 'reapprove', priorApprovalAt: '2026-05-20T08:30:00.000Z' });
+    fireEvent.click(screen.getByTestId('approve-button'));
+    fireEvent.click(screen.getByRole('button', { name: 'Re-approve' }));
+    const chip = await screen.findByTestId('approve-partial');
+    expect(chip.textContent).toContain('Approval partial — 1 of 2 Epics confirmed');
+  });
+
+  it('disabledReason disables the button in reapprove mode too (5.8 seam, AC7)', () => {
+    renderButton({
+      mode: 'reapprove',
+      priorApprovalAt: '2026-05-20T08:30:00.000Z',
+      disabledReason: 'Only the canonical manager can approve',
+    });
+    const btn = screen.getByTestId('approve-button') as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(btn.title).toBe('Only the canonical manager can approve');
+  });
+
   it('resets a terminal "✓ Done" state when the cycle subject changes', async () => {
     sendRequestMock.mockResolvedValueOnce({
       confirmed: ['EP-1', 'EP-2'],

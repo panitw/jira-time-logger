@@ -476,18 +476,35 @@ function ManagerMatrixRow({
 
   // Per-Epic cell status, lifted from each MatrixCell, so the row can decide
   // whether EVERY touched-Epic cell resolves to approved (the "done" signal for
-  // the progress chip) without re-querying the approval anchors here.
+  // the progress chip) and whether ANY cell is dirty (the re-approve signal)
+  // without re-querying the approval anchors here.
   const [cellStatuses, setCellStatuses] = useState<Map<string, CellStatus>>(
     () => new Map(),
   );
-  const handleCellStatus = useCallback((epicKey: string, status: CellStatus) => {
-    setCellStatuses((prev) => {
-      if (prev.get(epicKey) === status) return prev;
-      const next = new Map(prev);
-      next.set(epicKey, status);
-      return next;
-    });
-  }, []);
+  // Per-Epic resolved approval anchor (`at`), lifted alongside the status so the
+  // row can thread the prior approval timestamp into the re-approve supersede
+  // line. All dirty cells of one (user, cycle) share one anchor (newest-wins),
+  // so any dirty cell's `approvalAt` is the correct prior `at`.
+  const [cellAnchors, setCellAnchors] = useState<Map<string, string | null>>(
+    () => new Map(),
+  );
+  const handleCellStatus = useCallback(
+    (epicKey: string, status: CellStatus, approvalAt: string | null) => {
+      setCellStatuses((prev) => {
+        if (prev.get(epicKey) === status) return prev;
+        const next = new Map(prev);
+        next.set(epicKey, status);
+        return next;
+      });
+      setCellAnchors((prev) => {
+        if (prev.get(epicKey) === approvalAt) return prev;
+        const next = new Map(prev);
+        next.set(epicKey, approvalAt);
+        return next;
+      });
+    },
+    [],
+  );
 
   // The resolved Epic groups (empty until the row query settles). Computed ABOVE
   // the loading/error early returns so the approval-state effect below is an
@@ -509,6 +526,22 @@ function ManagerMatrixRow({
   useEffect(() => {
     onApprovalState(report.accountId, allApproved);
   }, [allApproved, report.accountId, onApprovalState]);
+
+  // A row is dirty when ANY touched-Epic cell resolves to `dirty` (an existing
+  // approval went stale). A dirty row shows "Re-approve" (secondary) instead of
+  // "Approve" (primary); a row never shows both. (Story 5.7)
+  const anyDirty = touchedEpics.some(
+    (e) => cellStatuses.get(e.epicKey) === 'dirty',
+  );
+  // The prior approval anchor for the supersede line: any dirty cell's reported
+  // `approvalAt` (they all share one by newest-wins). Undefined when no anchor
+  // surfaced yet (race during stagger reveal) — the dialog falls back gracefully
+  // and never blocks re-approval (Story 5.7 Dev Notes).
+  const priorApprovalAt = anyDirty
+    ? (touchedEpics
+        .map((e) => cellAnchors.get(e.epicKey))
+        .find((at): at is string => typeof at === 'string' && at.length > 0) ?? undefined)
+    : undefined;
 
   // +1 for the trailing row-action (Approve) column so the pending/error/empty
   // single-cell states keep the table rectangular.
@@ -592,6 +625,8 @@ function ManagerMatrixRow({
         epics={touchedEpics}
         rowSeconds={rowSeconds}
         restrictedCount={restrictedCount}
+        mode={anyDirty ? 'reapprove' : 'approve'}
+        priorApprovalAt={priorApprovalAt}
         disabledReason={
           managerAccountId === undefined || managerAccountId === ''
             ? 'Resolving your account…'
@@ -650,8 +685,11 @@ type CellProps = {
   cycle: CycleId;
   rowStatus: CellStatus;
   onOpen: (report: DirectReport, epicKey: string) => void;
-  /** Report this cell's resolved CellStatus up to the row (progress chip). */
-  onStatus: (epicKey: string, status: CellStatus) => void;
+  /**
+   * Report this cell's resolved CellStatus AND its approval anchor up to the
+   * row (progress chip + re-approve mode/supersede line, Story 5.7).
+   */
+  onStatus: (epicKey: string, status: CellStatus, approvalAt: string | null) => void;
 };
 
 /**
@@ -687,11 +725,13 @@ function MatrixCell({
     ? 'unapproved-neutral'
     : computeCellStatus({ epics, epicKey, approvalAt, rowStatus });
 
-  // Report the resolved status up so the row can derive its "all approved"
-  // (done) signal from the SAME anchors the cell paints with.
+  // Report the resolved status AND anchor up so the row can derive its "all
+  // approved" (done) and "any dirty" (re-approve) signals — plus the prior
+  // approval `at` for the supersede line — from the SAME anchors the cell
+  // paints with.
   useEffect(() => {
-    onStatus(epicKey, status);
-  }, [epicKey, status, onStatus]);
+    onStatus(epicKey, status, approvalAt);
+  }, [epicKey, status, approvalAt, onStatus]);
 
   const restricted =
     epics.find((e) => e.epicKey === epicKey)?.restrictedCount ?? 0;
