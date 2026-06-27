@@ -1,5 +1,5 @@
 # generated: 2026-05-11 22:45:02
-# last_updated: 2026-06-27 (create-story: 4-1 → ready-for-dev; epic-4 → in-progress)
+# last_updated: 2026-06-27 (code-review: 4-2 → done)
 # project: jira-time-logger
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,12 +35,13 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-11 22:45:02
-last_updated: 2026-06-27 (code-review: 4-1 → done)
+last_updated: 2026-06-27 (dev-story: 4-2 → review)
 project: jira-time-logger
 # 2026-06-21: Story 2-7 created (ready-for-dev) — completes Epic 2
 # 2026-06-21: Story 3-1 created (ready-for-dev); Epic 3 → in-progress
 # 2026-06-22: Story 3-2 created (ready-for-dev)
 # 2026-06-27: Story 4-1 created (ready-for-dev); Epic 4 → in-progress (first story of Epic 4)
+# 2026-06-27: Story 4-2 created (ready-for-dev)
 project_key: NOKEY
 tracking_system: file-system
 story_location: "{project-root}/_bmad-output/implementation-artifacts"
@@ -78,7 +79,7 @@ development_status:
   # Epic 4: Weekly Review & Mark-as-Done
   epic-4: in-progress
   4-1-week-view-shell-7-day-grid-with-subtask-rows: done
-  4-2-per-day-color-coding-status-icons: backlog
+  4-2-per-day-color-coding-status-icons: done
   4-3-inline-cell-editing-add-remove-edit-hours: backlog
   4-4-click-cell-header-pto-popover: backlog
   4-5-mark-as-done-button-with-gap-acknowledgment-dialog: backlog

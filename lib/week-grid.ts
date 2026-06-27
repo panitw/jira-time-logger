@@ -8,6 +8,7 @@
  * Pure — no chrome/network/React. Co-located tests cover bucketing, totals,
  * ordering, empty-week, and out-of-range exclusion (AC #11).
  */
+import { hoursToSeconds } from '@/lib/hours';
 import type { WeekIssueWorklogs } from '@/lib/jira-types';
 import type { ISODate } from '@/lib/storage/view-state';
 
@@ -140,4 +141,65 @@ export function buildWeekGrid(
   });
 
   return { days, rows, dayTotalsSeconds };
+}
+
+/**
+ * Per-day status for the week grid's totals/header cells (Story 4.2).
+ *
+ * - `complete`     — day total >= target hours (green + Check).
+ * - `below-target` — past-or-today Mon..Fri under target with no PTO (red + AlertCircle).
+ * - `pto`          — the day has a PTO worklog (green + PTO label); PTO always wins.
+ * - `neutral`      — future workdays, and weekends without complete/pto (no red).
+ */
+export type DayStatus = 'complete' | 'below-target' | 'pto' | 'neutral';
+
+/** True for Saturday/Sunday, derived from the day's local weekday. */
+function isWeekend(iso: ISODate): boolean {
+  const weekday = new Date(`${iso}T00:00:00`).getDay(); // 0 = Sun .. 6 = Sat
+  return weekday === 0 || weekday === 6;
+}
+
+/**
+ * Decide each day's status from the already-built grid — pure, no clock read.
+ * The caller injects `today` (a local `YYYY-MM-DD`) so the future/past rule is
+ * deterministic and testable. Returns a 7-element array, index 0 = Monday.
+ */
+export function computeDayStatuses(
+  grid: WeekGrid,
+  params: { targetHours: number; today: ISODate },
+): DayStatus[] {
+  const { targetHours, today } = params;
+  const targetSeconds = hoursToSeconds(targetHours);
+
+  // Which days have a PTO worklog: any pto-category row with seconds that day.
+  const ptoDays = new Array<boolean>(DAYS_PER_WEEK).fill(false);
+  for (const r of grid.rows) {
+    if (r.category !== 'pto') continue;
+    for (let i = 0; i < DAYS_PER_WEEK; i++) {
+      if ((r.cellsSeconds[i] ?? 0) > 0) ptoDays[i] = true;
+    }
+  }
+
+  const statuses = new Array<DayStatus>(DAYS_PER_WEEK).fill('neutral');
+  for (let i = 0; i < DAYS_PER_WEEK; i++) {
+    const iso = grid.days[i];
+    if (!iso) continue; // defensive: malformed grid
+
+    if (ptoDays[i]) {
+      statuses[i] = 'pto';
+      continue;
+    }
+    if ((grid.dayTotalsSeconds[i] ?? 0) >= targetSeconds) {
+      statuses[i] = 'complete';
+      continue;
+    }
+    // Below target: red only for past-or-today workdays (Mon..Fri). Future days
+    // and all weekends stay neutral (an incomplete future day is not "behind").
+    const pastOrToday = iso <= today; // safe lexical compare for YYYY-MM-DD
+    if (pastOrToday && !isWeekend(iso)) {
+      statuses[i] = 'below-target';
+    }
+  }
+
+  return statuses;
 }

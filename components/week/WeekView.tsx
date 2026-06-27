@@ -10,9 +10,14 @@ import {
   ptoSubtaskKeyItem,
 } from '@/lib/storage/settings';
 import type { ISODate } from '@/lib/storage/view-state';
-import { buildWeekGrid } from '@/lib/week-grid';
+import { buildWeekGrid, computeDayStatuses } from '@/lib/week-grid';
 
 type Props = { weekOf: ISODate };
+
+/** Local `YYYY-MM-DD` (not UTC) so today/future comparisons match local days. */
+function localToday(): ISODate {
+  return format(new Date(), 'yyyy-MM-dd');
+}
 
 const WORKDAYS_PER_WEEK = 5;
 const SKELETON_ROW_COUNT = 5;
@@ -64,6 +69,12 @@ export function WeekView({ weekOf }: Props): React.ReactElement {
     });
   }, [query.data, weekOf, catchAllProjectKey, ptoSubtaskKey]);
 
+  const today = useMemo(() => localToday(), []);
+  const dayStatuses = useMemo(
+    () => (grid ? computeDayStatuses(grid, { targetHours, today }) : null),
+    [grid, targetHours, today],
+  );
+
   const loggedSeconds = grid
     ? grid.dayTotalsSeconds.reduce((sum, s) => sum + s, 0)
     : 0;
@@ -94,7 +105,10 @@ export function WeekView({ weekOf }: Props): React.ReactElement {
             <WeekErrorState onRetry={() => void query.refetch()} />
           )
         ) : grid ? (
-          <WeeklyGrid grid={grid} />
+          <WeeklyGrid
+            grid={grid}
+            {...(dayStatuses ? { dayStatuses } : {})}
+          />
         ) : null}
       </div>
     </div>

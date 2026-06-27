@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { hoursToSeconds } from '@/lib/hours';
 import type { WeekIssueWorklogs } from '@/lib/jira-types';
-import { buildWeekGrid } from '@/lib/week-grid';
+import type { WeekGrid, WeekGridRow } from '@/lib/week-grid';
+import { buildWeekGrid, computeDayStatuses } from '@/lib/week-grid';
 
 const WEEK_OF = '2026-06-15'; // Monday
 
@@ -185,5 +186,129 @@ describe('buildWeekGrid', () => {
       ptoSubtaskKey: 'KNP-1',
     });
     expect(grid.rows).toHaveLength(0);
+  });
+});
+
+const DAYS: WeekGrid['days'] = [
+  '2026-06-15', // Mon
+  '2026-06-16', // Tue
+  '2026-06-17', // Wed
+  '2026-06-18', // Thu
+  '2026-06-19', // Fri
+  '2026-06-20', // Sat
+  '2026-06-21', // Sun
+];
+
+function row(
+  category: WeekGridRow['category'],
+  cellsSeconds: number[],
+): WeekGridRow {
+  const rowTotalSeconds = cellsSeconds.reduce((s, c) => s + c, 0);
+  return { key: 'X-1', summary: 'r', category, cellsSeconds, rowTotalSeconds };
+}
+
+function gridOf(
+  dayTotalsSeconds: number[],
+  rows: WeekGridRow[] = [],
+): WeekGrid {
+  return { days: DAYS, rows, dayTotalsSeconds };
+}
+
+describe('computeDayStatuses', () => {
+  const TARGET = 8;
+
+  it('marks a day complete when the total is above target', () => {
+    const grid = gridOf([hoursToSeconds(9), 0, 0, 0, 0, 0, 0]);
+    const statuses = computeDayStatuses(grid, {
+      targetHours: TARGET,
+      today: '2026-06-21',
+    });
+    expect(statuses[0]).toBe('complete');
+  });
+
+  it('marks a day complete at the exact target boundary (== target is green)', () => {
+    const grid = gridOf([hoursToSeconds(8), 0, 0, 0, 0, 0, 0]);
+    const statuses = computeDayStatuses(grid, {
+      targetHours: TARGET,
+      today: '2026-06-21',
+    });
+    expect(statuses[0]).toBe('complete');
+  });
+
+  it('marks a past workday below target as below-target (red)', () => {
+    // Mon has 3h, today is Wed → Mon is a past workday and under target.
+    const grid = gridOf([hoursToSeconds(3), 0, 0, 0, 0, 0, 0]);
+    const statuses = computeDayStatuses(grid, {
+      targetHours: TARGET,
+      today: '2026-06-17',
+    });
+    expect(statuses[0]).toBe('below-target');
+  });
+
+  it('treats today (== today) as eligible-for-red, not future', () => {
+    // Today is Wed with 0h logged → below-target, not neutral.
+    const grid = gridOf([0, 0, 0, 0, 0, 0, 0]);
+    const statuses = computeDayStatuses(grid, {
+      targetHours: TARGET,
+      today: '2026-06-17',
+    });
+    expect(statuses[2]).toBe('below-target');
+  });
+
+  it('leaves a zero-hour future workday neutral (NOT red)', () => {
+    // Today is Wed; Thu/Fri are future workdays with 0h → neutral.
+    const grid = gridOf([0, 0, 0, 0, 0, 0, 0]);
+    const statuses = computeDayStatuses(grid, {
+      targetHours: TARGET,
+      today: '2026-06-17',
+    });
+    expect(statuses[3]).toBe('neutral'); // Thu future
+    expect(statuses[4]).toBe('neutral'); // Fri future
+  });
+
+  it('leaves a zero-hour past weekend neutral (NOT red)', () => {
+    // Today is past the whole week; Sat/Sun with 0h → neutral, not red.
+    const grid = gridOf([0, 0, 0, 0, 0, 0, 0]);
+    const statuses = computeDayStatuses(grid, {
+      targetHours: TARGET,
+      today: '2026-06-28',
+    });
+    expect(statuses[5]).toBe('neutral'); // Sat past, empty
+    expect(statuses[6]).toBe('neutral'); // Sun past, empty
+  });
+
+  it('marks a day with an under-target PTO worklog as pto (PTO wins → green)', () => {
+    // Tue has a half-day PTO worklog (4h) under the 8h target → pto, not red.
+    const ptoRow = row('pto', [0, hoursToSeconds(4), 0, 0, 0, 0, 0]);
+    const grid = gridOf([0, hoursToSeconds(4), 0, 0, 0, 0, 0], [ptoRow]);
+    const statuses = computeDayStatuses(grid, {
+      targetHours: TARGET,
+      today: '2026-06-21',
+    });
+    expect(statuses[1]).toBe('pto');
+  });
+
+  it('still awards green to a weekend that meets target or has PTO', () => {
+    // Sat (index 5) hits target → complete; Sun (index 6) has PTO → pto.
+    const ptoRow = row('pto', [0, 0, 0, 0, 0, 0, hoursToSeconds(8)]);
+    const grid = gridOf(
+      [0, 0, 0, 0, 0, hoursToSeconds(8), hoursToSeconds(8)],
+      [ptoRow],
+    );
+    const statuses = computeDayStatuses(grid, {
+      targetHours: TARGET,
+      today: '2026-06-28',
+    });
+    expect(statuses[5]).toBe('complete');
+    expect(statuses[6]).toBe('pto');
+  });
+
+  it('returns a 7-element array indexed Monday..Sunday', () => {
+    const grid = gridOf([0, 0, 0, 0, 0, 0, 0]);
+    const statuses = computeDayStatuses(grid, {
+      targetHours: TARGET,
+      today: '2026-06-21',
+    });
+    expect(statuses).toHaveLength(7);
   });
 });

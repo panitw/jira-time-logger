@@ -2,7 +2,7 @@ import { render, screen, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { WeeklyGrid } from './WeeklyGrid';
 import { hoursToSeconds } from '@/lib/hours';
-import type { WeekGrid } from '@/lib/week-grid';
+import type { DayStatus, WeekGrid } from '@/lib/week-grid';
 
 vi.mock('@/components/today/TicketPicker', () => ({
   TicketPicker: ({
@@ -110,6 +110,83 @@ describe('WeeklyGrid', () => {
       name: /Mark week as done/i,
     }) as HTMLButtonElement;
     expect(markDone.disabled).toBe(true);
+  });
+
+  it('colors a complete day green with a Check icon and aria-label', () => {
+    const statuses: DayStatus[] = [
+      'complete',
+      'neutral',
+      'neutral',
+      'neutral',
+      'neutral',
+      'neutral',
+      'neutral',
+    ];
+    render(<WeeklyGrid grid={gridWithOneRow()} dayStatuses={statuses} />);
+    const cell = screen.getByLabelText('Monday, complete');
+    expect(cell).toBeTruthy();
+    expect(cell.querySelector('svg')).toBeTruthy(); // lucide Check
+    expect(cell.className).toContain('text-state-success');
+    expect(cell.textContent).toContain('4.0'); // numeric total preserved
+  });
+
+  it('colors a below-target day red with AlertCircle + visible "below target" text', () => {
+    const statuses: DayStatus[] = [
+      'below-target',
+      'neutral',
+      'neutral',
+      'neutral',
+      'neutral',
+      'neutral',
+      'neutral',
+    ];
+    render(<WeeklyGrid grid={gridWithOneRow()} dayStatuses={statuses} />);
+    const cell = screen.getByLabelText('Monday, below target');
+    expect(cell).toBeTruthy();
+    expect(cell.querySelector('svg')).toBeTruthy(); // lucide AlertCircle
+    expect(cell.className).toContain('text-state-danger');
+    expect(within(cell).getByText('below target')).toBeTruthy();
+  });
+
+  it('renders a PTO day green with a PTO label and aria-label', () => {
+    const statuses: DayStatus[] = [
+      'neutral',
+      'pto',
+      'neutral',
+      'neutral',
+      'neutral',
+      'neutral',
+      'neutral',
+    ];
+    render(<WeeklyGrid grid={gridWithOneRow()} dayStatuses={statuses} />);
+    const cell = screen.getByLabelText('Tuesday, PTO');
+    expect(cell).toBeTruthy();
+    expect(cell.className).toContain('text-state-success');
+    expect(within(cell).getByText('PTO')).toBeTruthy();
+  });
+
+  it('leaves a neutral (future/weekend) day uncolored with no status icon or label', () => {
+    const statuses: DayStatus[] = [
+      'neutral',
+      'neutral',
+      'neutral',
+      'neutral',
+      'neutral',
+      'neutral',
+      'neutral',
+    ];
+    render(<WeeklyGrid grid={emptyGrid()} dayStatuses={statuses} />);
+    expect(screen.queryByLabelText(/below target/)).toBeNull();
+    expect(screen.queryByLabelText(/, complete/)).toBeNull();
+    const totalsRow = screen.getByRole('row', { name: /Daily totals/i });
+    expect(totalsRow.querySelector('svg')).toBeNull(); // no status icons
+  });
+
+  it('renders neutral totals when dayStatuses is omitted (back-compat)', () => {
+    render(<WeeklyGrid grid={gridWithOneRow()} />);
+    const totalsRow = screen.getByRole('row', { name: /Daily totals/i });
+    expect(within(totalsRow).getByText('4.0')).toBeTruthy();
+    expect(totalsRow.querySelector('svg')).toBeNull();
   });
 
   it('appends a local all-em-dash row when a ticket is picked, deduping by key', () => {

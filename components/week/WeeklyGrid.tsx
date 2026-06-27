@@ -1,9 +1,15 @@
+import { Check, AlertCircle } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { TicketPicker } from '@/components/today/TicketPicker';
 import { Button } from '@/components/ui/button';
 import { secondsToCellDisplay } from '@/lib/hours';
 import { log } from '@/lib/log';
-import { DAYS_PER_WEEK, type WeekGrid, type WeekGridRow } from '@/lib/week-grid';
+import {
+  DAYS_PER_WEEK,
+  type DayStatus,
+  type WeekGrid,
+  type WeekGridRow,
+} from '@/lib/week-grid';
 
 const STRINGS = {
   dayHeadersShort: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
@@ -20,9 +26,16 @@ const STRINGS = {
   totalsRowLabel: 'Daily totals',
   addSubtask: '+ Add a subtask to this week',
   markWeekDone: 'Mark week as done',
+  belowTarget: 'below target',
+  pto: 'PTO',
+  statusComplete: 'complete',
 };
 
-type Props = { grid: WeekGrid };
+type Props = {
+  grid: WeekGrid;
+  /** Per-day status (index 0 = Monday); when omitted, totals render neutral. */
+  dayStatuses?: DayStatus[];
+};
 
 /** A locally-added subtask row (Story 4.1) — all-`──` cells, no worklog posted. */
 type LocalRow = { key: string; summary: string };
@@ -31,7 +44,66 @@ function emptyCells(): number[] {
   return new Array<number>(DAYS_PER_WEEK).fill(0);
 }
 
-export function WeeklyGrid({ grid }: Props): React.ReactElement {
+const ICON_SIZE = 16;
+
+/** Tailwind classes + the accessible status word for each colored status. */
+const STATUS_CLASSES: Record<DayStatus, string> = {
+  complete: 'bg-state-success-subtle text-state-success',
+  'below-target': 'bg-state-danger-subtle text-state-danger',
+  pto: 'bg-state-success-subtle text-state-success',
+  neutral: 'text-neutral-500',
+};
+
+/**
+ * One per-day totals cell. Color (when a status is present) is always paired
+ * with a lucide icon (decorative, `aria-hidden`), an `aria-label`, and — for
+ * below-target — the visible literal text `below target`, so the meaning is
+ * conveyed without relying on color (NFR12 / UX-DR32).
+ */
+function TotalsCell({
+  seconds,
+  status,
+  dayName,
+}: {
+  seconds: number;
+  status: DayStatus;
+  dayName: string;
+}): React.ReactElement {
+  const total = secondsToCellDisplay(seconds);
+  const colorClass = STATUS_CLASSES[status];
+
+  const ariaLabel =
+    status === 'complete'
+      ? `${dayName}, ${STRINGS.statusComplete}`
+      : status === 'below-target'
+        ? `${dayName}, ${STRINGS.belowTarget}`
+        : status === 'pto'
+          ? `${dayName}, ${STRINGS.pto}`
+          : undefined;
+
+  return (
+    <td
+      className={`px-1 py-1 text-right font-mono text-xs motion-safe:transition-colors motion-safe:duration-200 ${colorClass}`}
+      {...(ariaLabel ? { 'aria-label': ariaLabel } : {})}
+    >
+      <span className="flex items-center justify-end gap-0.5">
+        {status === 'complete' || status === 'pto' ? (
+          <Check size={ICON_SIZE} aria-hidden />
+        ) : status === 'below-target' ? (
+          <AlertCircle size={ICON_SIZE} aria-hidden />
+        ) : null}
+        {status === 'pto' ? <span>{STRINGS.pto}</span> : <span>{total}</span>}
+      </span>
+      {status === 'below-target' ? (
+        <span className="block text-[10px] leading-tight">
+          {STRINGS.belowTarget}
+        </span>
+      ) : null}
+    </td>
+  );
+}
+
+export function WeeklyGrid({ grid, dayStatuses }: Props): React.ReactElement {
   const [localRows, setLocalRows] = useState<LocalRow[]>([]);
   const [picking, setPicking] = useState(false);
 
@@ -98,12 +170,12 @@ export function WeeklyGrid({ grid }: Props): React.ReactElement {
               {STRINGS.totalsRowLabel}
             </th>
             {grid.dayTotalsSeconds.map((seconds, i) => (
-              <td
+              <TotalsCell
                 key={STRINGS.dayHeadersShort[i] ?? i}
-                className="px-1 py-1 text-right font-mono text-xs text-neutral-500"
-              >
-                {secondsToCellDisplay(seconds)}
-              </td>
+                seconds={seconds}
+                status={dayStatuses?.[i] ?? 'neutral'}
+                dayName={STRINGS.dayNamesLong[i] ?? ''}
+              />
             ))}
           </tr>
         </thead>
