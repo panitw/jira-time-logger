@@ -79,3 +79,8 @@
 
 - SW cold-start can yield no banner on the first Jira page load until the next navigation. Graceful (never crashes), AC #8 permits "no banner", recovery is navigation-gated; a content-side retry is out of scope. [entrypoints/content.ts]
 - Pressing Escape (or an SPA re-render) during an in-flight submit re-renders the banner and drops the ✓ confirmation, though the worklog still posts. Minor UX only; the in-flight guard prevents the double-post hazard and the write is durable. [entrypoints/content.ts:248-250]
+
+## Deferred from: code review of story-4.4 (2026-06-27)
+
+- Day-scoped "Add a worklog…" editor-open relies on a 2×requestAnimationFrame race against the freshly-mounted DayCell's registration effect; a missed lookup is swallowed by `?.()` with no retry. AC #5 date-correctness still holds (DayCell POST dates to grid.days[dayIndex]); the editor-open is a focus convenience. Harden if intermittent open failures are observed. [components/week/WeeklyGrid.tsx:339-347]
+- TicketPicker is rendered with no onCancel; opening the picker (plain or day-scoped) and never selecting leaves `picking` set with no dismiss UI. Pre-existing 4.1/4.3 behavior — TicketPicker has no cancel prop; the day-scoped dayIndex self-heals when "+ Add a subtask" resets picking=true. [components/week/WeeklyGrid.tsx:484-485, components/today/TicketPicker.tsx]

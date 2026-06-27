@@ -71,6 +71,12 @@ export type DayCellProps = {
   cell: WeekGridCell;
   status: DayStatus;
   onMutated: () => void;
+  /**
+   * Optionally exposes this cell's "open editor" action to the parent so a
+   * day-scoped "Add a worklog…" (Story 4.4) can open the editor on the right
+   * column. Registers on mount, unregisters on unmount. No-op for multi cells.
+   */
+  registerOpenEditor?: (open: (() => void) | null) => void;
 };
 
 export function DayCell({
@@ -81,6 +87,7 @@ export function DayCell({
   cell,
   status,
   onMutated,
+  registerOpenEditor,
 }: DayCellProps): React.ReactElement {
   const editability = cellEditability(cell);
   const isMulti = editability === 'multi';
@@ -212,6 +219,13 @@ export function DayCell({
     setHoursInput(cellInputValue(cell.seconds));
     setEditing(true);
   }, [isMulti, cell.seconds]);
+
+  // Expose the editor-open action to the parent (day-scoped "Add a worklog…").
+  useEffect(() => {
+    if (!registerOpenEditor) return;
+    registerOpenEditor(isMulti ? null : startEdit);
+    return () => registerOpenEditor(null);
+  }, [registerOpenEditor, startEdit, isMulti]);
 
   const cancelEdit = useCallback(() => {
     resolvedRef.current = true;

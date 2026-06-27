@@ -9,14 +9,22 @@ vi.mock('@/hooks/useWeekWorklogs', () => ({
   useWeekWorklogs: (...args: unknown[]) => useWeekWorklogsMock(...args),
 }));
 
+const weeklyGridProps = vi.fn();
 vi.mock('@/components/week/WeeklyGrid', () => ({
-  WeeklyGrid: ({ onMutated }: { onMutated?: () => void }) => (
-    <div data-testid="weekly-grid">
-      <button type="button" onClick={() => onMutated?.()}>
-        trigger-mutated
-      </button>
-    </div>
-  ),
+  WeeklyGrid: (props: {
+    onMutated?: () => void;
+    ptoSubtaskKey?: string | null;
+    targetHours?: number;
+  }) => {
+    weeklyGridProps(props);
+    return (
+      <div data-testid="weekly-grid">
+        <button type="button" onClick={() => props.onMutated?.()}>
+          trigger-mutated
+        </button>
+      </div>
+    );
+  },
 }));
 
 const targetHoursGet = vi.fn(async () => 8);
@@ -86,6 +94,21 @@ describe('WeekView', () => {
     // 28 logged / (8 * 5 = 40) target — value spans a <span> + text node.
     expect(screen.getByText('28')).toBeTruthy();
     expect(screen.getByText(/\/ 40h/)).toBeTruthy();
+  });
+
+  it('threads ptoSubtaskKey + targetHours to WeeklyGrid (Story 4.4)', async () => {
+    useWeekWorklogsMock.mockReturnValue({
+      isPending: false,
+      isError: false,
+      data: [],
+    });
+    renderView();
+    await screen.findByTestId('weekly-grid');
+    await waitFor(() => {
+      expect(weeklyGridProps).toHaveBeenCalledWith(
+        expect.objectContaining({ ptoSubtaskKey: 'KNP-1', targetHours: 8 }),
+      );
+    });
   });
 
   it('invalidates the week query when the grid reports a mutation (AC #8)', async () => {

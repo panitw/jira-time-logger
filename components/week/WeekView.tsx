@@ -117,6 +117,8 @@ export function WeekView({ weekOf }: Props): React.ReactElement {
           <WeeklyGrid
             grid={grid}
             onMutated={handleMutated}
+            ptoSubtaskKey={ptoSubtaskKey || null}
+            targetHours={targetHours}
             {...(dayStatuses ? { dayStatuses } : {})}
           />
         ) : null}

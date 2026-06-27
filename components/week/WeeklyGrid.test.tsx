@@ -320,6 +320,32 @@ describe('WeeklyGrid', () => {
     expect(deleteWorklogMock).not.toHaveBeenCalled();
   });
 
+  it('renders a PTO/worklog popover trigger on each day header that opens on click', () => {
+    renderGrid(<WeeklyGrid grid={gridWithOneRow()} ptoSubtaskKey="PTO-1" targetHours={8} />);
+    const trigger = screen.getByRole('button', {
+      name: /PTO and worklog actions for Monday, Jun 15/,
+    });
+    expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
+    fireEvent.click(trigger);
+    expect(screen.getByRole('menuitem', { name: /Mark full-day PTO \(8h\)/ })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: /Add a worklog/ })).toBeTruthy();
+    // The 4.2 totals row and 4.3 body cells still render alongside the popover.
+    expect(screen.getByRole('row', { name: /Daily totals/i })).toBeTruthy();
+    expect(
+      screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'),
+    ).toBeTruthy();
+  });
+
+  it('header "Add a worklog…" opens the day-scoped picker', () => {
+    renderGrid(<WeeklyGrid grid={emptyGrid()} ptoSubtaskKey="PTO-1" targetHours={8} />);
+    fireEvent.click(
+      screen.getByRole('button', { name: /PTO and worklog actions for Monday, Jun 15/ }),
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: /Add a worklog/ }));
+    // The TicketPicker (mocked) is now shown.
+    expect(screen.getByText('mock-pick')).toBeTruthy();
+  });
+
   it('row ⋯ Remove from week on a row with hours confirms, then deletes every worklog', async () => {
     const onMutated = vi.fn();
     renderGrid(<WeeklyGrid grid={gridWithOneRow()} onMutated={onMutated} />);

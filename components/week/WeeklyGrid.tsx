@@ -1,9 +1,11 @@
 import { useMutation } from '@tanstack/react-query';
+import { format, parseISO } from 'date-fns';
 import { Check, AlertCircle, MoreHorizontal } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { TicketPicker } from '@/components/today/TicketPicker';
 import { Button } from '@/components/ui/button';
 import { DayCell } from '@/components/week/DayCell';
+import { PtoPopover } from '@/components/week/PtoPopover';
 import { secondsToCellDisplay } from '@/lib/hours';
 import { deleteWorklog } from '@/lib/jira-client';
 import { log } from '@/lib/log';
@@ -47,12 +49,22 @@ type Props = {
   grid: WeekGrid;
   /** Per-day status (index 0 = Monday); when omitted, totals render neutral. */
   dayStatuses?: DayStatus[];
+  /** Configured PTO subtask key (`null`/blank → PTO popover buttons disabled). */
+  ptoSubtaskKey?: string | null;
+  /** Daily target hours (full-day PTO posts this; half posts half). */
+  targetHours?: number;
   /** Invalidate the week query after a successful cell/row mutation (AC #8). */
   onMutated?: () => void;
 };
 
 /** A locally-added subtask row (Story 4.1) — all-`──` cells, no worklog posted. */
 type LocalRow = { key: string; summary: string };
+
+/** `Mon D` label for a day-header, e.g. `2026-05-15` → `May 15`. */
+function formatDayLabel(dayISO: string): string {
+  if (!dayISO) return '';
+  return format(parseISO(dayISO), 'MMM d');
+}
 
 function emptyCell(): WeekGridCell {
   return { seconds: 0, worklogs: [] };
@@ -285,11 +297,21 @@ function RowActions({
   );
 }
 
-export function WeeklyGrid({ grid, dayStatuses, onMutated }: Props): React.ReactElement {
+export function WeeklyGrid({
+  grid,
+  dayStatuses,
+  ptoSubtaskKey = null,
+  targetHours = 8,
+  onMutated,
+}: Props): React.ReactElement {
   const [localRows, setLocalRows] = useState<LocalRow[]>([]);
   const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(new Set());
-  const [picking, setPicking] = useState(false);
+  // `picking` carries the target day (from a header "Add a worklog…") so the
+  // picked ticket's cell for THAT day can be opened for hours entry. `true`
+  // (no day) = the plain "+ Add a subtask" affordance (4.1/4.3 behavior).
+  const [picking, setPicking] = useState<{ dayIndex: number } | boolean>(false);
   const rowHeaderRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
+  const cellEditRefs = useRef<Map<string, () => void>>(new Map());
 
   const existingKeys = new Set(grid.rows.map((r) => r.key));
 
@@ -301,6 +323,10 @@ export function WeeklyGrid({ grid, dayStatuses, onMutated }: Props): React.React
   const handlePick = useCallback(
     (ticketKey: string, ticketSummary: string): void => {
       log.info('week.add-subtask.picked', { key: ticketKey });
+      // Day-scoped pick (header "Add a worklog…") targets that day's cell so the
+      // existing DayCell POST dates the worklog to grid.days[dayIndex] (AC #5).
+      const dayScoped =
+        typeof picking === 'object' && picking !== null ? picking.dayIndex : null;
       setLocalRows((prev) => {
         if (existingKeys.has(ticketKey) || prev.some((r) => r.key === ticketKey)) {
           // Already a row — do not add a duplicate; jump focus to it (AC #5).
@@ -310,10 +336,19 @@ export function WeeklyGrid({ grid, dayStatuses, onMutated }: Props): React.React
         return [...prev, { key: ticketKey, summary: ticketSummary }];
       });
       setPicking(false);
+      if (dayScoped !== null) {
+        // Defer to the next frame so the (possibly freshly-added) cell mounts,
+        // then open its editor — the DayCell POST flow dates it to that day.
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() =>
+            cellEditRefs.current.get(`${ticketKey}-${dayScoped}`)?.(),
+          );
+        });
+      }
     },
     // existingKeys is derived from props each render; depending on grid.rows is enough.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [grid.rows, focusRowHeader],
+    [grid.rows, focusRowHeader, picking],
   );
 
   const handleRemoveLocal = useCallback((key: string): void => {
@@ -356,15 +391,29 @@ export function WeeklyGrid({ grid, dayStatuses, onMutated }: Props): React.React
             >
               {STRINGS.subtaskColHeader}
             </th>
-            {STRINGS.dayHeadersShort.map((label) => (
-              <th
-                key={label}
-                scope="col"
-                className="px-1 py-1 text-right text-xs font-medium text-neutral-500"
-              >
-                {label}
-              </th>
-            ))}
+            {STRINGS.dayHeadersShort.map((label, i) => {
+              const dayISO = grid.days[i] ?? '';
+              const dayLabel = formatDayLabel(dayISO);
+              return (
+                <th
+                  key={label}
+                  scope="col"
+                  className="px-1 py-1 text-right text-xs font-medium text-neutral-500"
+                >
+                  <PtoPopover
+                    dayIndex={i}
+                    dayName={STRINGS.dayNamesLong[i] ?? label}
+                    dayLabel={dayLabel}
+                    dayISO={dayISO}
+                    loggedSeconds={grid.dayTotalsSeconds[i] ?? 0}
+                    ptoSubtaskKey={ptoSubtaskKey}
+                    targetHours={targetHours}
+                    onAddWorklog={() => setPicking({ dayIndex: i })}
+                    {...(onMutated ? { onMutated } : {})}
+                  />
+                </th>
+              );
+            })}
           </tr>
           <tr aria-label={STRINGS.totalsRowLabel} className="border-b border-neutral-200">
             <th
@@ -419,6 +468,11 @@ export function WeeklyGrid({ grid, dayStatuses, onMutated }: Props): React.React
                   cell={cell}
                   status={dayStatuses?.[i] ?? 'neutral'}
                   onMutated={() => onMutated?.()}
+                  registerOpenEditor={(open) => {
+                    const id = `${row.key}-${i}`;
+                    if (open) cellEditRefs.current.set(id, open);
+                    else cellEditRefs.current.delete(id);
+                  }}
                 />
               ))}
             </tr>
@@ -427,7 +481,7 @@ export function WeeklyGrid({ grid, dayStatuses, onMutated }: Props): React.React
       </table>
 
       <div className="mt-2">
-        {picking ? (
+        {picking !== false ? (
           <TicketPicker onSelect={handlePick} />
         ) : (
           <button
