@@ -4,6 +4,7 @@ import {
   hoursToSeconds,
   secondsToHours,
   secondsToHoursDisplay,
+  secondsToFixedHoursDisplay,
   secondsToCellDisplay,
   MAX_HOURS_PER_ENTRY,
 } from './hours';
@@ -124,6 +125,32 @@ describe('secondsToHoursDisplay', () => {
 
   it('displays 8h for 28800s', () => {
     expect(secondsToHoursDisplay(28800)).toBe('8h');
+  });
+});
+
+describe('secondsToFixedHoursDisplay', () => {
+  it('keeps the trailing .0 (12.0h) for whole hours', () => {
+    expect(secondsToFixedHoursDisplay(12 * 3600)).toBe('12.0h');
+  });
+
+  it('displays 32.0h for 32 hours', () => {
+    expect(secondsToFixedHoursDisplay(32 * 3600)).toBe('32.0h');
+  });
+
+  it('displays 0.5h for 1800s', () => {
+    expect(secondsToFixedHoursDisplay(1800)).toBe('0.5h');
+  });
+
+  it('rounds to one decimal (2.5h)', () => {
+    expect(secondsToFixedHoursDisplay(9000)).toBe('2.5h');
+  });
+
+  it('displays 0.0h for 0s (defensive — aggregated tickets are >0)', () => {
+    expect(secondsToFixedHoursDisplay(0)).toBe('0.0h');
+  });
+
+  it('displays 0.0h for negative seconds (defensive)', () => {
+    expect(secondsToFixedHoursDisplay(-100)).toBe('0.0h');
   });
 });
 

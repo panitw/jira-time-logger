@@ -1,11 +1,13 @@
-import { format, parse, parseISO, isValid } from 'date-fns';
+import { parse, parseISO, isValid } from 'date-fns';
 import { Check, AlertCircle, RefreshCw, Lock } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DrillDownPanel } from './DrillDownPanel';
 import { Button } from '@/components/ui/button';
 import { useEpicApprovals } from '@/hooks/useEpicApprovals';
 import { useManagerReports } from '@/hooks/useManagerReports';
 import { useManagerRow } from '@/hooks/useManagerRow';
 import { currentCycleRange } from '@/lib/cycle-range';
+import { formatCycleTitle } from '@/lib/cycle-title';
 import { approvalAtFor } from '@/lib/dirty-detect';
 import type { ReportCycleWorklogs, ReportEpicWorklogs } from '@/lib/jira-types';
 import {
@@ -115,20 +117,6 @@ function openOptions(): void {
   chrome.runtime.openOptionsPage();
 }
 
-/**
- * Cycle title from the `cycle` id: `"2026-05"` → `"May 2026"`; a weekly id
- * (`yyyy-MM-dd`) falls back to `"MMM d"`. Mirrors the `getCurrentCycleId` shapes.
- */
-function formatCycleTitle(cycle: CycleId): string {
-  const monthly = parse(cycle, 'yyyy-MM', new Date());
-  if (isValid(monthly) && /^\d{4}-\d{2}$/.test(cycle)) {
-    return format(monthly, 'MMMM yyyy');
-  }
-  const weekly = parseISO(cycle);
-  if (isValid(weekly)) return format(weekly, 'MMM d');
-  return cycle;
-}
-
 type Props = {
   cycle: CycleId;
   /** Flip the popup to the Today/Worker view (no-reports fallback, AC 13). */
@@ -143,6 +131,35 @@ export function ManagerMatrix({ cycle, onSwitchToToday }: Props): React.ReactEle
   const [resolved, setResolved] = useState<Map<string, ReportCycleWorklogs>>(
     () => new Map(),
   );
+
+  // The matrix owns ONE drill-down panel (Story 5.5). A cell click lifts its
+  // target here; the panel reads the chosen Epic's already-resolved records
+  // from the `resolved` map (no new fetch).
+  const [selectedCell, setSelectedCell] = useState<{
+    report: DirectReport;
+    epicKey: string;
+  } | null>(null);
+
+  // The originating cell button, captured when the panel opens. Because the
+  // panel is conditionally unmounted on close (not trigger-driven), Radix's
+  // focus-return-to-trigger cannot run against the still-mounted tree — so we
+  // restore focus to the clicked cell ourselves (AC 10).
+  const triggerElementRef = useRef<HTMLElement | null>(null);
+
+  const handleOpenCell = useCallback((report: DirectReport, epicKey: string) => {
+    triggerElementRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setSelectedCell({ report, epicKey });
+  }, []);
+
+  const handleClosePanel = useCallback(() => {
+    setSelectedCell(null);
+    const trigger = triggerElementRef.current;
+    triggerElementRef.current = null;
+    // Defer to the next frame so the focus restore lands after Radix has torn
+    // down the (now unmounted) dialog focus scope.
+    if (trigger) requestAnimationFrame(() => trigger.focus());
+  }, []);
 
   const handleResolved = useCallback(
     (accountId: string, data: ReportCycleWorklogs) => {
@@ -267,6 +284,24 @@ export function ManagerMatrix({ cycle, onSwitchToToday }: Props): React.ReactEle
 
   const scrolls = columns.length > SCROLL_COLUMN_THRESHOLD;
 
+  // Resolve the chosen cell's Epic records for the panel (no fetch — read the
+  // `resolved` map). `undefined` ⇒ the row hasn't resolved yet (defensive
+  // skeleton, AC 12). A resolved row with no matching Epic ⇒ a synthetic empty
+  // group so the panel shows the empty state (AC 6) rather than the skeleton.
+  const selectedCycle = selectedCell
+    ? resolved.get(selectedCell.report.accountId)
+    : undefined;
+  const selectedEpic: ReportEpicWorklogs | undefined =
+    selectedCell && selectedCycle
+      ? (selectedCycle.epics.find((e) => e.epicKey === selectedCell.epicKey) ?? {
+          epicKey: selectedCell.epicKey,
+          epicSummary: '',
+          totalSeconds: 0,
+          restrictedCount: 0,
+          worklogs: [],
+        })
+      : undefined;
+
   return (
     <div className="motion-safe:animate-fade-in">
       <Header cycleTitle={cycleTitle} reportCount={sortedReports.length} />
@@ -306,11 +341,24 @@ export function ManagerMatrix({ cycle, onSwitchToToday }: Props): React.ReactEle
                 targetHours={targetHours}
                 workdaysElapsed={workdaysElapsed}
                 onResolved={handleResolved}
+                onOpen={handleOpenCell}
               />
             ))}
           </tbody>
         </table>
       </div>
+      {selectedCell ? (
+        <DrillDownPanel
+          open
+          onOpenChange={(next) => {
+            if (!next) handleClosePanel();
+          }}
+          personName={selectedCell.report.displayName}
+          epicKey={selectedCell.epicKey}
+          cycle={cycle}
+          epic={selectedEpic}
+        />
+      ) : null}
     </div>
   );
 }
@@ -343,6 +391,7 @@ type RowProps = {
   targetHours: number;
   workdaysElapsed: number;
   onResolved: (accountId: string, data: ReportCycleWorklogs) => void;
+  onOpen: (report: DirectReport, epicKey: string) => void;
 };
 
 function ManagerMatrixRow({
@@ -354,6 +403,7 @@ function ManagerMatrixRow({
   targetHours,
   workdaysElapsed,
   onResolved,
+  onOpen,
 }: RowProps): React.ReactElement {
   const query = useManagerRow(report.accountId, cycle, range);
 
@@ -462,6 +512,7 @@ function ManagerMatrixRow({
           report={report}
           cycle={cycle}
           rowStatus={rowStatus}
+          onOpen={onOpen}
         />
       ))}
     </tr>
@@ -474,6 +525,7 @@ type CellProps = {
   report: DirectReport;
   cycle: CycleId;
   rowStatus: CellStatus;
+  onOpen: (report: DirectReport, epicKey: string) => void;
 };
 
 /**
@@ -491,6 +543,7 @@ function MatrixCell({
   report,
   cycle,
   rowStatus,
+  onOpen,
 }: CellProps): React.ReactElement {
   const approvalsQuery = useEpicApprovals(epicKey, cycle);
 
@@ -535,33 +588,39 @@ function MatrixCell({
 
   return (
     <td
-      className={`relative px-2 py-1 text-right font-mono motion-safe:transition-colors motion-safe:duration-200 ${STATUS_CLASSES[status]}`}
+      className={`relative p-0 text-right font-mono motion-safe:transition-colors motion-safe:duration-200 ${STATUS_CLASSES[status]}`}
       style={cellStyle}
-      aria-label={ariaLabel}
     >
-      <span className="flex items-center justify-end gap-1">
-        {status === 'approved' || status === 'on-target' ? (
-          <Check size={ICON_SIZE} aria-hidden />
-        ) : status === 'gap' ? (
-          <AlertCircle size={ICON_SIZE} aria-hidden />
-        ) : status === 'dirty' ? (
-          <RefreshCw size={ICON_SIZE} aria-hidden />
+      {/* The cell is an interactive trigger that opens the drill-down panel
+          (Story 5.5). It is a real <button> — keyboard-operable (Enter/Space)
+          with a visible focus ring — and OWNS the accessible name so the cell
+          is announced once (the <td> carries no aria-label, avoiding a double
+          announcement). Empty `──` cells are clickable too (→ empty state). */}
+      <button
+        type="button"
+        onClick={() => onOpen(report, epicKey)}
+        aria-label={ariaLabel}
+        className="block w-full cursor-pointer px-2 py-1 text-right focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      >
+        <span className="flex items-center justify-end gap-1">
+          {status === 'approved' || status === 'on-target' ? (
+            <Check size={ICON_SIZE} aria-hidden />
+          ) : status === 'gap' ? (
+            <AlertCircle size={ICON_SIZE} aria-hidden />
+          ) : status === 'dirty' ? (
+            <RefreshCw size={ICON_SIZE} aria-hidden />
+          ) : null}
+          <span className={isEmpty ? 'text-neutral-500' : undefined}>{display}</span>
+          {locked ? (
+            <span className="inline-flex shrink-0 text-neutral-500" role="img" aria-hidden>
+              <Lock size={ICON_SIZE} aria-hidden />
+            </span>
+          ) : null}
+        </span>
+        {statusText ? (
+          <span className="block text-[10px] leading-tight">{statusText}</span>
         ) : null}
-        <span className={isEmpty ? 'text-neutral-500' : undefined}>{display}</span>
-        {locked ? (
-          <span
-            className="inline-flex shrink-0 text-neutral-500"
-            title={STRINGS.restrictedCell}
-            aria-label={STRINGS.restrictedCell}
-            role="img"
-          >
-            <Lock size={ICON_SIZE} aria-hidden />
-          </span>
-        ) : null}
-      </span>
-      {statusText ? (
-        <span className="block text-[10px] leading-tight">{statusText}</span>
-      ) : null}
+      </button>
     </td>
   );
 }

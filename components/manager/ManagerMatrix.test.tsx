@@ -337,6 +337,129 @@ describe('ManagerMatrix', () => {
     expect(screen.getByText('⚠ 2 restricted')).toBeTruthy();
   });
 
+  it('opens the drill-down panel when a data cell is clicked, populated from resolved records', () => {
+    reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+    rowMock.mockReturnValue(
+      rowState({
+        status: 'success',
+        data: [
+          epic('PROJ-1', 12 * 3600, {
+            worklogs: [
+              { ticketKey: 'PROJ-1-101', ticketSummary: 'Epic planning', seconds: 12 * 3600 },
+            ],
+          }),
+        ],
+      }),
+    );
+    renderMatrix();
+    // The cell is a real button carrying the accessible name.
+    const cell = screen.getByRole('button', { name: /Bob, PROJ-1, 12 hours/ });
+    fireEvent.click(cell);
+    // Panel header + per-ticket evidence appear.
+    expect(screen.getByText('Bob · PROJ-1 · May 2026')).toBeTruthy();
+    expect(screen.getByText('PROJ-1-101')).toBeTruthy();
+    expect(screen.getByText('12.0h')).toBeTruthy();
+  });
+
+  it('closes the panel via the Close affordance and the content disappears', () => {
+    reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+    rowMock.mockReturnValue(
+      rowState({ status: 'success', data: [epic('PROJ-1', 12 * 3600)] }),
+    );
+    renderMatrix();
+    fireEvent.click(screen.getByRole('button', { name: /Bob, PROJ-1/ }));
+    expect(screen.getByText('Bob · PROJ-1 · May 2026')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^close$/i }));
+    expect(screen.queryByText('Bob · PROJ-1 · May 2026')).toBeNull();
+  });
+
+  it('closes the panel on Esc', () => {
+    reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+    rowMock.mockReturnValue(
+      rowState({ status: 'success', data: [epic('PROJ-1', 12 * 3600)] }),
+    );
+    renderMatrix();
+    fireEvent.click(screen.getByRole('button', { name: /Bob, PROJ-1/ }));
+    expect(screen.getByText('Bob · PROJ-1 · May 2026')).toBeTruthy();
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: 'Escape',
+      code: 'Escape',
+    });
+    expect(screen.queryByText('Bob · PROJ-1 · May 2026')).toBeNull();
+  });
+
+  it('returns focus to the originating cell button when the panel closes (AC 10)', async () => {
+    reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+    rowMock.mockReturnValue(
+      rowState({ status: 'success', data: [epic('PROJ-1', 12 * 3600)] }),
+    );
+    renderMatrix();
+    const cell = screen.getByRole('button', { name: /Bob, PROJ-1/ });
+    cell.focus();
+    fireEvent.click(cell);
+    expect(screen.getByText('Bob · PROJ-1 · May 2026')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^close$/i }));
+    expect(screen.queryByText('Bob · PROJ-1 · May 2026')).toBeNull();
+    // The conditionally-unmounted panel cannot rely on Radix's focus return, so
+    // the matrix restores focus to the clicked cell itself (deferred a frame).
+    await waitFor(() => expect(document.activeElement).toBe(cell));
+  });
+
+  it('opens the panel in its empty state when an empty ── cell is clicked', () => {
+    reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+    rowMock.mockReturnValue(
+      rowState({
+        status: 'success',
+        // PROJ-2 logged nothing → an empty `──` cell for Bob.
+        data: [epic('PROJ-1', 64 * 3600), epic('PROJ-2', 0)],
+      }),
+    );
+    renderMatrix();
+    fireEvent.click(screen.getByRole('button', { name: 'Bob, PROJ-2, no hours logged' }));
+    expect(
+      screen.getByText('No tickets in PROJ-2 for Bob this cycle.'),
+    ).toBeTruthy();
+  });
+
+  it('does not leak a 5.6/5.7 Approve/Re-approve/Done action or POST into the panel', () => {
+    reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+    rowMock.mockReturnValue(
+      rowState({
+        status: 'success',
+        data: [
+          epic('PROJ-1', 12 * 3600, {
+            worklogs: [
+              { ticketKey: 'PROJ-1-101', ticketSummary: 'Epic planning', seconds: 12 * 3600 },
+            ],
+          }),
+        ],
+      }),
+    );
+    renderMatrix();
+    fireEvent.click(screen.getByRole('button', { name: /Bob, PROJ-1/ }));
+    expect(screen.getByText('Bob · PROJ-1 · May 2026')).toBeTruthy();
+    // No approve-family action or progress chip in the read-only panel.
+    expect(
+      screen.queryByRole('button', { name: /approve|re-approve|done/i }),
+    ).toBeNull();
+    expect(screen.queryByText(/of \d+ done/i)).toBeNull();
+  });
+
+  it('surfaces the per-Epic VisibilityWarning chip inside the panel when restrictedCount > 0', () => {
+    reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+    rowMock.mockReturnValue(
+      rowState({
+        status: 'success',
+        data: [epic('PROJ-1', 64 * 3600, { restrictedCount: 2 })],
+      }),
+    );
+    renderMatrix();
+    fireEvent.click(screen.getByRole('button', { name: /Bob, PROJ-1/ }));
+    expect(
+      screen.getByText(/⚠ 2 worklogs with restricted visibility were excluded/),
+    ).toBeTruthy();
+  });
+
   it('enables a horizontal-scroll wrapper when more than 4 Epic columns exist', async () => {
     reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
     rowMock.mockReturnValue(

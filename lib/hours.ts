@@ -88,6 +88,17 @@ export function secondsToHoursDisplay(seconds: number): string {
 }
 
 /**
+ * Drill-down per-ticket format (Story 5.5): ALWAYS one decimal + `h` suffix
+ * (`12.0h`, `32.0h`, `0.5h`) — unlike `secondsToHoursDisplay`, the trailing
+ * `.0` is RETAINED to match the drill-down wireframe. Defensive `0.0h` for
+ * `≤0` (aggregated tickets are always >0, but never inline `toFixed`).
+ */
+export function secondsToFixedHoursDisplay(seconds: number): string {
+  if (seconds <= 0) return '0.0h';
+  return `${secondsToHours(seconds).toFixed(1)}h`;
+}
+
+/**
  * Week-grid cell format: a bare one-decimal value (`4.0`, `0.5`) per the
  * Weekly Review wireframe, or `\u2500\u2500` (em-dash pair) for empty cells (\u22640).
  * No `h` suffix \u2014 the column context makes the unit clear (UX-DR11).
