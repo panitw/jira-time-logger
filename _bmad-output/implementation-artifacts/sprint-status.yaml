@@ -1,5 +1,5 @@
 # generated: 2026-05-11 22:45:02
-# last_updated: 2026-06-27 (Story 6-1 → in-progress; code review: patched banner slide-in regression + audit-doc honesty fix; manual a11y passes pending human verification)
+# last_updated: 2026-07-11 (Story 6-2 code review: CLEAN, no findings; Part A audit independently re-verified & honest; stays in-progress — Part B Edge smoke pass PENDING HUMAN VERIFICATION)
 # project: jira-time-logger
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-11 22:45:02
-last_updated: 2026-06-27 (Story 6-1 created → ready-for-dev; Epic 6 → in-progress)
+last_updated: 2026-06-27 (Story 6-2 created → ready-for-dev — Edge browser validation)
 project: jira-time-logger
 # 2026-06-21: Story 2-7 created (ready-for-dev) — completes Epic 2
 # 2026-06-21: Story 3-1 created (ready-for-dev); Epic 3 → in-progress
@@ -53,6 +53,7 @@ project: jira-time-logger
 # 2026-06-27: Story 5-7 created (ready-for-dev)
 # 2026-06-27: Story 5-8 created (ready-for-dev) — completes Epic 5
 # 2026-06-27: Story 6-1 created (ready-for-dev); Epic 6 → in-progress (first story of Epic 6)
+# 2026-06-27: Story 6-2 created (ready-for-dev) — Edge browser validation
 project_key: NOKEY
 tracking_system: file-system
 story_location: "{project-root}/_bmad-output/implementation-artifacts"
@@ -111,7 +112,7 @@ development_status:
   # Epic 6: Release Polish — Accessibility Audit, Edge Validation, Distribution
   epic-6: in-progress
   6-1-accessibility-audit-gate-wcag-2-1-aa-end-to-end: in-progress
-  6-2-edge-browser-validation: backlog
+  6-2-edge-browser-validation: in-progress
   6-3-crx-packaging-script-signing-key-vault: backlog
   6-4-readme-release-documentation-finalization: backlog
   epic-6-retrospective: optional
