@@ -12,6 +12,7 @@
     "build:edge": "wxt build -b edge",
     "zip": "wxt zip",
     "zip:edge": "wxt zip -b edge",
+    "pack:crx": "node scripts/pack-crx.mjs",
     "compile": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

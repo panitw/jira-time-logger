@@ -101,4 +101,15 @@ export default tseslint.config(
       'no-restricted-syntax': 'off',
     },
   },
+  // Node build/release scripts (e.g. scripts/pack-crx.mjs) — Node runtime globals
+  {
+    files: ['scripts/**/*.{js,mjs,cjs}'],
+    languageOptions: {
+      ecmaVersion: 2024,
+      sourceType: 'module',
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
 );
