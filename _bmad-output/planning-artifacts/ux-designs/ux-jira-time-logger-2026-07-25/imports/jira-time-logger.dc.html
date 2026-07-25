@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600&family=Noto+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;background:#F3F3F6;font-family:'Noto Sans',system-ui,sans-serif;color:#1E1B2E;-webkit-font-smoothing:antialiased}
+  a{color:#594F74;text-decoration:none}
+  a:hover{color:#615B99;text-decoration:underline}
+  @keyframes sk{0%{opacity:.5}50%{opacity:1}100%{opacity:.5}}
+  @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+</helmet>
+
+<section style="padding:56px 56px 96px;display:flex;flex-direction:column;gap:64px">
+
+  <div style="display:flex;flex-direction:column;gap:10px;max-width:760px">
+    <div style="display:flex;align-items:center;gap:12px">
+      <span style="font-family:'Kanit',sans-serif;font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:#FFFFFF;background:#594F74;padding:4px 10px;border-radius:9999px">1a</span>
+      <span style="font-family:'Kanit',sans-serif;font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:#6B6B72">jira-time-logger · UX revamp</span>
+    </div>
+    <h1 style="font-family:'Kanit',sans-serif;font-size:34px;font-weight:600;line-height:1.25;margin:0;color:#1E1B2E">Distinctive shell, calm data</h1>
+    <p style="margin:0;font-size:15px;line-height:1.65;color:#6B6678;text-wrap:pretty">Three surfaces, all states. Brand character lives in the purple chrome; the data canvas stays white, hairline, and quiet. Below-target is treated as a normal, unfinished state — never as an alarm.</p>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:24px">
+    <div style="display:flex;flex-direction:column;gap:8px;max-width:760px">
+      <div style="display:flex;align-items:baseline;gap:12px">
+        <h2 style="font-family:'Kanit',sans-serif;font-size:22px;font-weight:600;margin:0;color:#594F74">Surface 1 — Toolbar popup</h2>
+        <span style="font-family:'Kanit',sans-serif;font-size:12px;font-weight:500;color:#6B6B72;font-variant-numeric:tabular-nums">380 × 560 · one scroll region</span>
+      </div>
+      <div style="height:2px;background:linear-gradient(to right,#594F74 0 64px,#E4E3EC 64px)"></div>
+      <p style="margin:6px 0 0;font-size:14px;line-height:1.6;color:#6B6678;max-width:680px;text-wrap:pretty">Header is the depth anchor and the only saturated area. The resume card breaks the header line so it is unmistakably the first move. Everything below it is a calm, single-column scroll.</p>
+    </div>
+
+    <div style="display:flex;gap:28px;align-items:flex-start;flex-wrap:nowrap">
+      <sc-for list="{{ popupStates }}" as="p" hint-placeholder-count="3">
+        <div style="display:flex;flex-direction:column;gap:10px;flex:0 0 auto">
+          <div style="display:flex;flex-direction:column;gap:2px;padding-left:2px">
+            <span style="font-family:'Kanit',sans-serif;font-size:13.5px;font-weight:600;color:#1E1B2E">{{ p.label }}</span>
+            <span style="font-size:12px;color:#6B6B72;line-height:1.45;max-width:340px">{{ p.caption }}</span>
+          </div>
+
+          <div style="box-sizing:border-box;width:380px;height:560px;background:#FAFAFB;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 1px 3px rgba(74,65,99,.07), 0 18px 40px rgba(74,65,99,.13);border:1px solid #E4E3EC">
+
+            <div style="position:relative;background:linear-gradient(165deg,#615B99 0%,#594F74 42%,#4A4163 100%);padding:14px 16px 20px;flex:0 0 auto;overflow:hidden">
+              <div style="position:absolute;right:-46px;top:-58px;width:170px;height:170px;border:1.5px solid rgba(255,255,255,.15);border-radius:9999px"></div>
+              <div style="position:absolute;right:-14px;top:-26px;width:104px;height:104px;border:1.5px solid rgba(255,255,255,.13);border-radius:9999px"></div>
+              <div style="position:absolute;right:36px;top:8px;width:6px;height:6px;background:rgba(255,255,255,.5);border-radius:9999px"></div>
+              <div style="position:relative;display:flex;align-items:center;justify-content:space-between">
+                <span style="font-family:'Kanit',sans-serif;font-size:11px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.72)">Time Logger</span>
+                <span style="width:22px;height:22px;border-radius:9999px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.25);color:#fff;font-family:'Kanit',sans-serif;font-size:11px;font-weight:500;display:flex;align-items:center;justify-content:center">P</span>
+              </div>
+
+              <sc-if value="{{ p.showProgress }}" hint-placeholder-val="{{ true }}">
+                <div style="position:relative;margin-top:12px;display:flex;align-items:flex-end;justify-content:space-between">
+                  <div style="display:flex;flex-direction:column;gap:2px">
+                    <span style="font-family:'Kanit',sans-serif;font-size:22px;font-weight:600;line-height:1.15;color:#fff">{{ p.date }}</span>
+                    <span style="font-family:'Kanit',sans-serif;font-size:12px;font-weight:400;color:rgba(255,255,255,.7)">{{ p.weekNote }}</span>
+                  </div>
+                  <div style="display:flex;align-items:baseline;gap:3px;font-family:'Kanit',sans-serif;font-variant-numeric:tabular-nums">
+                    <span style="font-size:26px;font-weight:600;line-height:1;color:#fff">{{ p.logged }}</span>
+                    <span style="font-size:14px;font-weight:400;color:rgba(255,255,255,.72)">/ 8h</span>
+                  </div>
+                </div>
+                <div style="position:relative;margin-top:12px;height:4px;border-radius:9999px;background:rgba(255,255,255,.2);overflow:hidden">
+                  <div style="height:100%;border-radius:9999px;background:#fff;width:{{ p.pctW }}"></div>
+                </div>
+                <div style="position:relative;margin-top:7px;display:flex;align-items:center;gap:6px">
+                  <span style="font-family:'Kanit',sans-serif;font-size:11.5px;font-weight:500;color:rgba(255,255,255,.85)">{{ p.progressNote }}</span>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ p.headerPlain }}" hint-placeholder-val="{{ false }}">
+                <div style="position:relative;margin-top:12px;display:flex;flex-direction:column;gap:2px">
+                  <span style="font-family:'Kanit',sans-serif;font-size:22px;font-weight:600;line-height:1.15;color:#fff">{{ p.date }}</span>
+                  <span style="font-family:'Kanit',sans-serif;font-size:12px;font-weight:400;color:rgba(255,255,255,.7)">{{ p.weekNote }}</span>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ p.headerSkeleton }}" hint-placeholder-val="{{ false }}">
+                <div style="position:relative;margin-top:12px;display:flex;flex-direction:column;gap:9px">
+                  <div style="width:150px;height:20px;border-radius:4px;background:rgba(255,255,255,.24);animation:sk 1.4s ease-in-out infinite"></div>
+                  <div style="width:100%;height:4px;border-radius:9999px;background:rgba(255,255,255,.2);animation:sk 1.4s ease-in-out infinite"></div>
+                </div>
+              </sc-if>
+            </div>
+
+            <div style="flex:1 1 auto;overflow-y:auto;overflow-x:hidden;padding:0 14px 14px">
+
+              <sc-if value="{{ p.isDisconnected }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top:-10px;background:#fff;border:1px solid #E4E3EC;border-radius:8px;padding:20px 18px;box-shadow:0 1px 3px rgba(74,65,99,.07), 0 10px 26px rgba(74,65,99,.08);display:flex;flex-direction:column;gap:10px;align-items:flex-start">
+                  <span style="font-family:'Kanit',sans-serif;font-size:16px;font-weight:500;color:#1E1B2E">Connect to Jira</span>
+                  <p style="margin:0;font-size:13px;line-height:1.6;color:#6B6678">Sign in once with your KKP Jira account. The extension reads your assigned tickets and writes worklogs as you.</p>
+                  <button style="margin-top:4px;width:100%;background:#594F74;color:#fff;border:none;border-radius:6px;padding:10px 14px;font-family:'Kanit',sans-serif;font-size:13.5px;font-weight:500;cursor:pointer;box-shadow:0 1px 2px rgba(74,65,99,.2)" style-hover="background:#615B99">Sign in to Jira</button>
+                  <span style="font-size:12px;color:#6B6B72">Nothing is sent anywhere except your Jira instance.</span>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ p.isPto }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top:-10px;background:#fff;border:1px solid #E4E3EC;border-radius:8px;padding:18px;box-shadow:0 1px 3px rgba(74,65,99,.07), 0 10px 26px rgba(74,65,99,.08);display:flex;flex-direction:column;gap:8px">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span style="color:#15803D;font-size:13px">✓</span>
+                    <span style="font-family:'Kanit',sans-serif;font-size:15px;font-weight:500;color:#1E1B2E">Marked as PTO</span>
+                  </div>
+                  <p style="margin:0;font-size:13px;line-height:1.6;color:#6B6678">8h logged to <span style="font-family:'Kanit',sans-serif;font-weight:500;color:#594F74">KNP-99 · PTO</span>. This day counts toward your week and needs nothing else from you.</p>
+                  <button style="margin-top:6px;align-self:flex-start;background:#fff;color:#594F74;border:1px solid #E4E3EC;border-radius:6px;padding:7px 12px;font-family:'Kanit',sans-serif;font-size:12.5px;font-weight:500;cursor:pointer" style-hover="background:#ECEBF3">Undo PTO</button>
+                </div>
+                <div style="margin-top:16px;display:flex;flex-direction:column;gap:8px">
+                  <span style="font-family:'Kanit',sans-serif;font-size:12px;font-weight:500;letter-spacing:.01em;color:#6B6B72">Still want to log work?</span>
+                  <div style="background:#fff;border:1px solid #E4E3EC;border-radius:8px;padding:9px 11px;display:flex;align-items:center;gap:8px">
+                    <span style="color:#ADACB9;font-size:13px">⌕</span>
+                    <span style="font-size:13px;color:#6B6B72">Search any ticket…</span>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ p.isLoading }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top:-10px;background:#fff;border:1px solid #E4E3EC;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(74,65,99,.07), 0 10px 26px rgba(74,65,99,.08);display:flex;flex-direction:column;gap:10px">
+                  <div style="width:78px;height:12px;border-radius:4px;background:#ECEBF3;animation:sk 1.4s ease-in-out infinite"></div>
+                  <div style="width:100%;height:14px;border-radius:4px;background:#EFEFF3;animation:sk 1.4s ease-in-out infinite"></div>
+                  <div style="width:62%;height:14px;border-radius:4px;background:#EFEFF3;animation:sk 1.4s ease-in-out infinite"></div>
+                  <div style="margin-top:6px;display:flex;gap:8px">
+                    <div style="width:52px;height:32px;border-radius:6px;background:#EFEFF3;animation:sk 1.4s ease-in-out infinite"></div>
+                    <div style="width:52px;height:32px;border-radius:6px;background:#EFEFF3;animation:sk 1.4s ease-in-out infinite"></div>
+                    <div style="flex:1;height:32px;border-radius:6px;background:#EFEFF3;animation:sk 1.4s ease-in-out infinite"></div>
+                  </div>
+                </div>
+                <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">
+                  <div style="width:100%;height:36px;border-radius:8px;background:#EFEFF3;animation:sk 1.4s ease-in-out infinite"></div>
+                  <div style="width:104px;height:11px;border-radius:4px;background:#ECEBF3;animation:sk 1.4s ease-in-out infinite"></div>
+                  <div style="width:100%;height:44px;border-radius:8px;background:#F2F2F5;animation:sk 1.4s ease-in-out infinite"></div>
+                  <div style="width:100%;height:44px;border-radius:8px;background:#F2F2F5;animation:sk 1.4s ease-in-out infinite"></div>
+                  <div style="width:100%;height:44px;border-radius:8px;background:#F5F5F8;animation:sk 1.4s ease-in-out infinite"></div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ p.isNormal }}" hint-placeholder-val="{{ true }}">
+
+                <sc-if value="{{ p.showOffline }}" hint-placeholder-val="{{ false }}">
+                  <div style="margin-top:-10px;margin-bottom:12px;background:#FFF8EC;border:1px solid #F0DCB8;border-radius:8px;padding:9px 11px;display:flex;align-items:flex-start;gap:8px;box-shadow:0 1px 2px rgba(74,65,99,.05)">
+                    <span style="color:#B45309;font-size:12px;line-height:1.5">●</span>
+                    <div style="display:flex;flex-direction:column;gap:1px">
+                      <span style="font-family:'Kanit',sans-serif;font-size:12.5px;font-weight:500;color:#7A3E06">Offline — 2 entries queued</span>
+                      <span style="font-size:12px;color:#6B6678;line-height:1.5">They'll sync to Jira automatically when you're back.</span>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{ p.showError }}" hint-placeholder-val="{{ false }}">
+                  <div style="margin-top:-10px;margin-bottom:12px;background:#FEF2F2;border:1px solid #F3C9C9;border-radius:8px;padding:9px 11px;display:flex;align-items:flex-start;gap:8px;box-shadow:0 1px 2px rgba(74,65,99,.05)">
+                    <span style="color:#DC2626;font-size:12px;line-height:1.5">✕</span>
+                    <div style="display:flex;flex-direction:column;gap:4px;flex:1">
+                      <span style="font-family:'Kanit',sans-serif;font-size:12.5px;font-weight:500;color:#991B1B">Jira didn't accept that worklog</span>
+                      <span style="font-size:12px;color:#6B6678;line-height:1.5">GAPI-348 · 403, you may not have Work On Issues permission. Your 1.5h is saved locally.</span>
+                      <div style="display:flex;gap:8px;margin-top:2px">
+                        <button style="background:#fff;color:#991B1B;border:1px solid #F3C9C9;border-radius:6px;padding:5px 10px;font-family:'Kanit',sans-serif;font-size:12px;font-weight:500;cursor:pointer" style-hover="background:#FEF2F2">Retry</button>
+                        <button style="background:transparent;color:#6B6678;border:none;padding:5px 4px;font-family:'Kanit',sans-serif;font-size:12px;font-weight:500;cursor:pointer" style-hover="color:#1E1B2E">Log elsewhere</button>
+                      </div>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <div style="margin-top:{{ p.resumeOffset }};background:#fff;border:1px solid #DEDCE9;border-radius:8px;padding:14px;box-shadow:0 1px 3px rgba(74,65,99,.07), 0 10px 26px rgba(74,65,99,.09);display:flex;flex-direction:column;gap:11px">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                    <span style="font-family:'Kanit',sans-serif;font-size:11px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:#594F74">Continue logging</span>
+                    <span style="font-size:11.5px;color:#6B6B72;font-family:'Kanit',sans-serif;font-variant-numeric:tabular-nums">{{ p.resumeWhen }}</span>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:3px">
+                    <span style="font-family:'Kanit',sans-serif;font-size:13.5px;font-weight:600;color:#594F74;font-variant-numeric:tabular-nums">{{ p.resumeKey }}</span>
+                    <span style="font-size:13.5px;line-height:1.45;color:#1E1B2E;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">{{ p.resumeSummary }}</span>
+                  </div>
+                  <div style="display:flex;gap:6px;align-items:center">
+                    <button style="flex:0 0 auto;background:#fff;border:1px solid #E4E3EC;border-radius:6px;padding:8px 0;width:46px;font-family:'Kanit',sans-serif;font-size:12.5px;font-weight:500;color:#1E1B2E;cursor:pointer;font-variant-numeric:tabular-nums" style-hover="background:#ECEBF3;border-color:#CFCDDE">+0.5</button>
+                    <button style="flex:0 0 auto;background:#fff;border:1px solid #E4E3EC;border-radius:6px;padding:8px 0;width:40px;font-family:'Kanit',sans-serif;font-size:12.5px;font-weight:500;color:#1E1B2E;cursor:pointer;font-variant-numeric:tabular-nums" style-hover="background:#ECEBF3;border-color:#CFCDDE">+1</button>
+                    <button style="flex:0 0 auto;background:#fff;border:1px solid #E4E3EC;border-radius:6px;padding:8px 0;width:40px;font-family:'Kanit',sans-serif;font-size:12.5px;font-weight:500;color:#1E1B2E;cursor:pointer;font-variant-numeric:tabular-nums" style-hover="background:#ECEBF3;border-color:#CFCDDE">+2</button>
+                    <div style="flex:1 1 auto;display:flex;align-items:center;gap:6px;border:1.5px solid #594F74;border-radius:6px;padding:0 9px;height:34px;box-shadow:0 0 0 3px rgba(89,79,116,.13)">
+                      <span style="font-family:'Kanit',sans-serif;font-size:14px;font-weight:500;color:#1E1B2E;font-variant-numeric:tabular-nums">{{ p.resumeValue }}</span>
+                      <span style="font-size:12.5px;color:#6B6B72">h</span>
+                      <span style="margin-left:auto;font-family:'Kanit',sans-serif;font-size:10.5px;font-weight:500;color:#fff;background:#594F74;border-radius:4px;padding:2px 6px">⏎</span>
+                    </div>
+                  </div>
+                </div>
+
+                <sc-if value="{{ p.searchIdle }}" hint-placeholder-val="{{ true }}">
+                  <div style="margin-top:14px;display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #E4E3EC;border-radius:8px;padding:0 10px;height:36px;box-shadow:0 1px 2px rgba(74,65,99,.05)">
+                    <span style="color:#ADACB9;font-size:13px">⌕</span>
+                    <span style="font-size:13px;color:#6B6B72;flex:1">Search any ticket — key or text</span>
+                    <span style="font-family:'Kanit',sans-serif;font-size:10.5px;font-weight:500;color:#6B6B72;background:#F4F4F7;border:1px solid #E4E3EC;border-radius:4px;padding:1px 5px">/</span>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{ p.searchActive }}" hint-placeholder-val="{{ false }}">
+                  <div style="margin-top:14px;display:flex;align-items:center;gap:8px;background:#fff;border:1.5px solid #594F74;border-radius:8px;padding:0 10px;height:36px;box-shadow:0 0 0 3px rgba(89,79,116,.13)">
+                    <span style="color:#594F74;font-size:13px">⌕</span>
+                    <span style="font-size:13px;color:#1E1B2E;flex:1">abacus etl</span>
+                    <span style="font-family:'Kanit',sans-serif;font-size:10.5px;font-weight:500;color:#6B6B72;background:#F4F4F7;border:1px solid #E4E3EC;border-radius:4px;padding:1px 5px;cursor:pointer">esc</span>
+                  </div>
+
+                  <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
+                    <div style="display:flex;align-items:center;gap:8px">
+                      <span style="font-family:'Kanit',sans-serif;font-size:12px;font-weight:500;color:#1E1B2E">Results</span>
+                      <span style="font-family:'Kanit',sans-serif;font-size:11px;font-weight:500;color:#594F74;background:#ECEBF3;border-radius:9999px;padding:1px 7px;font-variant-numeric:tabular-nums">3</span>
+                      <div style="flex:1;height:1px;background:#E4E3EC"></div>
+                      <span style="font-family:'Kanit',sans-serif;font-size:11px;color:#6B6B72">↑↓ to move · ⏎ to log</span>
+                    </div>
+
+                    <div style="background:#fff;border:1px solid #E4E3EC;border-radius:8px;overflow:hidden;box-shadow:0 1px 2px rgba(74,65,99,.05)">
+                      <div style="display:flex;align-items:stretch;gap:10px;padding:10px 11px;border-bottom:1px solid #F0EFF5;background:#F6F5FA;border-left:2px solid #594F74">
+                        <div style="flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px">
+                          <div style="display:flex;align-items:center;gap:6px">
+                            <span style="font-family:'Kanit',sans-serif;font-size:12px;font-weight:600;color:#594F74;font-variant-numeric:tabular-nums">GAPI-330</span>
+                            <span style="font-family:'Kanit',sans-serif;font-size:10px;font-weight:500;color:#594F74;background:#ECEBF3;border-radius:9999px;padding:1px 6px">assigned to you</span>
+                          </div>
+                          <span style="font-size:12.5px;color:#1E1B2E;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">SR-582505: ABACUS ETL101 - NotifyBulkFiles (ETL) : (rundeck) seperate by ID file</span>
+                        </div>
+                        <div style="flex:0 0 auto;display:flex;align-items:center;gap:5px">
+                          <span style="font-family:'Kanit',sans-serif;font-size:12.5px;font-weight:500;color:#1E1B2E;border:1.5px solid #594F74;border-radius:6px;padding:5px 8px;font-variant-numeric:tabular-nums">1.0h</span>
+                          <span style="font-family:'Kanit',sans-serif;font-size:10.5px;font-weight:500;color:#fff;background:#594F74;border-radius:4px;padding:4px 6px">⏎</span>
+                        </div>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:10px;padding:10px 11px;border-bottom:1px solid #F0EFF5;cursor:pointer" style-hover="background:#FAFAFB">
+                        <div style="flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px">
+                          <div style="display:flex;align-items:center;gap:6px">
+                            <span style="font-family:'Kanit',sans-serif;font-size:12px;font-weight:500;color:#594F74;font-variant-numeric:tabular-nums">GAPI-348</span>
+                            <span style="font-family:'Kanit',sans-serif;font-size:10px;font-weight:500;color:#594F74;background:#ECEBF3;border-radius:9999px;padding:1px 6px">assigned to you</span>
+                          </div>
+                          <span style="font-size:12.5px;color:#6B6678;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">SR-582505: ABACUS SRM101 - InquiryCarRegistrationBookStatus Assignment Ownership screen</span>
+                        </div>
+                        <span style="flex:0 0 auto;width:24px;height:24px;border-radius:4px;border:1px solid #E4E3EC;color:#594F74;font-size:13px;display:flex;align-items:center;justify-content:center">+</span>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:10px;padding:10px 11px;cursor:pointer" style-hover="background:#FAFAFB">
+                        <div style="flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px">
+                          <div style="display:flex;align-items:center;gap:6px">
+                            <span style="font-family:'Kanit',sans-serif;font-size:12px;font-weight:500;color:#594F74;font-variant-numeric:tabular-nums">GAPI-361</span>
+                            <span style="font-family:'Kanit',sans-serif;font-size:10px;font-weight:500;color:#6B6B72;background:#F4F4F7;border:1px solid #E4E3EC;border-radius:9999px;padding:1px 6px">Anucha P.</span>
+                          </div>
+                          <span style="font-size:12.5px;color:#6B6678;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ABACUS ETL204 - reprocess failed bulk file batches</span>
+                        </div>
+                        <span style="flex:0 0 auto;width:24px;height:24px;border-radius:4px;border:1px solid #E4E3EC;color:#594F74;font-size:13px;display:flex;align-items:center;justify-content:center">+</span>
+                      </div>
+                    </div>
+
+                    <div style="display:flex;align-items:center;gap:7px;padding:2px 2px 0">
+                      <span style="color:#6B6B72;font-size:11px">◐</span>
+                      <span style="font-size:11.5px;color:#6B6B72;line-height:1.45">Searched live in Jira — includes tickets that aren't assigned to you.</span>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{ p.showLists }}" hint-placeholder-val="{{ true }}">
+                <div style="margin-top:18px;display:flex;flex-direction:column;gap:8px">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span style="font-family:'Kanit',sans-serif;font-size:12px;font-weight:500;letter-spacing:.01em;color:#1E1B2E">Logged today</span>
+                    <span style="font-family:'Kanit',sans-serif;font-size:11px;font-weight:500;color:#594F74;background:#ECEBF3;border-radius:9999px;padding:1px 7px;font-variant-numeric:tabular-nums">{{ p.entryCount }}</span>
+                    <div style="flex:1;height:1px;background:#E4E3EC"></div>
+                  </div>
+
+                  <sc-if value="{{ p.hasEntries }}" hint-placeholder-val="{{ true }}">
+                    <div style="background:#fff;border:1px solid #E4E3EC;border-radius:8px;overflow:hidden;box-shadow:0 1px 2px rgba(74,65,99,.05)">
+                      <sc-for list="{{ p.entries }}" as="e" hint-placeholder-count="2">
+                        <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-bottom:1px solid #F0EFF5" style-hover="background:#FAFAFB">
+                          <div style="flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px">
+                            <span style="font-family:'Kanit',sans-serif;font-size:12px;font-weight:500;color:#594F74;font-variant-numeric:tabular-nums">{{ e.key }}</span>
+                            <span style="font-size:12.5px;color:#6B6678;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ e.summary }}</span>
+                          </div>
+                          <span style="font-family:'Kanit',sans-serif;font-size:13px;font-weight:500;color:#1E1B2E;font-variant-numeric:tabular-nums">{{ e.hours }}</span>
+                          <div style="display:flex;gap:2px">
+                            <button style="width:24px;height:24px;border:none;background:transparent;color:#6B6B72;border-radius:4px;cursor:pointer;font-size:12px" style-hover="background:#ECEBF3;color:#594F74">✎</button>
+                            <button style="width:24px;height:24px;border:none;background:transparent;color:#6B6B72;border-radius:4px;cursor:pointer;font-size:12px" style-hover="background:#ECEBF3;color:#594F74">✕</button>
+                          </div>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+
+                  <sc-if value="{{ p.noEntries }}" hint-placeholder-val="{{ false }}">
+                    <div style="background:#fff;border:1px dashed #DEDCE9;border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:3px">
+                      <span style="font-size:13px;color:#1E1B2E">Nothing on the clock yet today.</span>
+                      <span style="font-size:12.5px;color:#6B6B72;line-height:1.5">Add hours above, or search for a ticket.</span>
+                    </div>
+                  </sc-if>
+                </div>
+
+                <div style="margin-top:18px;display:flex;flex-direction:column;gap:8px">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span style="font-family:'Kanit',sans-serif;font-size:12px;font-weight:500;color:#1E1B2E">Recently worked</span>
+                    <span style="font-family:'Kanit',sans-serif;font-size:11px;font-weight:500;color:#594F74;background:#ECEBF3;border-radius:9999px;padding:1px 7px;font-variant-numeric:tabular-nums">55 assigned</span>
+                    <div style="flex:1;height:1px;background:#E4E3EC"></div>
+                  </div>
+                  <div style="background:#fff;border:1px solid #E4E3EC;border-radius:8px;overflow:hidden;box-shadow:0 1px 2px rgba(74,65,99,.05)">
+                    <sc-for list="{{ recent }}" as="t" hint-placeholder-count="4">
+                      <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-bottom:1px solid #F0EFF5;cursor:pointer" style-hover="background:#FAFAFB">
+                        <div style="flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px">
+                          <div style="display:flex;align-items:center;gap:6px">
+                            <span style="font-family:'Kanit',sans-serif;font-size:12px;font-weight:500;color:#594F74;font-variant-numeric:tabular-nums">{{ t.key }}</span>
+                            <span style="font-size:10.5px;color:#6B6B72;font-family:'Kanit',sans-serif">{{ t.when }}</span>
+                          </div>
+                          <span style="font-size:12.5px;color:#6B6678;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.summary }}</span>
+                        </div>
+                        <span style="flex:0 0 auto;width:24px;height:24px;border-radius:4px;border:1px solid #E4E3EC;color:#594F74;font-size:13px;display:flex;align-items:center;justify-content:center">+</span>
+                      </div>
+                    </sc-for>
+                    <div style="padding:9px 11px;display:flex;align-items:center;justify-content:space-between;background:#FCFCFD;cursor:pointer" style-hover="background:#F6F6F9">
+                      <span style="font-size:12.5px;color:#6B6678">51 more assigned tickets</span>
+                      <span style="font-family:'Kanit',sans-serif;font-size:12px;font-weight:500;color:#594F74">Search to find them →</span>
+                    </div>
+                  </div>
+                </div>
+                </sc-if>
+              </sc-if>
+            </div>
+
+            <div style="flex:0 0 auto;border-top:1px solid #E4E3EC;background:#fff;padding:9px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+              <button style="background:transparent;border:none;padding:6px 4px;font-family:'Kanit',sans-serif;font-size:12.5px;font-weight:500;color:#6B6678;cursor:pointer" style-hover="color:#594F74">Mark today as PTO</button>
+              <button style="background:#fff;border:1px solid #E4E3EC;border-radius:6px;padding:6px 11px;font-family:'Kanit',sans-serif;font-size:12.5px;font-weight:500;color:#594F74;cursor:pointer" style-hover="background:#ECEBF3;border-color:#CFCDDE">Open week ↗</button>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:24px">
+    <div style="display:flex;flex-direction:column;gap:8px;max-width:760px">
+      <div style="display:flex;align-items:baseline;gap:12px">
+        <h2 style="font-family:'Kanit',sans-serif;font-size:22px;font-weight:600;margin:0;color:#594F74">Surface 2 — Week review</h2>
+        <span style="font-family:'Kanit',sans-serif;font-size:12px;font-weight:500;color:#6B6B72">full page · editable grid</span>
+      </div>
+      <div style="height:2px;background:linear-gradient(to right,#594F74 0 64px,#E4E3EC 64px)"></div>
+      <p style="margin:6px 0 0;font-size:14px;line-height:1.6;color:#6B6678;max-width:680px;text-wrap:pretty">Below-target days read as <em>unfinished</em>, not wrong: a hairline under-bar and a quiet count. Amber appears once, on the one workday with zero hours. Red is reserved for actual failure.</p>
+    </div>
+
+    <div style="display:flex;gap:32px;align-items:flex-start">
+      <div style="flex:0 0 auto;width:1180px;background:#FAFAFB;border:1px solid #E4E3EC;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(74,65,99,.07), 0 18px 40px rgba(74,65,99,.10)">
+        <div style="position:relative;background:linear-gradient(165deg,#615B99 0%,#594F74 42%,#4A4163 100%);padding:18px 26px 20px;overflow:hidden">
+          <div style="position:absolute;right:-70px;top:-96px;width:250px;height:250px;border:1.5px solid rgba(255,255,255,.14);border-radius:9999px"></div>
+          <div style="position:absolute;right:10px;top:-40px;width:140px;height:140px;border:1.5px solid rgba(255,255,255,.12);border-radius:9999px"></div>
+          <div style="position:relative;display:flex;align-items:flex-end;justify-content:space-between;gap:24px">
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <span style="font-family:'Kanit',sans-serif;font-size:11px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.72)">Time Logger · Priya Raman</span>
+              <div style="display:flex;align-items:baseline;gap:14px">
+                <span style="font-family:'Kanit',sans-serif;font-size:26px;font-weight:600;color:#fff">Week of Mon, Jul 20</span>
+                <span style="font-family:'Kanit',sans-serif;font-size:12.5px;color:rgba(255,255,255,.7);cursor:pointer">‹ prev · next ›</span>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:20px">
+              <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+                <div style="display:flex;align-items:baseline;gap:4px;font-family:'Kanit',sans-serif;font-variant-numeric:tabular-nums">
+                  <span style="font-size:26px;font-weight:600;color:#fff">28</span>
+                  <span style="font-size:14px;color:rgba(255,255,255,.72)">/ 40h</span>
+                </div>
+                <div style="width:190px;height:4px;border-radius:9999px;background:rgba(255,255,255,.2);overflow:hidden">
+                  <div style="width:70%;height:100%;background:#fff;border-radius:9999px"></div>
+                </div>
+              </div>
+              <button style="background:#fff;color:#594F74;border:none;border-radius:6px;padding:10px 16px;font-family:'Kanit',sans-serif;font-size:13.5px;font-weight:600;cursor:pointer;box-shadow:0 2px 6px rgba(30,27,46,.18)" style-hover="background:#ECEBF3">Mark week as done</button>
+            </div>
+          </div>
+        </div>
+
+        <div style="padding:22px 26px 26px">
+          <div style="background:#fff;border:1px solid #E4E3EC;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(74,65,99,.07), 0 10px 26px rgba(74,65,99,.07)">
+            <div style="display:grid;grid-template-columns:1fr repeat(7,104px);align-items:stretch;border-bottom:1px solid #E4E3EC;background:#FCFCFD">
+              <div style="padding:11px 14px;font-family:'Kanit',sans-serif;font-size:12px;font-weight:500;color:#6B6B72">Subtask</div>
+              <sc-for list="{{ days }}" as="d" hint-placeholder-count="7">
+                <div style="padding:9px 12px;border-left:1px solid #F0EFF5;display:flex;flex-direction:column;gap:1px;background:{{ d.headBg }}">
+                  <span style="font-family:'Kanit',sans-serif;font-size:12px;font-weight:600;color:{{ d.headColor }}">{{ d.name }}</span>
+                  <span style="font-family:'Kanit',sans-serif;font-size:11px;color:#6B6B72;font-variant-numeric:tabular-nums">{{ d.date }}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <sc-for list="{{ rows }}" as="r" hint-placeholder-count="5">
+              <div style="display:grid;grid-template-columns:1fr repeat(7,104px);border-bottom:1px solid #F4F3F8" style-hover="background:#FCFCFD">
+                <div style="padding:11px 14px;min-width:0;display:flex;flex-direction:column;gap:1px">
+                  <span style="font-family:'Kanit',sans-serif;font-size:12px;font-weight:500;color:#594F74;font-variant-numeric:tabular-nums">{{ r.key }}</span>
+                  <span style="font-size:13px;color:#1E1B2E;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:520px">{{ r.summary }}</span>
+                </div>
+                <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="7">
+                  <div style="border-left:1px solid #F4F3F8;padding:6px;display:flex;align-items:center;justify-content:center;background:{{ c.bg }}">
+                    <div style="width:100%;height:34px;border-radius:6px;border:1px solid {{ c.border }};background:{{ c.fill }};display:flex;align-items:center;justify-content:center;font-family:'Kanit',sans-serif;font-size:13.5px;font-weight:400;color:{{ c.color }};font-variant-numeric:tabular-nums;box-shadow:{{ c.ring }}">{{ c.text }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-for>
+
+            <div style="display:grid;grid-template-columns:1fr repeat(7,104px);background:#FCFCFD;border-top:1px solid #E4E3EC">
+              <div style="padding:11px 14px;display:flex;align-items:center;gap:8px">
+                <button style="background:#fff;border:1px dashed #CFCDDE;border-radius:6px;padding:6px 11px;font-family:'Kanit',sans-serif;font-size:12.5px;font-weight:500;color:#594F74;cursor:pointer" style-hover="background:#ECEBF3;border-style:solid">+ Add a subtask to this week</button>
+              </div>
+              <sc-for list="{{ totals }}" as="t" hint-placeholder-count="7">
+                <div style="border-left:1px solid #F0EFF5;padding:9px 12px;display:flex;flex-direction:column;gap:5px;background:{{ t.bg }}">
+                  <div style="display:flex;align-items:baseline;gap:4px">
+                    <span style="font-family:'Kanit',sans-serif;font-size:14px;font-weight:600;color:{{ t.color }};font-variant-numeric:tabular-nums">{{ t.value }}</span>
+                    <span style="font-family:'Kanit',sans-serif;font-size:11px;color:#6B6B72">{{ t.of }}</span>
+                    <span style="margin-left:auto;font-size:11px;color:{{ t.color }}">{{ t.glyph }}</span>
+                  </div>
+                  <div style="height:3px;border-radius:9999px;background:#EDECF2;overflow:hidden">
+                    <div style="height:100%;border-radius:9999px;background:{{ t.barColor }};width:{{ t.barW }}"></div>
+                  </div>
+                  <span style="font-size:10.5px;color:#6B6B72;line-height:1.3">{{ t.note }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="margin-top:14px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+            <span style="font-size:12.5px;color:#6B6B72">Click any cell to edit. <span style="font-family:'Kanit',sans-serif;color:#594F74;font-weight:500">Tab</span> moves across the day, <span style="font-family:'Kanit',sans-serif;color:#594F74;font-weight:500">⏎</span> saves.</span>
+            <span style="font-size:12.5px;color:#6B6B72">Day header ▾ → mark full-day or half-day PTO</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="flex:0 0 auto;width:440px;display:flex;flex-direction:column;gap:12px">
+        <span style="font-family:'Kanit',sans-serif;font-size:13.5px;font-weight:600;color:#1E1B2E">Gap acknowledgment — “Mark week as done”</span>
+        <div style="background:#fff;border:1px solid #E4E3EC;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(74,65,99,.07), 0 24px 50px rgba(74,65,99,.16)">
+          <div style="padding:20px 22px 16px;display:flex;flex-direction:column;gap:8px">
+            <span style="font-family:'Kanit',sans-serif;font-size:18px;font-weight:600;color:#1E1B2E">Close the week at 28 of 40h?</span>
+            <p style="margin:0;font-size:13.5px;line-height:1.6;color:#6B6678;text-wrap:pretty">Three days are under 8h. That's fine if it's accurate — accounting reads these numbers as final once the week is closed.</p>
+          </div>
+          <div style="padding:0 22px;display:flex;flex-direction:column;gap:8px">
+            <sc-for list="{{ gaps }}" as="g" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid #E4E3EC;border-radius:6px;background:#FCFCFD">
+                <span style="font-family:'Kanit',sans-serif;font-size:12.5px;font-weight:500;color:#1E1B2E;width:78px">{{ g.day }}</span>
+                <span style="font-family:'Kanit',sans-serif;font-size:13px;color:#1E1B2E;font-variant-numeric:tabular-nums;width:62px">{{ g.logged }}</span>
+                <span style="font-size:12.5px;color:#6B6678;flex:1">{{ g.note }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="padding:18px 22px 20px;display:flex;flex-direction:column;gap:12px">
+            <label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer">
+              <span style="flex:0 0 auto;width:16px;height:16px;border-radius:4px;border:1.5px solid #594F74;background:#594F74;color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center;margin-top:1px">✓</span>
+              <span style="font-size:13px;line-height:1.55;color:#1E1B2E">These hours are correct. I'm not missing time.</span>
+            </label>
+            <div style="display:flex;gap:10px;justify-content:flex-end">
+              <button style="background:#fff;border:1px solid #E4E3EC;border-radius:6px;padding:9px 14px;font-family:'Kanit',sans-serif;font-size:13px;font-weight:500;color:#6B6678;cursor:pointer" style-hover="background:#F4F4F7;color:#1E1B2E">Keep editing</button>
+              <button style="background:#594F74;border:none;border-radius:6px;padding:9px 16px;font-family:'Kanit',sans-serif;font-size:13px;font-weight:600;color:#fff;cursor:pointer;box-shadow:0 1px 2px rgba(74,65,99,.2)" style-hover="background:#615B99">Close the week</button>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:8px;background:#fff;border:1px solid #E4E3EC;border-radius:10px;padding:16px 18px;display:flex;flex-direction:column;gap:8px;box-shadow:0 1px 2px rgba(74,65,99,.05)">
+          <span style="font-family:'Kanit',sans-serif;font-size:12px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:#594F74">Day status legend</span>
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <div style="display:flex;align-items:center;gap:9px"><span style="color:#15803D;font-size:12px;width:12px">✓</span><span style="font-size:12.5px;color:#1E1B2E">8h or more — target met</span></div>
+            <div style="display:flex;align-items:center;gap:9px"><span style="color:#6B6B72;font-size:12px;width:12px">◔</span><span style="font-size:12.5px;color:#1E1B2E">Partially logged — <span style="color:#6B6678">normal, not an error</span></span></div>
+            <div style="display:flex;align-items:center;gap:9px"><span style="color:#B45309;font-size:12px;width:12px">●</span><span style="font-size:12.5px;color:#1E1B2E">Workday with nothing logged</span></div>
+            <div style="display:flex;align-items:center;gap:9px"><span style="color:#594F74;font-size:12px;width:12px">◐</span><span style="font-size:12.5px;color:#1E1B2E">PTO — counts toward the week</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:24px">
+    <div style="display:flex;flex-direction:column;gap:8px;max-width:760px">
+      <div style="display:flex;align-items:baseline;gap:12px">
+        <h2 style="font-family:'Kanit',sans-serif;font-size:22px;font-weight:600;margin:0;color:#594F74">Surface 3 — Manager matrix</h2>
+        <span style="font-family:'Kanit',sans-serif;font-size:12px;font-weight:500;color:#6B6B72">reports × epics · one cycle</span>
+      </div>
+      <div style="height:2px;background:linear-gradient(to right,#594F74 0 64px,#E4E3EC 64px)"></div>
+      <p style="margin:6px 0 0;font-size:14px;line-height:1.6;color:#6B6678;max-width:680px;text-wrap:pretty">Correct cells are near-silent: plain tabular numbers, no fill, no glyph. Only exceptions carry a chip, a glyph and a border — so the two wrong cells are the only things that move.</p>
+    </div>
+
+    <div style="display:flex;gap:28px;align-items:flex-start">
+      <div style="flex:0 0 auto;width:1180px;background:#FAFAFB;border:1px solid #E4E3EC;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(74,65,99,.07), 0 18px 40px rgba(74,65,99,.10)">
+        <div style="position:relative;background:linear-gradient(165deg,#615B99 0%,#594F74 42%,#4A4163 100%);padding:18px 26px 20px;overflow:hidden">
+          <div style="position:absolute;right:-60px;top:-100px;width:250px;height:250px;border:1.5px solid rgba(255,255,255,.14);border-radius:9999px"></div>
+          <div style="position:relative;display:flex;align-items:flex-end;justify-content:space-between;gap:24px">
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <span style="font-family:'Kanit',sans-serif;font-size:11px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.72)">Approvals · Marco Iannone · 7 reports</span>
+              <div style="display:flex;align-items:baseline;gap:14px">
+                <span style="font-family:'Kanit',sans-serif;font-size:26px;font-weight:600;color:#fff">June 2026</span>
+                <span style="font-family:'Kanit',sans-serif;font-size:12.5px;color:rgba(255,255,255,.75);border:1px solid rgba(255,255,255,.28);border-radius:6px;padding:4px 9px;cursor:pointer">Change cycle ▾</span>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px">
+              <div style="display:flex;gap:16px;align-items:center;font-family:'Kanit',sans-serif;font-size:12.5px;color:rgba(255,255,255,.85)">
+                <span>5 of 7 approved</span>
+                <span style="color:#F5D9AE">● 2 need attention</span>
+              </div>
+              <button style="background:#fff;color:#594F74;border:none;border-radius:6px;padding:10px 16px;font-family:'Kanit',sans-serif;font-size:13.5px;font-weight:600;cursor:pointer;box-shadow:0 2px 6px rgba(30,27,46,.18)" style-hover="background:#ECEBF3">Approve remaining</button>
+            </div>
+          </div>
+        </div>
+
+        <div style="padding:22px 26px 26px">
+          <div style="background:#fff;border:1px solid #E4E3EC;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(74,65,99,.07), 0 10px 26px rgba(74,65,99,.07)">
+            <div style="display:grid;grid-template-columns:210px repeat(6,124px) 130px;background:#FCFCFD;border-bottom:1px solid #E4E3EC">
+              <div style="padding:11px 14px;font-family:'Kanit',sans-serif;font-size:12px;font-weight:500;color:#6B6B72">Report</div>
+              <sc-for list="{{ epics }}" as="ep" hint-placeholder-count="6">
+                <div style="padding:11px 10px;border-left:1px solid #F0EFF5;display:flex;flex-direction:column;gap:1px">
+                  <span style="font-family:'Kanit',sans-serif;font-size:12px;font-weight:500;color:#594F74;font-variant-numeric:tabular-nums">{{ ep.key }}</span>
+                  <span style="font-size:11px;color:#6B6B72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ ep.name }}</span>
+                </div>
+              </sc-for>
+              <div style="padding:11px 12px;border-left:1px solid #F0EFF5;font-family:'Kanit',sans-serif;font-size:12px;font-weight:500;color:#6B6B72">Total · action</div>
+            </div>
+
+            <sc-for list="{{ matrix }}" as="m" hint-placeholder-count="7">
+              <div style="display:grid;grid-template-columns:210px repeat(6,124px) 130px;border-bottom:1px solid #F4F3F8;align-items:stretch" style-hover="background:#FCFCFD">
+                <div style="padding:10px 14px;display:flex;align-items:center;gap:9px;min-width:0">
+                  <span style="flex:0 0 auto;width:24px;height:24px;border-radius:9999px;background:#ECEBF3;color:#594F74;font-family:'Kanit',sans-serif;font-size:11px;font-weight:500;display:flex;align-items:center;justify-content:center">{{ m.initials }}</span>
+                  <div style="min-width:0;display:flex;flex-direction:column;gap:0px">
+                    <span style="font-size:13px;color:#1E1B2E;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.name }}</span>
+                    <span style="font-family:'Kanit',sans-serif;font-size:11px;color:#6B6B72">{{ m.role }}</span>
+                  </div>
+                </div>
+                <sc-for list="{{ m.cells }}" as="c" hint-placeholder-count="6">
+                  <div style="border-left:1px solid #F4F3F8;padding:7px 8px;display:flex;align-items:center;justify-content:flex-end">
+                    <sc-if value="{{ c.plain }}" hint-placeholder-val="{{ true }}">
+                      <span style="font-family:'Kanit',sans-serif;font-size:13px;color:#1E1B2E;font-variant-numeric:tabular-nums">{{ c.text }}</span>
+                    </sc-if>
+                    <sc-if value="{{ c.empty }}" hint-placeholder-val="{{ false }}">
+                      <span style="font-family:'Kanit',sans-serif;font-size:12px;color:#ADACB9">·</span>
+                    </sc-if>
+                    <sc-if value="{{ c.dirty }}" hint-placeholder-val="{{ false }}">
+                      <span style="display:inline-flex;align-items:center;gap:5px;background:#FFF8EC;border:1px solid #EDD3A6;border-radius:5px;padding:3px 7px;font-family:'Kanit',sans-serif;font-size:12.5px;font-weight:500;color:#7A3E06;font-variant-numeric:tabular-nums;cursor:pointer;box-shadow:0 1px 2px rgba(180,83,9,.12)"><span style="font-size:10px;color:#B45309">●</span>{{ c.text }}</span>
+                    </sc-if>
+                    <sc-if value="{{ c.missing }}" hint-placeholder-val="{{ false }}">
+                      <span style="display:inline-flex;align-items:center;gap:5px;background:#fff;border:1px dashed #CFCDDE;border-radius:5px;padding:3px 7px;font-family:'Kanit',sans-serif;font-size:12px;font-weight:500;color:#6B6678;cursor:pointer">no hours</span>
+                    </sc-if>
+                    <sc-if value="{{ c.restricted }}" hint-placeholder-val="{{ false }}">
+                      <span style="display:inline-flex;align-items:center;gap:5px;background:#F4F4F7;border:1px solid #E4E3EC;border-radius:5px;padding:3px 7px;font-family:'Kanit',sans-serif;font-size:12px;font-weight:500;color:#6B6B72;cursor:help"><span style="font-size:10px">◐</span>hidden</span>
+                    </sc-if>
+                  </div>
+                </sc-for>
+                <div style="border-left:1px solid #F4F3F8;padding:7px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+                  <span style="font-family:'Kanit',sans-serif;font-size:13px;font-weight:600;color:#1E1B2E;font-variant-numeric:tabular-nums">{{ m.total }}</span>
+                  <sc-if value="{{ m.approved }}" hint-placeholder-val="{{ true }}">
+                    <span style="display:inline-flex;align-items:center;gap:5px;font-family:'Kanit',sans-serif;font-size:11.5px;font-weight:500;color:#15803D"><span style="font-size:11px">✓</span>Approved</span>
+                  </sc-if>
+                  <sc-if value="{{ m.pending }}" hint-placeholder-val="{{ false }}">
+                    <button style="background:#594F74;border:none;border-radius:5px;padding:5px 11px;font-family:'Kanit',sans-serif;font-size:12px;font-weight:500;color:#fff;cursor:pointer" style-hover="background:#615B99">Approve</button>
+                  </sc-if>
+                </div>
+              </div>
+            </sc-for>
+
+            <div style="display:grid;grid-template-columns:210px repeat(6,124px) 130px;border-bottom:1px solid #F4F3F8;align-items:center">
+              <div style="padding:12px 14px;display:flex;align-items:center;gap:9px">
+                <div style="width:24px;height:24px;border-radius:9999px;background:#EFEFF3;animation:sk 1.4s ease-in-out infinite"></div>
+                <div style="width:110px;height:11px;border-radius:4px;background:#EFEFF3;animation:sk 1.4s ease-in-out infinite"></div>
+              </div>
+              <sc-for list="{{ skeletonCells }}" as="s" hint-placeholder-count="7">
+                <div style="border-left:1px solid #F4F3F8;padding:12px 10px;display:flex;justify-content:flex-end">
+                  <div style="width:38px;height:11px;border-radius:4px;background:#EFEFF3;animation:sk 1.4s ease-in-out infinite"></div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="padding:10px 14px;display:flex;align-items:center;gap:10px;background:#FCFCFD">
+              <span style="font-size:12px;color:#6B6B72">Loading 2 of 7 reports — rows appear as Jira responds (rate-limited, ~600 cells).</span>
+              <div style="flex:1;height:3px;border-radius:9999px;background:#EDECF2;overflow:hidden"><div style="width:71%;height:100%;background:#615B99;border-radius:9999px"></div></div>
+            </div>
+          </div>
+
+          <div style="margin-top:14px;display:flex;align-items:center;gap:22px;flex-wrap:wrap">
+            <span style="font-family:'Kanit',sans-serif;font-size:11px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:#6B6B72">Cell states</span>
+            <span style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:#1E1B2E"><span style="font-family:'Kanit',sans-serif;font-variant-numeric:tabular-nums">21.0</span>clean — no decoration</span>
+            <span style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:#1E1B2E"><span style="color:#15803D;font-size:11px">✓</span>approved</span>
+            <span style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:#1E1B2E"><span style="color:#B45309;font-size:11px">●</span>edited after approval</span>
+            <span style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:#1E1B2E"><span style="color:#6B6B72;font-size:11px">◐</span>restricted — you can't see these worklogs</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="flex:0 0 auto;width:400px;display:flex;flex-direction:column;gap:12px">
+        <span style="font-family:'Kanit',sans-serif;font-size:13.5px;font-weight:600;color:#1E1B2E">Drill-down — Anucha × GAPI-330</span>
+        <div style="background:#fff;border:1px solid #E4E3EC;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(74,65,99,.07), 0 24px 50px rgba(74,65,99,.15)">
+          <div style="padding:16px 18px;border-bottom:1px solid #F0EFF5;display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+            <div style="display:flex;flex-direction:column;gap:3px">
+              <span style="font-family:'Kanit',sans-serif;font-size:15px;font-weight:600;color:#1E1B2E">Anucha P. · GAPI-330</span>
+              <span style="font-size:12.5px;color:#6B6678">6.5h · edited 4 days after approval</span>
+            </div>
+            <span style="display:inline-flex;align-items:center;gap:5px;background:#FFF8EC;border:1px solid #EDD3A6;border-radius:5px;padding:3px 8px;font-family:'Kanit',sans-serif;font-size:11.5px;font-weight:500;color:#7A3E06"><span style="font-size:10px;color:#B45309">●</span>Needs re-approval</span>
+          </div>
+          <div style="padding:6px 0">
+            <sc-for list="{{ drill }}" as="w" hint-placeholder-count="4">
+              <div style="padding:9px 18px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #F6F5FA">
+                <span style="font-family:'Kanit',sans-serif;font-size:12px;color:#6B6678;width:56px;font-variant-numeric:tabular-nums">{{ w.date }}</span>
+                <span style="font-size:12.5px;color:#1E1B2E;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ w.note }}</span>
+                <span style="font-family:'Kanit',sans-serif;font-size:12.5px;font-weight:500;color:#1E1B2E;font-variant-numeric:tabular-nums">{{ w.hours }}</span>
+                <span style="font-size:11px;color:{{ w.flagColor }};width:12px;text-align:center">{{ w.flag }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="padding:14px 18px 16px;background:#FCFCFD;border-top:1px solid #F0EFF5;display:flex;flex-direction:column;gap:10px">
+            <span style="font-size:12.5px;line-height:1.55;color:#6B6678">Two entries changed since you approved on 3 Jul: +1.5h on 12 Jun, and a note edit on 18 Jun.</span>
+            <div style="display:flex;gap:9px">
+              <button style="flex:1;background:#594F74;border:none;border-radius:6px;padding:9px 14px;font-family:'Kanit',sans-serif;font-size:13px;font-weight:600;color:#fff;cursor:pointer" style-hover="background:#615B99">Re-approve 6.5h</button>
+              <button style="background:#fff;border:1px solid #E4E3EC;border-radius:6px;padding:9px 14px;font-family:'Kanit',sans-serif;font-size:13px;font-weight:500;color:#6B6678;cursor:pointer" style-hover="background:#F4F4F7;color:#1E1B2E">Ask Anucha</button>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:8px;background:#fff;border:1px solid #E4E3EC;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(74,65,99,.07), 0 24px 50px rgba(74,65,99,.13)">
+          <div style="padding:18px 20px 14px;display:flex;flex-direction:column;gap:7px">
+            <span style="font-family:'Kanit',sans-serif;font-size:16px;font-weight:600;color:#1E1B2E">Approve Priya's June?</span>
+            <p style="margin:0;font-size:13px;line-height:1.6;color:#6B6678">You're approving <span style="font-family:'Kanit',sans-serif;font-weight:500;color:#1E1B2E;font-variant-numeric:tabular-nums">158.5h</span> across <span style="font-family:'Kanit',sans-serif;font-weight:500;color:#1E1B2E">5 epics</span> for the June cycle. Accounting uses this figure.</p>
+            <div style="margin-top:4px;display:flex;align-items:center;gap:7px;padding:8px 10px;border:1px solid #E4E3EC;border-radius:6px;background:#FCFCFD">
+              <span style="color:#6B6B72;font-size:11px">◐</span>
+              <span style="font-size:12px;color:#6B6678;line-height:1.5">1 epic has worklogs you can't see. Approving does not cover them.</span>
+            </div>
+          </div>
+          <div style="padding:0 20px 18px;display:flex;gap:9px;justify-content:flex-end">
+            <button style="background:#fff;border:1px solid #E4E3EC;border-radius:6px;padding:8px 13px;font-family:'Kanit',sans-serif;font-size:12.5px;font-weight:500;color:#6B6678;cursor:pointer" style-hover="background:#F4F4F7;color:#1E1B2E">Cancel</button>
+            <button style="background:#594F74;border:none;border-radius:6px;padding:8px 15px;font-family:'Kanit',sans-serif;font-size:12.5px;font-weight:600;color:#fff;cursor:pointer" style-hover="background:#615B99">Approve 158.5h</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:24px">
+    <div style="display:flex;flex-direction:column;gap:8px;max-width:760px">
+      <h2 style="font-family:'Kanit',sans-serif;font-size:22px;font-weight:600;margin:0;color:#594F74">Notes back to you</h2>
+      <div style="height:2px;background:linear-gradient(to right,#594F74 0 64px,#E4E3EC 64px)"></div>
+    </div>
+    <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
+      <div style="flex:0 0 auto;width:520px;background:#fff;border:1px solid #E4E3EC;border-radius:10px;padding:22px 24px;display:flex;flex-direction:column;gap:14px;box-shadow:0 1px 3px rgba(74,65,99,.07), 0 10px 26px rgba(74,65,99,.07)">
+        <span style="font-family:'Kanit',sans-serif;font-size:16px;font-weight:600;color:#1E1B2E">The 55-ticket list</span>
+        <p style="margin:0;font-size:13.5px;line-height:1.65;color:#6B6678;text-wrap:pretty">The list is not the job — <em>logging today</em> is. So the popup never renders 55 rows. It shows the four tickets you actually touched this week, ranked by recency, then hands the other 51 to search. Search is the browse mechanism, not a filter on top of a browse mechanism.</p>
+        <p style="margin:0;font-size:13.5px;line-height:1.65;color:#6B6678;text-wrap:pretty">This also solves the teammate-ticket case for free: search hits Jira live, so tickets that aren't yours are reachable through the same control. One list, one scroll region, no tabs.</p>
+        <div style="height:1px;background:#E4E3EC"></div>
+        <span style="font-family:'Kanit',sans-serif;font-size:16px;font-weight:600;color:#1E1B2E">Long GAPI summaries</span>
+        <p style="margin:0;font-size:13.5px;line-height:1.65;color:#6B6678;text-wrap:pretty">Key and summary sit on separate lines, so an 80-character summary truncates on its own line without shoving the key around. In the resume card the summary gets two lines; in list rows, one with an ellipsis. Rows stay the same height, so the list scans.</p>
+      </div>
+
+      <div style="flex:0 0 auto;width:520px;background:#fff;border:1px solid #E4E3EC;border-radius:10px;padding:22px 24px;display:flex;flex-direction:column;gap:12px;box-shadow:0 1px 3px rgba(74,65,99,.07), 0 10px 26px rgba(74,65,99,.07)">
+        <span style="font-family:'Kanit',sans-serif;font-size:16px;font-weight:600;color:#1E1B2E">Deviations & additions</span>
+        <div style="display:flex;flex-direction:column;gap:11px">
+          <div style="display:flex;gap:10px"><span style="flex:0 0 auto;color:#594F74;font-size:12px;margin-top:3px">●</span><span style="font-size:13.5px;line-height:1.6;color:#6B6678"><span style="color:#1E1B2E;font-family:'Kanit',sans-serif;font-weight:500">Elevation on the data canvas.</span> Used as licensed: purple chrome → white cards → hairline rows. Three levels, no more.</span></div>
+          <div style="display:flex;gap:10px"><span style="flex:0 0 auto;color:#594F74;font-size:12px;margin-top:3px">●</span><span style="font-size:13.5px;line-height:1.6;color:#6B6678"><span style="color:#1E1B2E;font-family:'Kanit',sans-serif;font-weight:500">Two amber tints added</span> — <span style="font-family:'Kanit',sans-serif;font-variant-numeric:tabular-nums">#FFF8EC</span> fill, <span style="font-family:'Kanit',sans-serif;font-variant-numeric:tabular-nums">#EDD3A6</span> border, <span style="font-family:'Kanit',sans-serif;font-variant-numeric:tabular-nums">#7A3E06</span> text (5.9:1). Derived from <span style="font-family:'Kanit',sans-serif">--status-dirty</span>; no new hue.</span></div>
+          <div style="display:flex;gap:10px"><span style="flex:0 0 auto;color:#594F74;font-size:12px;margin-top:3px">●</span><span style="font-size:13.5px;line-height:1.6;color:#6B6678"><span style="color:#1E1B2E;font-family:'Kanit',sans-serif;font-weight:500">Red is not used for below-target</span> anywhere. <span style="font-family:'Kanit',sans-serif">--status-error</span> only fires on a failed write.</span></div>
+          <div style="display:flex;gap:10px"><span style="flex:0 0 auto;color:#594F74;font-size:12px;margin-top:3px">●</span><span style="font-size:13.5px;line-height:1.6;color:#6B6678"><span style="color:#1E1B2E;font-family:'Kanit',sans-serif;font-weight:500">A fourth glyph, <span style="font-family:'Kanit',sans-serif">◔</span></span>, for "partially logged" — the state the old build had no vocabulary for and rendered as red.</span></div>
+          <div style="display:flex;gap:10px"><span style="flex:0 0 auto;color:#594F74;font-size:12px;margin-top:3px">●</span><span style="font-size:13.5px;line-height:1.6;color:#6B6678"><span style="color:#1E1B2E;font-family:'Kanit',sans-serif;font-weight:500">Empty value glyph is <span style="font-family:'Kanit',sans-serif">·</span></span>, replacing <span style="font-family:'Kanit',sans-serif">——</span>. A dashed "no hours" chip is used where the emptiness is meaningful.</span></div>
+          <div style="display:flex;gap:10px"><span style="flex:0 0 auto;color:#594F74;font-size:12px;margin-top:3px">●</span><span style="font-size:13.5px;line-height:1.6;color:#6B6678"><span style="color:#1E1B2E;font-family:'Kanit',sans-serif;font-weight:500">Kanit 300 is unused.</span> Ship 400/500/600 only — three woff2 files.</span></div>
+        </div>
+      </div>
+
+      <div style="flex:0 0 auto;width:520px;background:#1E1B2E;border-radius:10px;padding:22px 24px;display:flex;flex-direction:column;gap:12px;box-shadow:0 1px 3px rgba(74,65,99,.07), 0 10px 26px rgba(74,65,99,.10)">
+        <span style="font-family:'Kanit',sans-serif;font-size:16px;font-weight:600;color:#fff">Tokens used</span>
+        <span style="font-size:12.5px;color:#ADACB9;line-height:1.55">KKP block as given, plus the additions below. Everything else was consumed unchanged.</span>
+        <pre style="margin:0;font-family:'Kanit',sans-serif;font-size:12.5px;line-height:1.85;color:#E7E7ED;white-space:pre-wrap;font-variant-numeric:tabular-nums">--amber-soft:#FFF8EC;
+--amber-border:#EDD3A6;
+--amber-ink:#7A3E06;   /* 5.9:1 on amber-soft */
+--surface-sunk:#FCFCFD;
+--border-faint:#F0EFF5;
+--border-hairline:#F4F3F8;
+--focus-ring:0 0 0 3px rgba(89,79,116,.13);
+--shadow-lift:0 1px 3px rgba(74,65,99,.07),
+              0 18px 40px rgba(74,65,99,.12);</pre>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:&quot;100%&quot;,&quot;height&quot;:&quot;100%&quot;}}">
+const T = {
+  m135: "MBS1045 - DirectDebitListing",
+  m134: "MBS1212 - BalanceBillingDetail",
+  m131: "MBS1206 - SuspenseDetail",
+  m110: "MBS215 - BulkPayment",
+  g348: "SR-582505: ABACUS SRM101 - InquiryCarRegistrationBookStatus Assignment Ownership screen",
+  g330: "SR-582505: ABACUS ETL101 - NotifyBulkFiles (ETL) : (rundeck) seperate by ID file",
+  k12: "Standup"
+};
+
+function popup(o) {
+  const entries = o.entries || [];
+  return Object.assign({
+    weekNote: "Week of Mon, Jul 20",
+    resumeKey: "MBS-135",
+    resumeSummary: T.m135,
+    resumeWhen: "last logged 2 days ago",
+    resumeValue: "1.5",
+    resumeOffset: "-10px",
+    showProgress: true,
+    headerPlain: false,
+    headerSkeleton: false,
+    isNormal: false, isLoading: false, isPto: false, isDisconnected: false,
+    showOffline: false, showError: false,
+    searchIdle: true, searchActive: false, showLists: true,
+    entryCount: String(entries.length),
+    hasEntries: entries.length > 0,
+    noEntries: entries.length === 0,
+    entries
+  }, o);
+}
+
+class Component extends DCLogic {
+  renderVals() {
+    const popupStates = [
+      popup({
+        id: "empty", label: "Nothing logged yet", caption: "The resume card is the only loud thing. No empty-state illustration, no advice.",
+        date: "Mon, Jul 20", logged: "0", pctW: "0%", progressNote: "8h to go today",
+        isNormal: true, entries: [], resumeWhen: "last logged Fri", resumeValue: "1.5"
+      }),
+      popup({
+        id: "partial", label: "Some hours logged", caption: "Default case. Progress is stated, never scolded.",
+        date: "Fri, Jul 24", logged: "2.5", pctW: "31%", progressNote: "5.5h to go today",
+        isNormal: true, resumeWhen: "logged 1.5h today", resumeValue: "1.0",
+        entries: [
+          { key: "MBS-135", summary: T.m135, hours: "1.5h" },
+          { key: "KNP-12", summary: T.k12, hours: "1.0h" }
+        ]
+      }),
+      popup({
+        id: "target", label: "At target", caption: "Met is a quiet green tick, not a celebration.",
+        date: "Thu, Jul 23", logged: "8.0", pctW: "100%", progressNote: "✓ Target met — 8h logged",
+        isNormal: true, resumeKey: "GAPI-348", resumeSummary: T.g348, resumeWhen: "logged 3.0h today", resumeValue: "0.5",
+        entries: [
+          { key: "MBS-134", summary: T.m134, hours: "3.5h" },
+          { key: "GAPI-348", summary: T.g348, hours: "3.0h" },
+          { key: "KNP-12", summary: T.k12, hours: "1.5h" }
+        ]
+      }),
+      popup({
+        id: "search", label: "Searching", caption: "Search replaces the lists rather than filtering beside them — one list on screen at a time. First result is preselected; ⏎ logs it.",
+        date: "Fri, Jul 24", logged: "2.5", pctW: "31%", progressNote: "5.5h to go today",
+        isNormal: true, searchIdle: false, searchActive: true, showLists: false,
+        resumeWhen: "logged 1.5h today", resumeValue: "1.0",
+        entries: [
+          { key: "MBS-135", summary: T.m135, hours: "1.5h" },
+          { key: "KNP-12", summary: T.k12, hours: "1.0h" }
+        ]
+      }),
+      popup({
+        id: "pto", label: "PTO day", caption: "Day is settled; logging stays available but stops asking.",
+        date: "Wed, Jul 22", logged: "8.0", pctW: "100%", progressNote: "◐ PTO — counted as a full day",
+        isPto: true
+      }),
+      popup({
+        id: "loading", label: "Loading", caption: "Skeletons in the real layout shape. Chrome paints instantly; TTI budget 400ms.",
+        date: "Fri, Jul 24", showProgress: false, headerSkeleton: true, isLoading: true
+      }),
+      popup({
+        id: "offline", label: "Offline, writes queued", caption: "Banner pushes the resume card down; the hot path still works.",
+        date: "Fri, Jul 24", logged: "4.5", pctW: "56%", progressNote: "3.5h to go · 2 unsynced",
+        isNormal: true, showOffline: true, resumeOffset: "0px", resumeWhen: "queued 1.0h", resumeValue: "1.0",
+        entries: [
+          { key: "MBS-131", summary: T.m131, hours: "2.5h" },
+          { key: "MBS-110", summary: T.m110, hours: "2.0h" }
+        ]
+      }),
+      popup({
+        id: "error", label: "Jira rejected a write", caption: "Names the ticket, the reason, and where the hours went. Recovery is inline.",
+        date: "Fri, Jul 24", logged: "3.0", pctW: "37%", progressNote: "5.0h to go · 1 not saved to Jira",
+        isNormal: true, showError: true, resumeOffset: "0px", resumeKey: "GAPI-348", resumeSummary: T.g348,
+        resumeWhen: "failed 2 min ago", resumeValue: "1.5",
+        entries: [{ key: "MBS-135", summary: T.m135, hours: "3.0h" }]
+      }),
+      popup({
+        id: "disconnected", label: "Not connected", caption: "Chrome still identifies the product; one action, no dead UI behind it.",
+        date: "Fri, Jul 24", showProgress: false, headerPlain: true, weekNote: "Not connected to Jira",
+        isDisconnected: true
+      })
+    ];
+
+    const recent = [
+      { key: "MBS-135", when: "2d ago", summary: T.m135 },
+      { key: "GAPI-348", when: "3d ago", summary: T.g348 },
+      { key: "KNP-12", when: "3d ago", summary: T.k12 },
+      { key: "MBS-134", when: "last week", summary: T.m134 }
+    ];
+
+    const wk = "#F1F0F6";
+    const days = [
+      { name: "Mon", date: "Jul 20", headBg: "transparent", headColor: "#1E1B2E" },
+      { name: "Tue", date: "Jul 21", headBg: "transparent", headColor: "#1E1B2E" },
+      { name: "Wed", date: "Jul 22", headBg: "transparent", headColor: "#1E1B2E" },
+      { name: "Thu", date: "Jul 23", headBg: "transparent", headColor: "#1E1B2E" },
+      { name: "Fri", date: "Jul 24", headBg: "transparent", headColor: "#1E1B2E" },
+      { name: "Sat", date: "Jul 25", headBg: wk, headColor: "#6B6B72" },
+      { name: "Sun", date: "Jul 26", headBg: wk, headColor: "#6B6B72" }
+    ];
+
+    const cell = (text, opts) => Object.assign({
+      text: text || "·",
+      bg: "transparent",
+      border: text ? "#EDECF2" : "transparent",
+      fill: text ? "#FFFFFF" : "transparent",
+      color: text ? "#1E1B2E" : "#ADACB9",
+      ring: "none"
+    }, opts || {});
+    const weekendCell = (text) => cell(text, { bg: wk, border: text ? "#EDECF2" : "transparent", fill: text ? "#FFFFFF" : "transparent", color: text ? "#6B6678" : "#C9C8D3" });
+
+    const rows = [
+      { key: "MBS-135", summary: T.m135, cells: [cell("3.0"), cell("2.5"), cell(""), cell("4.0"), cell("1.5"), weekendCell(""), weekendCell("")] },
+      { key: "GAPI-348", summary: T.g348, cells: [cell("2.0"), cell("3.0"), cell(""), cell("2.0"), cell(""), weekendCell(""), weekendCell("")] },
+      { key: "GAPI-330", summary: T.g330, cells: [cell(""), cell("1.5"), cell(""), cell(""), cell("1.0", { border: "#594F74", ring: "0 0 0 3px rgba(89,79,116,.13)" }), weekendCell(""), weekendCell("")] },
+      { key: "KNP-12", summary: "Standup", cells: [cell("0.5"), cell("0.5"), cell(""), cell("0.5"), cell("0.5"), weekendCell(""), weekendCell("")] },
+      { key: "KNP-99", summary: "PTO", cells: [cell(""), cell(""), cell("8.0", { fill: "#F6F5FA", color: "#594F74", border: "#E2E0EE" }), cell(""), cell(""), weekendCell(""), weekendCell("")] }
+    ];
+
+    const total = (value, of, pct, note, kind) => {
+      const map = {
+        met: { color: "#15803D", glyph: "✓", bar: "#15803D" },
+        part: { color: "#1E1B2E", glyph: "◔", bar: "#615B99" },
+        none: { color: "#7A3E06", glyph: "●", bar: "#B45309" },
+        pto: { color: "#594F74", glyph: "◐", bar: "#8B84AE" },
+        off: { color: "#6B6B72", glyph: "", bar: "#D8D7E1" }
+      }[kind];
+      return { value, of, note, barW: pct, bg: kind === "off" ? wk : "transparent", color: map.color, glyph: map.glyph, barColor: map.bar };
+    };
+
+    const totals = [
+      total("5.5", "/ 8h", "69%", "2.5h short", "part"),
+      total("7.5", "/ 8h", "94%", "0.5h short", "part"),
+      total("8.0", "PTO", "100%", "full-day PTO", "pto"),
+      total("6.5", "/ 8h", "81%", "1.5h short", "part"),
+      total("3.0", "/ 8h", "37%", "in progress", "part"),
+      total("0", "", "0%", "weekend", "off"),
+      total("0", "", "0%", "weekend", "off")
+    ];
+
+    const gaps = [
+      { day: "Mon 20", logged: "5.5 / 8h", note: "2.5h unaccounted" },
+      { day: "Thu 23", logged: "6.5 / 8h", note: "1.5h unaccounted" },
+      { day: "Fri 24", logged: "3.0 / 8h", note: "today — still open" }
+    ];
+
+    const epics = [
+      { key: "MBS-1045", name: "DirectDebit" },
+      { key: "MBS-1212", name: "BalanceBilling" },
+      { key: "ALC-301", name: "Collateral info" },
+      { key: "GAPI-330", name: "NotifyBulkFiles" },
+      { key: "GAPI-348", name: "InquiryCarReg" },
+      { key: "KNP", name: "Meetings & PTO" }
+    ];
+
+    const num = (t) => ({ plain: true, text: t });
+    const none = { empty: true };
+    const dirty = (t) => ({ dirty: true, text: t });
+    const missing = { missing: true };
+    const restricted = { restricted: true };
+
+    const matrix = [
+      { initials: "PR", name: "Priya Raman", role: "Senior engineer", approved: true, total: "158.5", cells: [num("62.0"), num("31.5"), none, num("24.0"), num("28.0"), num("13.0")] },
+      { initials: "AP", name: "Anucha Pongsak", role: "Engineer", approved: false, pending: true, total: "146.0", cells: [num("40.0"), none, num("29.5"), dirty("6.5"), num("58.0"), num("12.0")] },
+      { initials: "SW", name: "Suchada Wong", role: "Engineer", approved: true, total: "160.0", cells: [num("55.0"), num("42.0"), num("18.0"), none, num("33.0"), num("12.0")] },
+      { initials: "TK", name: "Tanawat K.", role: "Engineer", approved: true, total: "152.5", cells: [none, num("61.0"), num("36.5"), num("22.0"), num("21.0"), num("12.0")] },
+      { initials: "MI", name: "Marco Iannone", role: "Manager (self)", approved: true, total: "120.0", cells: [num("18.0"), num("14.0"), none, num("22.0"), num("24.0"), num("42.0")] },
+      { initials: "NB", name: "Nara Boonmee", role: "Engineer", approved: false, pending: true, total: "131.0", cells: [num("48.0"), num("26.0"), restricted, num("17.0"), missing, num("12.0")] },
+      { initials: "KJ", name: "Kittipong J.", role: "Engineer", approved: true, total: "159.0", cells: [num("51.0"), num("38.0"), num("27.0"), num("19.5"), num("11.5"), num("12.0")] }
+    ];
+
+    const drill = [
+      { date: "8 Jun", note: "Rundeck job split by ID file", hours: "2.0", flag: "", flagColor: "#6B6B72" },
+      { date: "12 Jun", note: "ETL retry handling — edited 7 Jul", hours: "3.0", flag: "●", flagColor: "#B45309" },
+      { date: "15 Jun", note: "Bulk file notification test run", hours: "1.0", flag: "", flagColor: "#6B6B72" },
+      { date: "18 Jun", note: "Note amended after approval", hours: "0.5", flag: "●", flagColor: "#B45309" }
+    ];
+
+    return {
+      popupStates, recent, days, rows, totals, gaps, epics, matrix, drill,
+      skeletonCells: [1, 2, 3, 4, 5, 6, 7]
+    };
+  }
+}
+
+</script>
+</body>
+</html>

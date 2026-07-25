@@ -2,67 +2,197 @@
 @import "tw-animate-css";
 
 /* -----------------------------------------------------------------------------
- * Design tokens — see ux-design-specification.md > Visual Foundation.
+ * Design tokens — see
+ * _bmad-output/planning-artifacts/ux-designs/ux-jira-time-logger-2026-07-25/DESIGN.md
  *
- * Tailwind v4 uses CSS-first config via @theme. Tokens defined here are
- * available as utilities (e.g., `bg-accent`, `text-accent-deep`,
- * `bg-state-success-subtle`, `bg-brand-gradient`).
+ * The KKP corporate design system is the source of truth for colour, type,
+ * shape, and elevation. DESIGN.md wins over this file on conflict.
+ *
+ * Fonts are BUNDLED, never fetched — the extension CSP forbids CDN loads, and
+ * the content script runs inside Jira's own CSP. Do not reintroduce a
+ * <link> to fonts.googleapis.com.
  * --------------------------------------------------------------------------- */
 
-@theme {
-  /* Neutrals — Tailwind slate scale */
-  --color-neutral-50: #f8fafc;
-  --color-neutral-100: #f1f5f9;
-  --color-neutral-200: #e2e8f0;
-  --color-neutral-300: #cbd5e1;
-  --color-neutral-500: #64748b;
-  --color-neutral-700: #334155;
-  --color-neutral-900: #0f172a;
-
-  /* Brand accent — derived from the company logo's mid-tone purple */
-  --color-accent: #6b5b95;
-  --color-accent-hover: #5a4d7e;
-  --color-accent-subtle: #e9e6f3;
-  --color-accent-deep: #4a4570;
-
-  /* Brand gradient endpoints */
-  --color-brand-gradient-from: #4a4570;
-  --color-brand-gradient-to: #7a719b;
-
-  /* State colors — never alarming */
-  --color-state-success: #16a34a;
-  --color-state-success-subtle: #dcfce7;
-  --color-state-warning: #ca8a04;
-  --color-state-warning-subtle: #fef9c3;
-  --color-state-danger: #dc2626;
-  --color-state-danger-subtle: #fee2e2;
-  --color-state-info: #0891b2;
-  --color-state-info-subtle: #cffafe;
-
-  /* Font families */
-  --font-sans:
-    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-    "Liberation Mono", "Courier New", monospace;
+/* Kanit — the chrome voice: headings, labels, buttons, keys, all numerics.
+ * Latin subset only; weights 400/500/600 (KKP 300 is unused). */
+@font-face {
+  font-family: "Kanit";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/kanit-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Kanit";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/kanit-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Kanit";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/kanit-600.woff2") format("woff2");
 }
 
-/* Brand-gradient utility for hero regions. */
-@utility bg-brand-gradient {
+/* Noto Sans — the data voice: ticket summaries, prose, captions.
+ * Latin variable font, one file covering 400–600. */
+@font-face {
+  font-family: "Noto Sans";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url("/fonts/noto-sans-var.woff2") format("woff2");
+}
+
+@theme {
+  /* ---------------------------------------------------------------------
+   * KKP brand — Legacy Purple is the ONLY brand colour.
+   * No sub-brand accents (Better / Edge / Wealth) in core UI.
+   * ------------------------------------------------------------------- */
+  --color-legacy-purple: #594f74;
+  --color-royal-purple: #615b99;
+  --color-purple-deep: #4a4163;
+  --color-grandeur-grey: #adacb9;
+  --color-grandeur-lite: #e7e7ed;
+
+  /* Data canvas — neutrals warmed toward purple. Three-step surface ladder. */
+  --color-background: #fafafb;
+  --color-surface: #ffffff;
+  --color-surface-sunk: #fcfcfd;
+  --color-foreground: #1e1b2e;
+  --color-muted: #6b6678;
+  --color-faint: #6b6b72; /* a11y floor 4.6:1 — NEVER lighten */
+  --color-faint-decorative: #adacb9; /* non-text decoration only */
+  --color-weekend: #f1f0f6;
+
+  /* Three hairline weights: card edge, row divider, grid separator. */
+  --color-border: #e4e3ec;
+  --color-border-faint: #f0eff5;
+  --color-border-hairline: #f4f3f8;
+
+  --color-primary: #594f74;
+  --color-primary-foreground: #ffffff;
+  --color-primary-soft: #ecebf3;
+
+  /* Status — meaning is fixed, never remapped. Always paired with a glyph. */
+  --color-status-clean: #15803d; /* ✓ target met */
+  --color-status-dirty: #b45309; /* ● changed / nothing logged */
+  --color-status-recomputing: #615b99; /* ◐ in progress / PTO / restricted */
+  --color-status-error: #dc2626; /* ✕ a write that actually failed */
+
+  /* Amber tints — derived from status-dirty, no new hue. amber-ink 5.9:1. */
+  --color-amber-soft: #fff8ec;
+  --color-amber-border: #edd3a6;
+  --color-amber-ink: #7a3e06;
+
+  /* Error tints — ONLY for failed writes. Never for below-target. */
+  --color-error-soft: #fef2f2;
+  --color-error-border: #f3c9c9;
+  --color-error-ink: #991b1b;
+
+  /* ---------------------------------------------------------------------
+   * Legacy aliases — remapped onto KKP values so the ~330 existing
+   * `text-neutral-*` / `bg-accent-*` / `text-state-*` usages inherit the
+   * KKP palette without a class rename. Remove each alias as its component
+   * migrates to the semantic tokens above.
+   * ------------------------------------------------------------------- */
+  --color-neutral-50: #fafafb; /* → background */
+  --color-neutral-100: #f4f4f7; /* → hover fill */
+  --color-neutral-200: #e4e3ec; /* → border */
+  --color-neutral-300: #adacb9; /* → faint-decorative (NON-TEXT) */
+  --color-neutral-400: #6b6b72; /* → faint (text-safe floor) */
+  --color-neutral-500: #6b6678; /* → muted */
+  --color-neutral-700: #1e1b2e; /* → foreground */
+  --color-neutral-900: #1e1b2e; /* → foreground */
+
+  --color-accent: #594f74;
+  --color-accent-hover: #615b99;
+  --color-accent-subtle: #ecebf3;
+  --color-accent-deep: #4a4163;
+
+  --color-brand-gradient-from: #615b99;
+  --color-brand-gradient-to: #4a4163;
+
+  --color-state-success: #15803d;
+  --color-state-success-subtle: #e8f5ec;
+  --color-state-warning: #b45309;
+  --color-state-warning-subtle: #fff8ec;
+  --color-state-danger: #dc2626;
+  --color-state-danger-subtle: #fef2f2;
+  --color-state-info: #615b99;
+  --color-state-info-subtle: #ecebf3;
+
+  /* ---------------------------------------------------------------------
+   * Typography — two families split by role. KKP has NO monospace and NO
+   * serif; numerics are Kanit with tabular-nums (see the `tabular` utility).
+   * ------------------------------------------------------------------- */
+  --font-chrome: "Kanit", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-data: "Noto Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-num: "Kanit", system-ui, sans-serif;
+  --font-sans: "Noto Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Shape — crisp reads as "tool". */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+
+  /* Elevation — every shadow is purple-tinted, never neutral black.
+   * Three levels on the data canvas; overlay for dialogs. */
+  --shadow-hairline: 0 1px 2px rgba(74, 65, 99, 0.05);
+  --shadow-raised:
+    0 1px 3px rgba(74, 65, 99, 0.07), 0 10px 26px rgba(74, 65, 99, 0.08);
+  --shadow-lift:
+    0 1px 3px rgba(74, 65, 99, 0.07), 0 18px 40px rgba(74, 65, 99, 0.12);
+  --shadow-overlay:
+    0 1px 3px rgba(74, 65, 99, 0.07), 0 24px 50px rgba(74, 65, 99, 0.16);
+}
+
+/* The KKP chrome gradient — the product's signature. Chrome only; never
+ * under data (DESIGN.md > Do's and Don'ts). */
+@utility bg-chrome-gradient {
   background-image: linear-gradient(
-    135deg,
-    var(--color-brand-gradient-from),
-    var(--color-brand-gradient-to)
+    165deg,
+    #615b99 0%,
+    #594f74 42%,
+    #4a4163 100%
   );
 }
 
-/* Base typography — 14 px body anchor per UX-DR2. */
+/* Retained for the options-page hero; now points at the KKP gradient. */
+@utility bg-brand-gradient {
+  background-image: linear-gradient(
+    165deg,
+    #615b99 0%,
+    #594f74 42%,
+    #4a4163 100%
+  );
+}
+
+/* Focus ring — paired with a 1.5px primary border on the focused element. */
+@utility ring-focus {
+  box-shadow: 0 0 0 3px rgba(89, 79, 116, 0.13);
+}
+
+/* Every number, key, date, and total. Tabular figures are what make the week
+ * grid and the manager matrix scan in columns. Replaces the retired
+ * "mono-typed numerics" rule — KKP has no monospace. */
+@utility tabular {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Base — data voice at 13.5px per DESIGN.md > Typography. */
 html {
-  font-family: var(--font-sans);
-  font-size: 14px;
-  color: var(--color-neutral-700);
-  background: var(--color-neutral-50);
+  font-family: var(--font-data);
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--color-foreground);
+  background: var(--color-background);
+  -webkit-font-smoothing: antialiased;
 }
 
 /* Honor prefers-reduced-motion: collapse animations ≥100ms. */
@@ -120,4 +250,19 @@ html {
 
 @utility animate-slide-out {
   animation: slide-out 200ms ease-out;
+}
+
+/* Skeleton pulse — 1.4s. Used in place of spinners everywhere. */
+@keyframes skeleton {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@utility animate-skeleton {
+  animation: skeleton 1.4s ease-in-out infinite;
 }

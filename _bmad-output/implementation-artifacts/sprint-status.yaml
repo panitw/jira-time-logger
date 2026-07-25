@@ -1,5 +1,5 @@
 # generated: 2026-05-11 22:45:02
-# last_updated: 2026-07-11 (Story 6-2 code review: CLEAN, no findings; Part A audit independently re-verified & honest; stays in-progress — Part B Edge smoke pass PENDING HUMAN VERIFICATION)
+# last_updated: 2026-07-25 (Epic 7 UX/UI revamp added from ux-designs/ux-jira-time-logger-2026-07-25 spines; 7-1 token+font foundation already landed and marked done)
 # project: jira-time-logger
 # project_key: NOKEY
 # tracking_system: file-system
@@ -117,3 +117,24 @@ development_status:
   6-3-crx-packaging-script-signing-key-vault: in-progress
   6-4-readme-release-documentation-finalization: backlog
   epic-6-retrospective: optional
+
+  # Epic 7: UX/UI Revamp — KKP Design System
+  # Specs: _bmad-output/planning-artifacts/ux-designs/ux-jira-time-logger-2026-07-25/
+  #        DESIGN.md (visual identity) + EXPERIENCE.md (IA, states, flows) — both win over the mockup.
+  epic-7: in-progress
+  # 7-1 landed during the /bmad-ux run itself (tokens + fonts in styles/globals.css and
+  # public/fonts/). No story file exists for it — verified by compile + build + full test suite.
+  7-1-design-token-foundation-bundled-fonts: done
+  7-2-popup-shell-one-job-one-scroll-region: backlog
+  7-3-resume-card-the-first-move: backlog
+  7-4-search-as-the-browse-mechanism: backlog
+  7-5-logged-today-recently-worked-55-ticket-handoff: backlog
+  7-6-day-status-vocabulary-time-off-rename: backlog
+  7-7-full-page-surface-week-review: backlog
+  7-8-manager-matrix-silent-correctness-loud-exceptions: backlog
+  7-9-popup-states-loading-offline-error-time-off-disconnected: backlog
+  # 7-10 and 7-11 are BLOCKED on design — neither surface was in the Claude Design
+  # handoff scope. Each needs a short /bmad-ux Update run before dev picks it up.
+  7-10-settings-on-the-full-page: backlog
+  7-11-inline-jira-banner-reconciliation: backlog
+  epic-7-retrospective: optional

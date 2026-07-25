@@ -320,6 +320,27 @@ The extension is ready to ship internally. The Phase-6 accessibility audit gate 
 **Key UX-DRs:** UX-DR34 (Phase-6 audit gate), UX-DR35 (Chrome + Edge validation)
 **Key ARs:** AR30 (CRX packaging + signing key vault), AR31 (README finalization)
 
+### Epic 7: UX/UI Revamp — KKP Design System
+
+The shipped UI was built to the "Quiet Density" direction, which specified a flat data canvas with no
+elevation. In practice it produced a popup with four co-equal sections, no primary action, a 55-row picker
+inside a nested scroll region, and a row of five red "below target" chips for what is the product's most
+common state. This epic replaces that direction wholesale with the KKP corporate design system: purple
+chrome carrying the brand, a calm three-step data canvas underneath, and a day-status vocabulary in which
+red appears only when a write actually fails. The popup is narrowed to a single job — log time today — and
+the week grid, manager matrix, and settings move to a new full-page surface. Functionality is preserved;
+what changes is structure, hierarchy, and language.
+
+**Spines (authoritative, win over any mockup):**
+`_bmad-output/planning-artifacts/ux-designs/ux-jira-time-logger-2026-07-25/DESIGN.md` (visual identity) and
+`EXPERIENCE.md` (IA, states, interactions, flows). Reference mockup: `imports/jira-time-logger.dc.html`.
+
+**FRs covered:** no new FRs — this epic re-skins and re-structures FR6–FR13 (logging), FR20–FR26 (week),
+FR27–FR41 (manager). Behaviour changes are limited to the picker→search inversion and the day-status vocabulary.
+**NFRs anchored:** NFR1 (popup TTI ≤ 400 ms warm), NFR12, NFR13 (a11y maintained through the rewrite)
+**Supersedes:** UX-DR2 (typography), UX-DR5 ("Quiet Density"), UX-DR8 (2-level browse tree),
+UX-DR10 (Today layout), UX-DR15 (matrix cell colouring). All other UX-DRs stand.
+
 ## Epic 1: Foundation, Connect & Configure
 
 The worker can install the extension, complete OAuth 2.0 (3LO + PKCE) setup against Jira Cloud (with multi-site picker), see their canonical manager and skip-level auto-detected from Jira's user-directory field, configure the catch-all project / PTO subtask / daily reminder time / work-day target / approval cycle, view a diagnostics block (last sync + local-storage usage), and disconnect to clear all local credentials and cached data. By the end of this epic the extension is fully set up, auth survives ≥30 days without re-prompt, and the cross-cutting library layer is in place for subsequent epics.
@@ -1648,3 +1669,384 @@ So that I can get up and running without asking the author.
 **When** the dev posts the v1.0 `.crx` to the Microsoft Teams channel
 **Then** the Teams message includes: the `.crx` attachment, a one-line description, and a link to the README in the source repo for install steps
 **And** at least one teammate validates the install path by following the README from scratch on their machine
+
+## Epic 7: UX/UI Revamp — KKP Design System
+
+The shipped UI was built to the "Quiet Density" direction, which specified a flat data canvas with no elevation. That direction is retired. This epic applies the KKP corporate design system — purple chrome carrying the brand, calm three-step data canvas underneath — narrows the popup to a single job, moves review work to a new full-page surface, and replaces the red "below target" treatment with an honest day-status vocabulary.
+
+**Authoritative specs:** `_bmad-output/planning-artifacts/ux-designs/ux-jira-time-logger-2026-07-25/DESIGN.md` and `EXPERIENCE.md`. Both win over the reference mockup (`imports/jira-time-logger.dc.html`) on conflict.
+
+**Standing constraint for every story in this epic:** no story may regress WCAG 2.1 AA. Status is never colour alone; every state pairs colour + icon + visible text label. The `docs/a11y-audit-2026-06-27.md` gate must still pass at the end of the epic.
+
+**Icon constraint:** all icons come from `lucide-react`, which is already a dependency and is declared as the project's icon library in `components.json`. No second icon set enters the product — no icon font, no CDN, no Font Awesome. Icons render as inline SVG at 11–13 px with `aria-hidden="true"`; meaning is carried by the adjacent text. `DESIGN.md` frontmatter `icons:` is the authoritative state→icon map.
+
+### Story 7.1: Design Token Foundation & Bundled Fonts
+
+As the dev revamping the UI,
+I want the KKP token set and the two brand fonts available as Tailwind utilities without any CDN dependency,
+So that every subsequent story composes from the same system instead of hand-picking hex values.
+
+**Acceptance Criteria:**
+
+**Given** the extension CSP forbids external font loads
+**When** the build runs
+**Then** Kanit 400/500/600 and Noto Sans (Latin, variable 400–600) ship as local `woff2` files under `public/fonts/`
+**And** `@font-face` rules in `styles/globals.css` reference them by extension-relative path
+**And** no `<link>` to `fonts.googleapis.com` exists anywhere in the codebase
+**And** the total added font weight is under 100 KB
+
+**Given** `styles/globals.css` declares the KKP palette
+**When** a component uses `bg-primary`, `text-muted`, `border-border-faint`, `text-status-clean`, or `bg-amber-soft`
+**Then** the utility resolves to the value specified in `DESIGN.md` frontmatter
+
+**Given** ~330 existing usages of the legacy `neutral-*` / `accent-*` / `state-*` tokens
+**When** the KKP palette lands
+**Then** the legacy token names are remapped onto KKP values so existing components inherit the brand without a class rename
+**And** each alias carries a comment marking it for removal as its component migrates
+
+**Given** the design system forbids monospace
+**When** a number, ticket key, date, or total is rendered
+**Then** a `tabular` utility is available that applies Kanit with `font-variant-numeric: tabular-nums`
+
+**Given** the utilities `bg-chrome-gradient`, `ring-focus`, and `animate-skeleton` are declared
+**When** they are applied
+**Then** they produce the gradient, focus ring, and 1.4 s skeleton pulse specified in `DESIGN.md`
+
+**Given** the token change is purely additive at the CSS layer
+**When** `pnpm compile`, `pnpm build`, and `pnpm test` run
+**Then** all three succeed with no new failures
+
+### Story 7.2: Popup Shell — One Job, One Scroll Region
+
+As Priya opening the popup,
+I want a fixed-size surface that shows me today and nothing else,
+So that I am not scrolling past a week grid to log an hour.
+
+**Acceptance Criteria:**
+
+**Given** the popup currently renders `TodayView` and `WeekView` simultaneously via `forceMount` tabs
+**When** the shell is rebuilt
+**Then** the `Tabs` primitive is removed from the popup entirely — not fixed, removed
+**And** only today's content renders
+
+**Given** the popup opens
+**When** it mounts
+**Then** the surface is 380 px wide and at most 560 px tall
+**And** it contains exactly one scroll region, between a fixed chrome header and a fixed action bar
+**And** no nested scroll region exists anywhere in the popup
+
+**Given** the chrome header renders
+**When** the user is connected
+**Then** it carries `bg-chrome-gradient` with the concentric ring motif, an eyebrow with the product name and user, today's date in Kanit 600 at 22 px, the logged/target figure in white tabular Kanit, and a 4 px progress bar
+**And** the progress figure and bar are wrapped in `role="status" aria-live="polite"`
+
+**Given** the action bar renders
+**When** the popup is in any connected state
+**Then** it contains a ghost "Mark today as time off" action and a secondary "Open week ↗" action
+**And** "Open week ↗" opens the full-page surface in a new tab
+
+**Given** the manager previously reached the matrix through a popup tab
+**When** the tabs are removed
+**Then** the manager reaches the matrix through the full page instead, and no manager affordance is orphaned in the popup
+
+**Given** NFR1 requires popup TTI ≤ 400 ms warm
+**When** the popup opens
+**Then** the chrome header paints before data resolves, and no entrance animation delays interactivity
+
+### Story 7.3: Resume Card — The First Move
+
+As Priya between meetings,
+I want the ticket I last logged against already on screen with the hours field focused,
+So that adding an hour takes one keystroke and no decisions.
+
+**Acceptance Criteria:**
+
+**Given** the user has at least one prior worklog
+**When** the popup opens
+**Then** a resume card renders directly under the chrome header, offset upward by 10 px so it breaks the header baseline
+**And** it carries `shadow-lift` — and is the only element in the popup that does
+
+**Given** the resume card renders
+**When** it is populated
+**Then** it shows an eyebrow "CONTINUE LOGGING" in primary purple, a right-aligned recency note ("last logged 2 days ago"), the ticket key in Kanit 600 primary with `tabular`, and the summary in Noto Sans clamped to two lines
+**And** the summary truncates without displacing the key, at any summary length up to 200 characters
+
+**Given** the hour entry row renders
+**When** the popup opens
+**Then** the hour input is focused, pre-filled with the last-used value for that ticket, and carries a 1.5 px primary border plus `ring-focus`
+**And** `+0.5`, `+1`, and `+2` buttons sit beside it and post immediately without a confirmation step
+**And** a `CornerDownLeft` badge is rendered inside the input as decoration with `aria-hidden="true"` so it is not announced as content
+
+**Given** the user types a value and presses Enter
+**When** the write succeeds
+**Then** the entry animates into "Logged today", the chrome figure and progress bar update, and focus returns to the hour input
+**And** the popup does not close
+
+**Given** the user has no worklog history at all
+**When** the popup opens
+**Then** the resume card is replaced by the search field promoted to primary position, and no empty resume card renders
+
+### Story 7.4: Search as the Browse Mechanism
+
+As Priya logging against a teammate's ticket,
+I want one search control that reaches every ticket in Jira,
+So that there is no separate "add a ticket" flow to find.
+
+**Acceptance Criteria:**
+
+**Given** the search field is idle
+**When** the popup renders
+**Then** the field shows "Search any ticket — key or text" with a `/` shortcut badge, at 36 px height with a hairline border
+
+**Given** the user presses `/` anywhere in the popup
+**When** focus is not already in a text input
+**Then** the search field takes focus, its border becomes 1.5 px primary with `ring-focus`, and the badge becomes `esc`
+
+**Given** the user types a query
+**When** results resolve
+**Then** the "Logged today" and "Recently worked" lists are **replaced** by a results card — not filtered alongside it
+**And** exactly one list is on screen at a time
+
+**Given** results render
+**When** they are ranked
+**Then** tickets assigned to the user sort first and carry an "assigned to you" pill; unassigned results show their assignee's name in a neutral pill
+**And** a footnote reads "Searched live in Jira — includes tickets that aren't assigned to you."
+
+**Given** results are on screen
+**When** the user navigates
+**Then** `↑`/`↓` moves the selection, the first result is preselected with an inline hour input, `⏎` logs the selected result without a second step, and `Esc` clears the query and restores the lists
+**And** the results container is a semantic list with `aria-activedescendant` tracking the selection
+
+**Given** the query is in flight
+**When** Jira has not yet responded
+**Then** a `LoaderCircle` in-flight indicator is shown — never a blocking spinner over the field
+
+### Story 7.5: Logged Today, Recently Worked, and the 55-Ticket Handoff
+
+As Priya scanning what I have already logged,
+I want today's entries and a short list of what I actually touched,
+So that I never scroll a 55-row tree to find a ticket.
+
+**Acceptance Criteria:**
+
+**Given** the existing `TicketPicker` renders a 2-level browse tree of all 55 assigned tickets
+**When** this story lands
+**Then** the popup no longer renders that tree
+**And** a "Recently worked" section renders exactly four rows, ranked by recency of the user's own worklogs
+
+**Given** the user has more assigned tickets than are shown
+**When** the "Recently worked" card renders
+**Then** its final row reads "N more assigned tickets" with a "Search to find them →" affordance that focuses the search field
+**And** that row is a handoff to search, not a "show all" that expands the list in place
+
+**Given** "Logged today" renders
+**When** the user has entries
+**Then** each row shows the ticket key in Kanit, the summary ellipsised on its own line, the hours in `tabular`, and 24 px edit and delete buttons
+**And** rows are a fixed height so the list scans
+
+**Given** the user deletes an entry
+**When** the delete completes
+**Then** it is removed immediately with an undo affordance — no confirmation dialog
+**And** `⌘/Ctrl+Z` triggers the undo while the affordance is present
+
+**Given** the user has logged nothing today
+**When** the section renders
+**Then** it shows a dashed-border card reading "Nothing on the clock yet today." / "Add hours above, or search for a ticket."
+**And** no illustration, advice, or onboarding copy is shown
+
+**Given** any list row is rendered
+**When** the key and summary are laid out
+**Then** they occupy separate lines so an 80-character GAPI summary truncates without shoving the key
+
+### Story 7.6: Day-Status Vocabulary & the Time Off Rename
+
+As Priya reviewing an unfinished week,
+I want a half-logged day to read as unfinished rather than wrong,
+So that the tool informs me without accusing me.
+
+**Acceptance Criteria:**
+
+**Given** the current build renders "below target" in `state-danger` red for every day under target
+**When** this story lands
+**Then** that treatment is removed entirely
+**And** no red is rendered for any time-related state anywhere in the product
+
+**Given** a day is evaluated
+**When** its status is derived
+**Then** it resolves to exactly one of: `CircleCheck` met (`status-clean`), `ChartPie` partially logged (`foreground`), `Circle` filled — workday with nothing logged (`amber-ink`), `Diamond` filled — time off (`legacy-purple`), or weekend (`Minus`, no target, column tinted `weekend`)
+**And** each carries a plain-language note: "2.5h short", "in progress", "full-day time off", "weekend"
+
+**Given** the vocabulary must not be re-implemented per surface
+**When** a day status is rendered anywhere — popup progress note, week totals row, matrix row
+**Then** it comes from a single shared component that maps status → lucide icon + colour token + text label
+**And** no surface hard-codes an icon, a status colour, or a status string of its own
+
+**Given** `status-error` red exists in the palette
+**When** it is applied
+**Then** it fires only on a worklog write that Jira actually rejected
+
+**Given** in-flight and restricted states exist elsewhere in the product
+**When** a day status is rendered
+**Then** neither `LoaderCircle` nor `EyeOff` is ever used as a day status — the first means the product is still working, the second means the viewer isn't permitted to see something
+**And** time off uses a filled `Diamond` so a booked holiday cannot read as "still calculating"
+**And** restricted visibility uses `EyeOff` rather than sharing an icon with any in-flight state
+
+**Given** the product currently says "PTO" in user-facing copy
+**When** this story lands
+**Then** every user-facing string, label, tooltip, and accessible name reads "time off" instead
+**And** internal identifiers (`ptoSubtask`, `PtoQuickAction`, `PtoPopover`, storage keys) are left unchanged — the rename is copy-only
+**And** where the Jira subtask's own summary (`KNP-99 PTO`) is displayed verbatim, it remains verbatim
+
+**Given** NFR12 forbids colour as the sole signal
+**When** any day status renders
+**Then** it pairs its colour with its lucide icon and a visible text label stating the status in words
+**And** the icon carries `aria-hidden="true"` so the screen reader announces the label, not the shape
+**And** deleting the icon leaves the state still fully readable from text alone
+
+### Story 7.7: Full-Page Surface & Week Review
+
+As Priya closing out my week on Friday,
+I want a full-width grid I can edit in place,
+So that fixing a forgotten Wednesday takes one click and one number.
+
+**Acceptance Criteria:**
+
+**Given** no full-page extension surface exists today
+**When** this story lands
+**Then** a new WXT entrypoint renders a full page in a browser tab, routed to Week / Manager / Settings sections
+**And** "Open week ↗" in the popup opens it on the Week section
+
+**Given** the page renders
+**When** the chrome header paints
+**Then** it carries the gradient, the ring motif, "Week of Mon, Jul 20" in Kanit 600 at 26 px, prev/next navigation, the week total against target with a progress bar, and a white "Mark week as done" primary button
+
+**Given** the grid renders
+**When** it lays out
+**Then** it is a semantic `<table>` with scoped headers, subtask rows against seven fixed 104 px day columns, so a screen reader announces "Wednesday, MBS-135, 4 hours"
+**And** weekend columns tint `weekend` at header, cell, and totals level as one recessive object
+
+**Given** a cell holds a value
+**When** it renders
+**Then** it is a 34 px white `rounded-md` box with an `#EDECF2` border; empty cells render a `faint-decorative` middot; the focused cell takes a primary border plus `ring-focus`; time-off cells fill `#F6F5FA` with purple text and a filled `Diamond` at 11 px
+
+**Given** the user edits a cell
+**When** they interact
+**Then** editing happens in place, `Tab` moves across the day, `⏎` saves and moves to the next row, `Esc` reverts
+**And** an empty cell accepts a value with no "add" ceremony
+
+**Given** the totals row renders
+**When** a day is summarised
+**Then** it shows value + target + status icon on line one, a 3 px progress bar coloured by day status on line two, and the plain-language note on line three
+
+**Given** the user clicks "Mark week as done" with days under target
+**When** the gap dialog opens
+**Then** it reads "Close the week at N of 40h?" with the honest framing from `EXPERIENCE.md`, lists each short day as an evidence row, requires the checkbox "These hours are correct. I'm not missing time.", offers "Keep editing" and "Close the week", traps focus, and cannot be dismissed by backdrop click
+
+### Story 7.8: Manager Matrix — Silent Correctness, Loud Exceptions
+
+As Marco approving seven reports,
+I want the two wrong cells to be the only decorated things on screen,
+So that I spend my attention on exceptions instead of scanning.
+
+**Acceptance Criteria:**
+
+**Given** the matrix renders on the full page
+**When** the chrome header paints
+**Then** it shows "Approvals · <manager> · N reports", the cycle in Kanit 600 at 26 px, a "Change cycle ▾" control, an "N of M approved" count, an "● N need attention" count, and an "Approve remaining" primary button
+
+**Given** a cell holds a correct, approved figure
+**When** it renders
+**Then** it is a bare `tabular` number with no fill, no border, and no icon
+
+**Given** a cell is an exception
+**When** it renders
+**Then** it takes a chip: a filled `Circle` in amber for edited-after-approval, a dashed "no hours" chip for missing, and `EyeOff` + "hidden" for visibility-restricted
+**And** an empty cell renders a single `faint-decorative` middot
+
+**Given** ~600 cells are fetched against a rate-limited API
+**When** the matrix loads
+**Then** rows stream in as each report resolves, skeleton rows fill the remainder, and a progress line reads "Loading N of M reports — rows appear as Jira responds"
+**And** no blocking spinner is shown
+
+**Given** the manager clicks an exception cell
+**When** the drill-down opens
+**Then** a rail shows the person and epic, the total, the reason ("edited 4 days after approval"), each worklog with changed entries flagged `●`, a plain-language summary of what changed, and "Re-approve Nh" plus a secondary action
+
+**Given** the manager approves a report whose cycle contains restricted worklogs
+**When** the confirm dialog opens
+**Then** it states the figure and epic count, warns "1 epic has worklogs you can't see. Approving does not cover them.", and the caveat is recorded in the approval comment
+**And** the primary button carries the figure — "Approve 158.5h"
+
+### Story 7.9: Popup States — Loading, Offline, Error, Time Off, Disconnected
+
+As Priya opening the popup on a bad network,
+I want the tool to tell me exactly what happened and where my hours went,
+So that I never wonder whether my time was lost.
+
+**Acceptance Criteria:**
+
+**Given** data is in flight on a cold open
+**When** the popup renders
+**Then** the chrome paints instantly with a skeleton figure, and the body shows skeletons in the real layout shape using `animate-skeleton`
+**And** no spinner is rendered anywhere
+
+**Given** the browser is offline with queued writes
+**When** the popup renders
+**Then** an amber banner sits above the resume card reading "Offline — N entries queued" / "They'll sync to Jira automatically when you're back."
+**And** the resume card drops its negative offset so the banner does not overlap the chrome
+**And** the hot path still accepts new entries into the queue
+
+**Given** Jira rejected a worklog write
+**When** the popup renders
+**Then** an error banner names the ticket, the status code and likely reason, and states "Your Nh is saved locally."
+**And** it offers inline "Retry" and "Log elsewhere" actions
+**And** the banner is `role="alert"`
+
+**Given** the day is marked as time off
+**When** the popup renders
+**Then** a settled card shows a filled `Diamond` with "Marked as time off" with the explanation and an "Undo time off" action
+**And** a search field remains available under "Still want to log work?" — logging stays possible but stops asking
+
+**Given** the user has no valid auth
+**When** the popup renders
+**Then** the chrome still identifies the product, the body shows a single "Sign in to Jira" card with the reassurance line, and no dead UI renders behind it
+
+### Story 7.10: Settings on the Full Page
+
+As Priya configuring the extension,
+I want settings on the same full-page surface as the week and matrix,
+So that there is one patient surface rather than a separate options page.
+
+**Acceptance Criteria:**
+
+**Given** settings currently live on a separate options page
+**When** this story lands
+**Then** the existing settings components render inside the full-page surface's Settings section, restyled to the KKP system
+**And** the options-page entrypoint either redirects to the full page or is removed
+
+**Given** `EXPERIENCE.md` names Settings in the IA but no visual design was produced for it
+**When** this story is picked up
+**Then** the design is resolved first — either by extending the section-header and data-card patterns already specified in `DESIGN.md`, or by a short `/bmad-ux` Update run
+**And** the resolution is recorded in the UX decision log before implementation begins
+
+### Story 7.11: Inline Jira Banner Reconciliation
+
+As Priya on a Jira ticket I worked on this morning,
+I want the banner to look like the same product as the popup,
+So that the extension does not feel half-revamped.
+
+**Acceptance Criteria:**
+
+**Given** the banner is a guest inside Jira's UI under Jira's CSP
+**When** it is restyled
+**Then** it uses inline styles only — no Tailwind classes, no external font loads, no `blob:` URLs
+**And** the KKP palette is applied via literal values since utilities are unavailable on that surface
+
+**Given** the banner sits inside Jira's own visual language
+**When** it renders
+**Then** it reads as the same product as the popup without competing with Jira's chrome
+**And** it does not use the full chrome gradient — the banner is a guest, not a chrome surface
+
+**Given** no visual design exists for the banner in this revamp
+**When** this story is picked up
+**Then** the design is resolved first via a short `/bmad-ux` Update run scoped to the banner, and recorded in the UX decision log
