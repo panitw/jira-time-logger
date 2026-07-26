@@ -136,7 +136,7 @@ development_status:
   # public/fonts/). No story file exists for it — verified by compile + build + full test suite.
   7-1-design-token-foundation-bundled-fonts: done
   7-2-popup-shell-one-job-one-scroll-region: done
-  7-3-resume-card-the-first-move: backlog
+  7-3-resume-card-the-first-move: ready-for-dev
   7-4-search-as-the-browse-mechanism: backlog
   7-5-logged-today-recently-worked-55-ticket-handoff: backlog
   7-6-day-status-vocabulary-time-off-rename: backlog
