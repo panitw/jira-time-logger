@@ -662,7 +662,7 @@ function TaskDisclosure({
         <span className="group-open:rotate-90 transition-transform text-neutral-400">
           {'\u25B8'}
         </span>
-        <span className="font-mono text-sm font-medium text-neutral-900 shrink-0">
+        <span className="tabular text-sm font-medium text-neutral-900 shrink-0">
           {task.key}
         </span>
         <span className="text-sm text-neutral-700 truncate">{task.summary}</span>
@@ -731,7 +731,7 @@ function TicketRow({
         indent && 'pl-7',
       )}
     >
-      <span className="font-mono text-sm font-medium text-neutral-900 shrink-0">
+      <span className="tabular text-sm font-medium text-neutral-900 shrink-0">
         {ticketKey}
       </span>
       <span className="text-sm text-neutral-700 truncate">{summary}</span>

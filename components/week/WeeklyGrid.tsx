@@ -1,14 +1,13 @@
 import { useMutation } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { MoreHorizontal } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { DayStatusIndicator } from '@/components/shared/DayStatusIndicator';
 import { TicketPicker } from '@/components/today/TicketPicker';
 import { Button } from '@/components/ui/button';
 import { DayCell } from '@/components/week/DayCell';
-import { MarkAsDoneButton } from '@/components/week/MarkAsDoneButton';
 import { PtoPopover } from '@/components/week/PtoPopover';
-import { dayStatusNote } from '@/lib/day-status';
+import { dayStatusNote, isWeekend } from '@/lib/day-status';
 import { hoursToSeconds, secondsToCellDisplay } from '@/lib/hours';
 import { deleteWorklog } from '@/lib/jira-client';
 import { log } from '@/lib/log';
@@ -48,8 +47,6 @@ const STRINGS = {
 
 type Props = {
   grid: WeekGrid;
-  /** This week's local-midnight Monday (for the mark-done write, Story 4.5). */
-  weekOf?: ISODate;
   /** Per-day status (index 0 = Monday); `null` at an index (or the array
    * itself omitted) → that day's total renders as a bare number, no
    * `DayStatusIndicator` (D-7.6-35's "future workday, no status yet"). */
@@ -66,11 +63,14 @@ type Props = {
   today?: ISODate;
   /** Invalidate the week query after a successful cell/row mutation (AC #8). */
   onMutated?: () => void;
-  /** True when the week is already marked done → hide the mark-done CTA. */
-  isMarkedDone?: boolean;
-  /** Fired after the week is marked done (Story 4.5). */
-  onMarkedDone?: () => void;
 };
+
+// Story 7.7: `weekOf`/`isMarkedDone`/`onMarkedDone` are GONE from this
+// component's props. The "Mark week as done" CTA (Story 4.5) used to render
+// at the bottom of this grid; AC2 now puts it in `WeekChromeHeader`
+// (mounted by `WeekView`), and the product must never ship two — see the
+// Dev Notes "Files" section. `MarkAsDoneButton`/`GapAcknowledgmentDialog`
+// themselves are unchanged in behaviour, only relocated.
 
 /** A locally-added subtask row (Story 4.1) — all-`──` cells, no worklog posted. */
 type LocalRow = { key: string; summary: string };
@@ -95,6 +95,14 @@ function emptyCells(): WeekGridCell[] {
  * `AlertCircle` map). `status === null` (no status yet — a future workday,
  * D-7.6-35) renders a bare `tabular` number: correct/no-status → plain
  * number, exception → `DayStatusIndicator`, no third path (D-7.6-3).
+ *
+ * Story 7.7, AC6/Task 2: `variant="stacked"` — value + target + status icon
+ * on line one, the 3px progress bar on line two, the plain-language note on
+ * line three (`DayStatusIndicator`'s totals-cell anatomy, D-7.6-3's frozen
+ * contract). `size={11}` is the totals-row glyph D-7.7-30/17 added the prop
+ * for. The weekend column's tint reaches this cell too (D-7.7-31) — the
+ * THIRD of the three levels ("one recessive object"), alongside the header
+ * and the body `<td>` (already correct in `DayCell.tsx`).
  */
 function TotalsCell({
   seconds,
@@ -114,23 +122,32 @@ function TotalsCell({
   timeOffSeconds: number;
 }): React.ReactElement {
   const total = secondsToCellDisplay(seconds);
+  const weekendTint = isWeekend(iso) ? 'bg-weekend' : '';
 
   if (!status) {
     return (
-      <td className="px-1 py-1 text-right tabular text-xs motion-safe:transition-colors motion-safe:duration-200">
+      <td
+        className={`px-1 py-1 text-right tabular text-xs motion-safe:transition-colors motion-safe:duration-200 ${weekendTint}`}
+      >
         {total}
       </td>
     );
   }
 
+  const targetSeconds = hoursToSeconds(targetHours);
   const note = dayStatusNote({
     status,
     loggedSeconds: seconds,
     timeOffSeconds,
-    targetSeconds: hoursToSeconds(targetHours),
+    targetSeconds,
     iso,
     today,
   });
+  // `weekend` carries no target of its own (D-7.6-6 — "no status of its
+  // own"), so the design omits the "/ Xh" suffix for it entirely
+  // (`imports/jira-time-logger.dc.html:817`'s `total("0", "", ...)`).
+  const value = status === 'weekend' ? total : `${total} / ${targetHours}h`;
+  const pct = targetSeconds > 0 ? (seconds / targetSeconds) * 100 : 0;
 
   return (
     <td
@@ -140,7 +157,7 @@ function TotalsCell({
       // own inner `tabular` value span still lines up the digits, but the
       // cell itself, and the multi-word note sharing its narrow column,
       // inherited the larger body size).
-      className="px-1 py-1 text-right tabular text-xs motion-safe:transition-colors motion-safe:duration-200"
+      className={`px-1 py-1 text-right tabular text-xs motion-safe:transition-colors motion-safe:duration-200 ${weekendTint}`}
       // Finding 21: include the figure, not just the note — several notes
       // (`Weekend`, `Target met — Xh logged`, `Full-day time off`) contain
       // no digits of their own, so a screen reader announcing only
@@ -151,11 +168,12 @@ function TotalsCell({
       aria-label={`${dayName}, ${total}, ${note}`}
     >
       <DayStatusIndicator
-        variant="inline"
+        variant="stacked"
         status={status}
-        value={total}
-        label={note}
-        className="justify-end"
+        value={value}
+        percent={pct}
+        size={11}
+        note={note}
       />
     </td>
   );
@@ -331,14 +349,11 @@ function RowActions({
 
 export function WeeklyGrid({
   grid,
-  weekOf = '',
   dayStatuses,
   ptoSubtaskKey = null,
   targetHours = 8,
   today = todayDateString(),
   onMutated,
-  isMarkedDone = false,
-  onMarkedDone,
 }: Props): React.ReactElement {
   const [localRows, setLocalRows] = useState<LocalRow[]>([]);
   const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(new Set());
@@ -348,6 +363,26 @@ export function WeeklyGrid({
   const [picking, setPicking] = useState<{ dayIndex: number } | boolean>(false);
   const rowHeaderRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
   const cellEditRefs = useRef<Map<string, () => void>>(new Map());
+  // Story 7.7, AC5/D-7.7-33: a sibling registry (same `${rowKey}-${dayIndex}`
+  // key shape as `cellEditRefs`) exposing each cell's "focus me" action, so
+  // `⏎` can move focus to the SAME day's cell in the NEXT row. The target
+  // cell's button is already mounted in the DOM at keypress time (nothing
+  // about committing THIS cell adds/removes sibling rows synchronously — a
+  // refetch that could re-sort rows only lands later, asynchronously), so
+  // the lookup and the `.focus()` call both happen synchronously, in the
+  // SAME tick as `⏎` — deliberately NOT the double-`requestAnimationFrame`
+  // pattern `deferred-work.md` already flags as fragile (Story 4.4).
+  const cellFocusRefs = useRef<Map<string, () => void>>(new Map());
+  // Holds the CURRENT render's row order, written in a `useLayoutEffect`
+  // below (Finding 10: was written directly in the render body, which is a
+  // documented React violation — an abandoned/thrown-away render under
+  // concurrent rendering still performs the write) so `focusNextRowCell`
+  // always resolves "next row" against up-to-date data. `useLayoutEffect`
+  // runs synchronously after commit and before the browser paints or any
+  // user event can fire, so the ref is still populated before `⏎` could
+  // possibly read it — same guarantee as before, without the render-phase
+  // side effect.
+  const allRowsRef = useRef<WeekGridRow[]>([]);
 
   const existingKeys = new Set(grid.rows.map((r) => r.key));
 
@@ -370,6 +405,23 @@ export function WeeklyGrid({
     // Defer to the next frame so a freshly-rendered header is mounted.
     requestAnimationFrame(() => rowHeaderRefs.current.get(key)?.focus());
   }, []);
+
+  // Story 7.7, D-7.7-33: `⏎` commits the current cell then moves focus to
+  // the SAME day's cell in the NEXT row, resolved from `allRows`' order AT
+  // THE MOMENT `⏎` was pressed (this callback closes over the `allRows`
+  // computed for the CURRENT render — synchronous, not re-derived after any
+  // later refetch/re-sort). Last row: no-op — commits and stays put, never
+  // wraps, never throws.
+  const focusNextRowCell = useCallback(
+    (rowKey: string, dayIndex: number): void => {
+      const idx = allRowsRef.current.findIndex((r) => r.key === rowKey);
+      if (idx < 0) return;
+      const nextRow = allRowsRef.current[idx + 1];
+      if (!nextRow) return;
+      cellFocusRefs.current.get(`${nextRow.key}-${dayIndex}`)?.();
+    },
+    [],
+  );
 
   const handlePick = useCallback(
     (ticketKey: string, ticketSummary: string): void => {
@@ -430,10 +482,26 @@ export function WeeklyGrid({
   const allRows = [...grid.rows, ...localGridRows].filter(
     (r) => !hiddenKeys.has(r.key),
   );
+  // Finding 10: moved out of the render body into a layout effect — see
+  // `allRowsRef`'s own comment above for why.
+  useLayoutEffect(() => {
+    allRowsRef.current = allRows;
+  });
 
   return (
     <div>
-      <table className="w-full border-collapse text-sm">
+      {/* Story 7.7, D-7.7-23: seven fixed 104px day columns + a flexing
+       * subtask column, matching the design source's own
+       * `1fr repeat(7,104px)` (`imports/jira-time-logger.dc.html:373,384,397`)
+       * — the ONE value taken from the mockup's CSS-Grid layout; the
+       * element itself stays a `<table>` (the AC/a11y spine wins on
+       * structure, SD-6). `table-fixed` makes the widths load-bearing —
+       * without it a long subtask summary can still push the day columns. */}
+      <table className="w-full table-fixed border-collapse text-sm">
+        <colgroup>
+          <col />
+          <col span={DAYS_PER_WEEK} className="w-[104px]" />
+        </colgroup>
         <thead>
           <tr>
             <th
@@ -445,11 +513,12 @@ export function WeeklyGrid({
             {STRINGS.dayHeadersShort.map((label, i) => {
               const dayISO = grid.days[i] ?? '';
               const dayLabel = formatDayLabel(dayISO);
+              const weekend = isWeekend(dayISO);
               return (
                 <th
                   key={label}
                   scope="col"
-                  className="px-1 py-1 text-right text-xs font-medium text-neutral-500"
+                  className={`px-1 py-1 text-right text-xs font-medium text-neutral-500 ${weekend ? 'bg-weekend' : ''}`}
                 >
                   <PtoPopover
                     dayIndex={i}
@@ -460,31 +529,12 @@ export function WeeklyGrid({
                     ptoSubtaskKey={ptoSubtaskKey}
                     targetHours={targetHours}
                     onAddWorklog={() => setPicking({ dayIndex: i })}
+                    weekend={weekend}
                     {...(onMutated ? { onMutated } : {})}
                   />
                 </th>
               );
             })}
-          </tr>
-          <tr aria-label={STRINGS.totalsRowLabel} className="border-b border-neutral-200">
-            <th
-              scope="row"
-              className="px-1 py-1 text-left text-xs font-medium text-neutral-500"
-            >
-              {STRINGS.totalsRowLabel}
-            </th>
-            {grid.dayTotalsSeconds.map((seconds, i) => (
-              <TotalsCell
-                key={STRINGS.dayHeadersShort[i] ?? i}
-                seconds={seconds}
-                status={dayStatuses?.[i] ?? null}
-                dayName={STRINGS.dayNamesLong[i] ?? ''}
-                iso={grid.days[i] ?? ''}
-                today={today}
-                targetHours={targetHours}
-                timeOffSeconds={timeOffSecondsByDay[i] ?? 0}
-              />
-            ))}
           </tr>
         </thead>
         <tbody>
@@ -497,12 +547,17 @@ export function WeeklyGrid({
                 }}
                 scope="row"
                 tabIndex={-1}
-                className="max-w-[140px] truncate px-1 py-1 text-left font-normal outline-none"
+                // D-7.7-23 consequence: 140px was tuned for the 380px popup;
+                // this grid's only production mount is the full page (AC1 —
+                // the popup never renders `WeeklyGrid`), so it widens to the
+                // design's 520px (`imports/jira-time-logger.dc.html:387`)
+                // without dropping the truncation itself.
+                className="max-w-[520px] truncate px-1 py-1 text-left font-normal outline-none"
                 title={`${row.key} ${row.summary}`}
               >
                 <span className="inline-flex w-full items-center gap-1">
                   <span className="min-w-0 flex-1 truncate">
-                    <span className="font-mono text-neutral-900">{row.key}</span>{' '}
+                    <span className="tabular text-neutral-900">{row.key}</span>{' '}
                     <span className="text-neutral-700">{row.summary}</span>
                   </span>
                   <RowActions
@@ -528,11 +583,47 @@ export function WeeklyGrid({
                     if (open) cellEditRefs.current.set(id, open);
                     else cellEditRefs.current.delete(id);
                   }}
+                  registerFocusable={(focus) => {
+                    const id = `${row.key}-${i}`;
+                    if (focus) cellFocusRefs.current.set(id, focus);
+                    else cellFocusRefs.current.delete(id);
+                  }}
+                  onCommitAdvance={() => focusNextRowCell(row.key, i)}
                 />
               ))}
             </tr>
           ))}
         </tbody>
+        {/* D-7.7-21a (Finding 7): the totals row moves from `<thead>` to
+         * `<tfoot>` — the design places it at the BOTTOM with a top border
+         * (`imports/jira-time-logger.dc.html:398`, `border-top:1px solid
+         * #E4E3EC`, closing the grid card as the LAST row), and `<tfoot>`
+         * is the semantically correct element for a totals row regardless:
+         * `<td>` data cells belong in a body/footer section, not a header
+         * one, and screen-reader users now encounter the week's data before
+         * its summary rather than the reverse. */}
+        <tfoot>
+          <tr aria-label={STRINGS.totalsRowLabel} className="border-t border-neutral-200">
+            <th
+              scope="row"
+              className="px-1 py-1 text-left text-xs font-medium text-neutral-500"
+            >
+              {STRINGS.totalsRowLabel}
+            </th>
+            {grid.dayTotalsSeconds.map((seconds, i) => (
+              <TotalsCell
+                key={STRINGS.dayHeadersShort[i] ?? i}
+                seconds={seconds}
+                status={dayStatuses?.[i] ?? null}
+                dayName={STRINGS.dayNamesLong[i] ?? ''}
+                iso={grid.days[i] ?? ''}
+                today={today}
+                targetHours={targetHours}
+                timeOffSeconds={timeOffSecondsByDay[i] ?? 0}
+              />
+            ))}
+          </tr>
+        </tfoot>
       </table>
 
       <div className="mt-2">
@@ -548,17 +639,6 @@ export function WeeklyGrid({
           </button>
         )}
       </div>
-
-      {!isMarkedDone ? (
-        <div className="mt-4 flex justify-center">
-          <MarkAsDoneButton
-            grid={grid}
-            weekOf={weekOf}
-            targetHours={targetHours}
-            onMarkedDone={() => onMarkedDone?.()}
-          />
-        </div>
-      ) : null}
     </div>
   );
 }

@@ -1894,9 +1894,20 @@ export type DayStatusIndicatorProps = {
    *  Tailwind's build-time scanner cannot see a runtime-interpolated width class. */
   percent?: number;
 
-  /** 'data' (default) or 'chrome'. See D-7.6-5 — status-clean has no contrast on
-   *  the purple gradient, so the popup header needs the chrome variant. */
-  tone?: 'data' | 'chrome';
+  /** Icon edge length in px. Default 12. DESIGN.md's icons.defaults.size permits
+   *  11–13; 11 is pinned by Story 7.7's AC4 for the week-totals row's glyph — NOT
+   *  for a cell icon (D-7.7-17 found the time-off DATA cell carries no icon at
+   *  all). Added by Story 7.7 / D-7.7-30, amending this originally-frozen contract;
+   *  Story 7.6's `deferred-work.md` explicitly deferred it until an AC pinned the
+   *  value. A closed union, not `number` — an out-of-range value is a type error. */
+  size?: 11 | 12 | 13;
+
+  /** 'data' (default), 'chrome', or 'chrome-solid'. See D-7.6-5 — status-clean has
+   *  no contrast on the purple gradient, so the popup header needs the chrome
+   *  variant. `chrome-solid` (D-7.6-49 addendum) is full-opacity white for a
+   *  composition on a solid, more saturated fill where `chrome`'s 85% opacity
+   *  does not clear AA (e.g. the manager matrix's `approved` cell). */
+  tone?: 'data' | 'chrome' | 'chrome-solid';
 
   className?: string;
 };
@@ -1913,7 +1924,8 @@ gives 7.8 for an approved matrix cell below. This section originally showed
 the pre-null signature and 7.7 sample, which would not have typechecked as
 written; corrected here rather than left stale for 7.7 to discover.
 
-**7.7's call site (week totals cell):**
+**7.7's call site (week totals cell) — amended to add `size={11}` (D-7.7-30/17: the totals-row
+glyph, not a cell icon):**
 
 ```tsx
 {status ? (
@@ -1922,6 +1934,7 @@ written; corrected here rather than left stale for 7.7 to discover.
     status={status}
     value={`${logged} / ${target}h`}
     percent={pct}
+    size={11}
     note={dayStatusNote({ status, loggedSeconds, timeOffSeconds, targetSeconds, iso, today })}
   />
 ) : (
@@ -2590,3 +2603,782 @@ pre-existing Epic 5 code that 7.8's restyle should reconcile.
 **How we'd know it was wrong.** Any hand-computed pair under 4.5:1 in the matrix. The duplicate-hex trap
 recorded in `deferred-work.md` (`status-clean` == `state-success` == `#15803D`) is the underlying cause
 and remains open.
+
+**Addendum to D-7.6-49 (implementation correction).** The ruling assumed the existing `tone="chrome"`
+could be reused directly. It could not, and the finisher was right to check rather than apply it: that
+tone renders white at **85% opacity**, which measures only **≈4.09:1** against the approved cell's darker
+`#15803D` — still an AA failure. A third tone, **`tone="chrome-solid"`** (full-opacity `text-white`), was
+added instead and measures **5.02:1**, exactly matching the pre-story figure. Still zero new hexes or
+tokens. The override is scoped to the one dark-filled background —
+`tone={status === 'approved' ? 'chrome-solid' : 'data'}` — because every other cell background already
+clears AA with the default `text-faint`. Two tests pin it: the approved+restricted case and a
+non-approved restricted cell proving the override does not over-apply.
+
+*Lesson worth carrying:* "reuse the existing on-chrome tone" was a reasonable-sounding instruction that
+would have shipped a second AA failure. The gradient and a flat dark fill are different backgrounds, and
+an opacity that clears one need not clear the other. **Compute, don't assume** — the axe harness catches
+neither case.
+
+**Story 7.6 shipped:** commit `bbe0645` (amended from `4a44c99`). Tests 1174 → **1273** (95 files, 1
+skipped). The misfiled root `deferred-work.md` was merged into the canonical
+`_bmad-output/implementation-artifacts/deferred-work.md` and removed from disk and from `HEAD`.
+
+---
+
+## Story 7.7 — Full-Page Surface & Week Review
+
+*Story file `7-7-full-page-surface-week-review.md`, `ready-for-dev`, baseline commit `bbe0645`. The
+creator recorded its own `D-7.7-22 … D-7.7-35` in the story file; per D-7.3-11 those are folded into this
+log when the story finishes. The entries below are numbered from `D-7.7-15`.*
+
+**Two scope corrections that shrink this story, both verified.** AC1 is **already met** — `entrypoints/fullpage/`,
+`?section=` routing, `lib/open-full-page.ts` and `PopupActionBar` all shipped in Story 7.2 per D-7.2-1, and
+`App.tsx:20-22` already names 7.7 as the story that dresses it. And **the grid is already a semantic
+`<table>`** (`<thead>`/`<tbody>`, `<th scope="col">`, `<th scope="row">`, `<td>` in `DayCell`) — so there is
+**no table migration and zero blast radius**. AC3 needs only the 104 px `<colgroup>` + `table-fixed` and the
+accessible-name content. Note the design source draws the grid with CSS Grid (`:373,384,397`); the spine wins
+on structure and the mockup supplies only the 104 px column width.
+
+### D-7.7-15 — The three "un-tokenised hexes" become tokens; they are specified values, not new ones
+**Orchestrator decision** (routine — resolved by reading the design source per SD-6, and consistent with
+D-7.3-14 rather than an exception to it).
+
+**Verdict.** `#EDECF2`, `#F6F5FA` and `#E2E0EE` are added to the token layer with the values the design
+source specifies. They are **not** collapsed onto near-neighbour tokens, and they are **not** written as raw
+hex at the call site.
+
+**Situation.** D-7.3-14 ruled against un-tokenised hexes *where an existing token already carries the value*
+— that was about the resume-card border, where `border-border` was an imperceptible match. The creator
+correctly declined to apply that ruling mechanically here, and the design source shows why: collapsing
+`#EDECF2` onto `border-faint` (`#F0EFF5`) would erase a distinction the designer drew deliberately, because
+**`#F0EFF5` is already the column separator** (`imports/jira-time-logger.dc.html:375`) — so the cell box
+would dissolve into its own column rule. `#F6F5FA` has no near neighbour at all; `bg-primary-soft` is
+already the wash beneath it.
+
+**The design source also shows `#EDECF2` doing double duty** — it is both the cell border (`:794`) and the
+**totals progress-bar track** (`:408`, corrected — the finisher pass found this citation drifted to the
+adjacent `:406` glyph span; see D-7.7-21e). A value used twice for two different purposes is exactly what a
+token is for.
+
+**Why this wins.** These values come **from the design**, so adding them is the same act as D-7.6-39's
+`status-clean-on-chrome`: emitting a specified value the token layer was missing, not inventing a colour.
+The epic's "zero new colour values" rule targets invention, not omission. Writing them raw would breach
+token discipline; collapsing them would breach design fidelity; tokenising them breaches neither.
+
+**Consequences.** The confirmed cell palette, all from `imports/jira-time-logger.dc.html:791-807`, to be
+used verbatim: cell border `#EDECF2`, fill `#FFFFFF`, text `#1E1B2E`, empty middot `#ADACB9`; **weekend**
+cell text `#6B6678` and empty middot `#C9C8D3` (a *dimmer* middot than a weekday's — the creator flagged
+this and it is confirmed); focused cell border `#594F74` with ring `0 0 0 3px rgba(89,79,116,.13)`
+(**byte-identical to the existing `ring-focus`** — reuse it, do not redeclare); time-off cell fill
+`#F6F5FA`, text `#594F74`, border **`#E2E0EE`** (note: *not* `#EDECF2` — the time-off cell has its own
+border value); weekend column tint `#F1F0F6` (**an exact match for the existing `--color-weekend`** — reuse
+it). `--color-faint-decorative` is already an exact match for the middot. Contrast for every new pairing is
+computed by hand.
+
+### D-7.7-16 — The totals bar colour is its own axis; `bg-current` is wrong
+**Orchestrator decision** (routine — the design source settles it outright).
+
+**Verdict.** `DayStatusIndicator`'s `stacked` bar stops using `bg-current`. Bar colour comes from the status
+registry as a value **independent of the text colour**.
+
+**Situation.** `bg-current` inherits the text colour, so `partial` — the commonest state in a normal week —
+rendered its bar in `text-foreground` near-black. The design source disproves the whole premise: in the
+totals helper (`imports/jira-time-logger.dc.html:809-818`) **`color` and `bar` are separate fields for every
+single state**, and they differ for four of the five.
+
+**The design's map, verbatim** (`:811-815`) — text colour / glyph / bar colour:
+
+| status | text | glyph | **bar** |
+|---|---|---|---|
+| `met` | `#15803D` | `✓` | `#15803D` |
+| `partial` | `#1E1B2E` | `◔` | **`#615B99`** |
+| `attention` | `#7A3E06` | `●` | **`#B45309`** |
+| `time-off` | `#594F74` | `◐` | **`#8B84AE`** |
+| `weekend` | `#6B6B72` | — | **`#D8D7E1`** |
+
+Only `met` has bar == text. The bar track is `#EDECF2` (`:408`, corrected per D-7.7-21e — `:406` is the
+adjacent glyph span).
+
+**In simple terms.** The designer wanted the *number* to stay calm and readable while the *bar* carries the
+colour signal. Deriving the bar from the text colour produced a near-black bar on the state a user sees most
+— which reads as a broken or unstyled element rather than a progress indication.
+
+**Consequences.** Add bar colour to the status registry as a distinct field. The mockup's `◐` for time-off is
+a **text-glyph stand-in** for the lucide `Diamond` (as `✓`→`CircleCheck`, `◔`→`ChartPie`, `●`→`Circle`) — do
+**not** ship the glyph characters; use the lucide icons per `DESIGN.md`'s icon map. Map each hex to an
+existing token where one matches and only tokenise what is genuinely missing, per D-7.7-15.
+
+### D-7.7-17 — There is no `Diamond` in the time-off DATA cell; D-7.7-35 dissolves
+**Orchestrator decision** (routine — the AC conflates two different elements, and both spines plus the design
+source agree against it).
+
+**Verdict.** The time-off **data cell** carries **no icon**. It is the hours number on a `#F6F5FA` fill with
+`#594F74` text and an `#E2E0EE` border — nothing else. The filled `Diamond` at **11 px** belongs to the
+**totals row's** day-status indicator. `DayStatusIndicator` therefore needs **no** `variant="cell"` and no
+icon-only mode, and 7.6's grep rule forbidding `DayCell` from importing `Diamond` is **correct as written** —
+nothing needs to change to satisfy it.
+
+**Situation.** `epics.md`'s AC reads: *"time-off cells fill `#F6F5FA` with purple text and a filled `Diamond`
+at 11 px"*. Taken literally this creates a genuine impasse, which the creator was right to escalate rather
+than guess: the grep rule blocks the icon in `DayCell`, `DayStatusIndicator` has no icon-only mode **by
+deliberate design** (D-7.6-3 rejected one as untestable), and "Full-day time off" cannot fit a 104 × 34 px
+cell — so the WCAG visible-text-label rule looked unsatisfiable too.
+
+**The evidence.** In the design source (`imports/jira-time-logger.dc.html:807`) the time-off row's cell is
+`cell("8.0", { fill: "#F6F5FA", color: "#594F74", border: "#E2E0EE" })` — **no glyph field at all**, while
+every other cell type also has none. The `◐` time-off glyph appears **only** in the totals helper
+(`:814`), rendered at `font-size:11px` (`:405`). Both spines describe `Diamond` as a **day-status** icon —
+`DESIGN.md:235` in the status→icon map, `EXPERIENCE.md:203` in the day-status vocabulary table — and
+`EXPERIENCE.md:308` places it alongside notes like "2.5h short", which are totals-row notes.
+
+**So the AC's "11 px" is the totals-row glyph size**, mis-attributed to the cell. That is the tell: the AC
+merged the cell's fill/colour treatment with the status icon that sits in the totals row beneath it.
+
+**In simple terms.** The purple cell shows *how many hours* were booked. The row it sits in is already the
+time-off subtask, and the totals cell below already says "full-day time off" in words with the Diamond
+beside it. Repeating the Diamond inside a 104 px box would say the same thing three times in one column and
+leave no room for the number.
+
+**Why WCAG is satisfied.** The day's status is stated in **words** in the totals row, with a non-colour icon
+— so colour is never the sole signal for the status. The cell's purple tint is *reinforcement*, not the
+carrier of meaning, and deleting both the colour and the icon still leaves "full-day time off" readable in
+the totals row. The cell keeps its accessible name from the row and column headers ("Wednesday, KNP-99, 8
+hours") via the scoped-header structure AC3 requires.
+
+**Consequences.** Obligation 3 stands but its consumer changes: the `size` prop is needed for the **totals
+row's 11 px glyph**, not for a cell icon. Add `size?: 11 | 12 | 13` to `DayStatusIndicatorProps` and to
+D-7.6-3's canonical block. Do **not** add `variant="cell"`. Do **not** weaken 7.6's grep rule.
+
+### D-7.7-18 — SD-7 applies to the design source's own copy
+**Orchestrator decision** (routine — a forced consequence of SD-7).
+
+The design source predates the owner's PTO → "time off" rename, so its copy still says "PTO" in four places.
+Per SD-7, when implementing from it: `of: "PTO"` (`:823`, corrected per D-7.7-21e) → **"Time off"**; the
+note `"full-day PTO"` (`:823`) → **"full-day time off"**; the helper line `"Day header ▾ → mark full-day or
+half-day PTO"`
+(`:419`) → **"time off"**. But row `KNP-99`'s summary `"PTO"` (`:807`) is the **verbatim Jira subtask
+summary** and **stays "PTO"** — it is real Jira data, not our copy, exactly the trap SD-7 and Story 7.6's
+`defaultSummary` finding identified.
+
+### D-7.7-19 — `week-gaps.ts:61` is CLOSED in this story, and the fix is a deletion
+**Orchestrator decision** (routine — endorsing the creator's investigation, which found the guard redundant).
+
+**Verdict.** Delete `if (ptoDays[i]) continue` from `computeWeekGaps`. This closes the obligation D-7.6-38
+assigned to 7.7; it is not re-deferred.
+
+**Why deleting it is safe — the key finding.** `week-grid.ts:179` accumulates `dayTotalsSeconds` inside the
+per-worklog loop **with no category filter**, so time-off seconds are **already included** in the day total.
+The guard was therefore redundant for the very case it was meant to protect: a full day off logs 8h against
+an 8h target and passes the gap check on its own. Removing it makes a **half** day (4h against 8h) correctly
+register as a gap — which is the bug.
+
+**One forced consequence the creator caught.** `gapSummary`'s hard-coded `", not marked time off"` suffix
+becomes **false** for exactly the day this change surfaces — a half-day-off day *is* marked time off and is
+now also a gap. Replace that suffix with `dayStatusNote` so the sentence stays true.
+
+**Consequences.** This is a **write path** — it gates "Mark week as done". A test must pin all three cases:
+a full day off passes, a **half** day off is a gap, and a normal short day is unchanged. The
+`deferred-work.md` entry is updated from deferred to resolved, citing this entry.
+
+### D-7.7-20 — A time-off day below target IS a gap; only the note is wrong
+**Owner decision** (asked — it is a write path gating "Mark week as done", and the user must certify the
+result).
+
+**Verdict.** The rule stays uniform: **any day whose total falls below target is a gap, time off included.**
+No exemption, no tolerance threshold. What gets fixed is the **note**, which currently lies.
+
+**Situation.** Closing `week-gaps.ts:61` (D-7.7-19) correctly made a 4-hour half-day off register as short.
+The reviewer then probed a case the fix also newly surfaces: **7.5h of time off against an 8h target** yields
+`"Half-day time off · 0.5h short"` and appears in the mark-week-done dialog as a day the user must certify
+with *"These hours are correct. I'm not missing time."* `dayStatusNote`'s three-way branch has no fourth
+arm, so anything under target on a time-off day is labelled a half day.
+
+**In simple terms.** You take Wednesday off. The extension books 7.5 hours against an 8-hour target — half an
+hour adrift, almost always because the time-off subtask's hours or the configured work-day target don't
+match. The old behaviour hid it. The new behaviour surfaces it, but describes it wrongly: it tells you you
+took *half* a day off when you took the whole day. The gap itself is legitimate information; the sentence
+attached to it is false.
+
+**Options considered.** (a) *Gap, with an accurate note* — chosen. (b) *Exempt full-day bookings* — never
+asks you to certify a day you took off, but it reintroduces a narrower form of the bug just fixed: the code
+must now decide where "full" ends and "half" begins, and a genuinely misconfigured booking passes silently.
+(c) *A tolerance threshold* (gap only if short by more than, say, half the target) — introduces a magic number
+with no basis in either spine, and the tolerance becomes a thing to explain and maintain forever.
+
+**Why this wins.** One rule, no special cases, and the failure mode is *informative* rather than silent: a
+7.5-vs-8 discrepancy is a real configuration problem the user benefits from seeing once. The accepted cost is
+stated plainly — you will occasionally be asked to confirm a day you genuinely took off.
+
+**Consequences.** `dayStatusNote` gains a **fourth arm** so a full-day booking under target never claims to be
+a half day; the note must state the actual booking and shortfall. A test must pin **all four** cases: full day
+at target (not a gap), full day under target (**a gap, accurately worded**), half day (a gap), normal short day
+(a gap). This is a write path — the tests are not optional.
+
+**How we'd know it was wrong.** Users routinely certifying time-off days would mean the discrepancy is
+systemic rather than a misconfiguration, and the exemption in option (b) becomes the better trade.
+
+### D-7.7-21 — The remaining four review items, decided
+**Orchestrator decisions** (routine).
+
+**(a) The totals row moves to `<tfoot>`.** The design places totals **at the bottom** — the reviewer verified
+`imports/jira-time-logger.dc.html:397` renders it last with a `border-top` — the story creator **recommended
+moving it**, and `<tfoot>` is the correct semantics for a totals row regardless. It currently sits in
+`<thead>`. Note the Completion Notes wrongly claim "creator's recommendation applied" for this item; that
+claim must be corrected rather than left standing.
+
+**(b) `gapSummary`'s copy fix is moot — resolve it honestly, don't pretend it shipped.** D-7.7-19 mandated
+replacing its `", not marked time off"` suffix with `dayStatusNote`, but the dialog rebuild **removed
+`gapSummary`'s only caller**, so the fix reaches no user and its four tests guard nothing. **First verify the
+rebuilt dialog provides an equivalent accessible summary** — `gapSummary` was a screen-reader string (Story
+7.6 catalogued it as such), so if the rebuild dropped that announcement without replacing it, that is an a11y
+regression and the priority is restoring an accessible summary, not deleting code. If the new dialog's
+structure genuinely announces the same information, remove the dead function and its vacuous tests. Either
+way, record which happened.
+
+**(c) The chrome progress bar's third copy: fix the new one now; extract the shared helper in Story 7.9.**
+`WeekChromeHeader.tsx:58-62` **re-ships the exact `Math.round` quantisation defect this story fixed 40 diff
+lines away** — 39h of 40h renders `w-full`, reading "done" right beside the mark-done button. Fix that
+occurrence now. Do **not** refactor all three copies here: two of them live on the popup and manager chrome,
+and a shared-seam refactor at finisher stage is how this epic got burned three times. **Story 7.9 already
+owns the popup chrome states — it extracts the shared helper** and is hereby obliged to, so a fourth copy
+never appears.
+
+**(d) The `STATUS_BAR_CLASS` axis and the `bg-weekend` allowlist must both gain guard coverage.** These are
+Majors 2 and 3 and they reproduce D-7.6-43's findings exactly: 7.7 created a **new** status→colour axis with
+**zero** grep coverage, and the new **file-level** `bg-weekend` allowlist lacks the **per-occurrence**
+companion guard D-7.6-43 established (the `text-amber-ink` control reddens; `bg-weekend` does not). Six
+mutations came back green. Both holes close, with every mutation re-run to prove it.
+
+*Credit where due:* the reviewer confirmed `TIME_OFF_TEXT_CLASS` is a **real fix, not laundering** — the
+literal stays inside the sanctioned file — and that `button.tsx`'s new `chrome` variant is **provably inert**
+(purely additive; base/size/`defaultVariants` byte-identical; **all 38 call sites pass an explicit variant**).
+That is the **first clean shared-component change in this epic**, and the pattern worth repeating.
+
+**(e) Two undisclosed items also fix:** `font-mono` remains at `WeeklyGrid.tsx:571` even though the Dev Notes
+named it explicitly — **AC8's no-monospace rule is unmet and was not disclosed**. And the design-source
+citations drift by +1 through the chrome-header block (the bar track is `:408`, not D-7.7-16's `:406`, which is
+the glyph span). The values were all correct; only the line references are off. Correct them so SD-6's
+cite-the-line discipline stays trustworthy.
+
+**On the one vacuous assertion:** the reviewer found the `stacked` width test ("same percent, different note →
+same width class") cannot fail, because it is a pure function of percent. Notably **the story itself
+prescribed that test**. The honest position, which the reviewer stated rather than papering over: **jsdom
+cannot prove container-relative geometry.** The CSS contract is correct and the quantisation arithmetic is
+provably correct, but no automated test demonstrates the rendered width. Replace the vacuous assertion with an
+honest one (assert the CSS contract directly) and **record the limitation** rather than implying coverage that
+does not exist.
+
+
+---
+
+## Story 7.7 — creator decisions folded (D-7.3-11 pattern)
+
+*Folded by the bmad-story-finisher pass that closed Story 7.7, per D-7.3-11: the story-local creator
+decisions `D-7.7-1 … D-7.7-14` are renumbered `D-7.7-22 … D-7.7-35` here (the orchestrator's own rulings
+already claimed `D-7.7-15 … D-7.7-21`) and become canonical. Every `D-7.7-*` citation in the story file and
+in source comments was repointed to match.*
+
+### D-7.7-22 — AC1 is met; this story verifies it and does not touch the routing
+
+**Creator decision** (routine — a prior story's recorded decision already covers it).
+
+**Verdict.** `entrypoints/fullpage/App.tsx` keeps its section routing, its auth gate, its `managesReports`
+gate and its Settings placeholder **unchanged**. 7.7 adds the chrome header *above* the section content and
+leaves the nav, the URL contract and the `WeekView`/`ManagerView` mounts alone.
+
+**Why.** D-7.2-1 built this shell deliberately thin so 7.7 could dress it without re-litigating routing.
+`App.tsx:20-22` says so in a comment. Rebuilding it would re-open 7.2's `?section=` contract, which
+`PopupActionBar` and `lib/open-full-page.ts` both depend on.
+
+**Consequences.** The Settings body stays the Story 7.10 placeholder (`App.tsx:185-195`). The
+`onSwitchToToday` misnomer on `ManagerView` stays — `App.tsx:178-181` explicitly says 7.8 may rename it,
+not 7.7.
+
+### D-7.7-23 — The table stays a table; the design source's CSS Grid is not adopted
+
+**Creator decision** (routine — the AC and the spine both say `<table>`, and the design source is a
+mockup of appearance, not of markup).
+
+**Verdict.** Keep `WeeklyGrid`'s existing `<table>`. Add column geometry with a `<colgroup>`:
+
+```
+<colgroup>
+  <col />                      {/* subtask column — flexes */}
+  <col span={7} className="w-[104px]" />   {/* seven fixed 104px day columns */}
+</colgroup>
+```
+
+plus `table-fixed` on the `<table>` so the widths are honoured (without it, a long subtask summary can
+still push the day columns). The subtask column takes the remaining width — the design's `1fr`.
+
+**Situation.** `imports/jira-time-logger.dc.html:373` (header), `:384` (body row) and `:397` (totals) all
+use `display:grid;grid-template-columns:1fr repeat(7,104px)`. The AC says "semantic `<table>` with scoped
+headers … so a screen reader announces 'Wednesday, MBS-135, 4 hours'".
+
+**Why this wins.** SD-6 is explicit that **the spines win over the mockups on intent**, and the design
+source is silent on markup semantics — it is a visual artifact. A CSS-Grid rebuild would either lose the
+row/column association a screen reader needs, or require re-creating it with `role="table"`/`role="row"`/
+`role="columnheader"` ARIA — strictly more code, strictly more fragile, and it would throw away working,
+tested markup. The 104 px number is the part the design source authoritatively supplies, and that is what
+we take from it.
+
+**Consequences.** **Zero blast radius on existing tests** — no test asserts a div structure, because the
+structure is not changing. `WeeklyGrid.test.tsx` and `DayCell.test.tsx` query by role/label, which a
+`<colgroup>` addition does not disturb. The one thing to watch: `table-fixed` changes how the subtask
+column truncates, and `WeeklyGrid.tsx:500` already sets `max-w-[140px] truncate` on the row header — that
+cap was tuned for the 380 px popup and is **too narrow for a 1180 px full page.** The design uses
+`max-width:520px` (`:387`). Widen it in the full-page context; do not simply delete the truncation.
+
+### D-7.7-24 — What "announces 'Wednesday, MBS-135, 4 hours'" concretely means
+
+**Creator decision** (routine — makes an AC machine-checkable).
+
+**Verdict.** The accessible name of a value-bearing body cell becomes
+`` `${dayName}, ${rowKey}, ${hoursPhrase}` `` — e.g. `Wednesday, MBS-135, 4 hours`. The **hours are spelled
+as words** (`4 hours`, `1 hour`, `30 minutes`, `4.5 hours`), because the AC's literal text is `4 hours`, not
+`4.0`.
+
+**Situation.** Today `DayCell.tsx:103-104` builds
+`` `Hours for ${dayName}, ${rowKey} ${rowSummary}` `` and the cell's visible content is `4.0`
+(`secondsToCellDisplay`). So a screen reader announces "Hours for Wednesday, MBS-135 Fix the thing, 4.0" —
+neither the AC's phrasing nor a spoken quantity.
+
+**Why this wins.** "4.0" is read by most screen readers as "four point zero", and `rowSummary` inside the
+name makes every cell in a row announce the whole summary again — noise in a 35-cell grid. The row header
+(`<th scope="row">`) already carries the summary, and a scoped table means the AT associates it
+automatically; repeating it per cell is exactly what `scope` exists to avoid.
+
+**Consequences.** A new pure helper (`hoursPhrase(seconds)` in `lib/hours.ts`, alongside the existing
+`secondsToCellDisplay`) with its own unit tests for the singular/plural/fractional/minutes boundaries. The
+existing `editAria` for the **input** keeps its "Hours for …" framing — an input needs an actionable label,
+not a reading of the current value. Keep the two distinct and test both.
+
+### D-7.7-25 — The chrome header, with every value cited
+
+**Creator decision** (routine — SD-6 transcription).
+
+**Verdict.** A new `components/week/WeekChromeHeader.tsx`, rendered by the **full page only**. The popup's
+`ChromeHeader.tsx` is a different component for a different surface and is **not** touched by this story.
+
+Values, all from `imports/jira-time-logger.dc.html`:
+
+| Element | Value | Cite |
+|---|---|---|
+| Gradient | `linear-gradient(165deg,#615B99 0%,#594F74 42%,#4A4163 100%)` | `:345` |
+| — already a token | `chrome-gradient` utility, `styles/globals.css:225-231` | — |
+| Padding | `18px 26px 20px` | `:345` |
+| Ring motif, outer | `right:-70px; top:-96px; 250×250; border 1.5px solid rgba(255,255,255,.14)` | `:346` |
+| Ring motif, inner | `right:10px; top:-40px; 140×140; border 1.5px solid rgba(255,255,255,.12)` | `:347` |
+| Eyebrow | Kanit 11px/500, `letter-spacing:.1em`, uppercase, `rgba(255,255,255,.72)` | `:350` |
+| Week title | **Kanit 26px/600, `#fff`** — "Week of Mon, Jul 20" | `:352` |
+| Prev/next | `‹ prev · next ›`, Kanit 12.5px, `rgba(255,255,255,.7)` | `:353` |
+| Week figure | Kanit 26px/600 `#fff` ("28") + 14px `rgba(255,255,255,.72)` ("/ 40h") | `:359-360` |
+| Progress bar | `190×4px`, track `rgba(255,255,255,.2)`, **fill plain `#fff`** | `:362-363` |
+| Primary button | white bg, `#594F74` text, `radius 6px`, `padding 10px 16px`, Kanit 13.5px/600, `box-shadow 0 2px 6px rgba(30,27,46,.18)`, hover `#ECEBF3` | `:366` |
+
+**Notes that matter.**
+- The header progress bar is **4 px**; the *totals-cell* bar is **3 px** (`:408`). Two different bars. Do
+  not unify them.
+- The bar fill being plain `#fff` **independently confirms D-7.6-40** — no per-status colour on the
+  gradient. Do not route this bar through `DayStatusIndicator`'s `tone="chrome"`; it is not a status
+  indicator, it is a week-total progress bar.
+- The button's hover `#ECEBF3` is exactly `--color-primary-soft` (`globals.css:127`). The text `#594F74` is
+  exactly `--color-primary`. **Zero new colours** for the button.
+- Title date format: `format(parseISO(weekOf), 'EEE, MMM d')` — `WeekView.tsx:54` already computes exactly
+  this. Reuse it; do not add a second formatter.
+- The eyebrow in the design reads "Time Logger · Priya Raman". The display name is real user data we may
+  not have to hand on this surface. **Render the eyebrow as "Time Logger" alone** unless a display name is
+  already available without a new fetch — D-7.2-2 forbids new network work on this path, and inventing a
+  fetch for an eyebrow is not worth it. Flagged in "Decisions the orchestrator should rule on".
+
+**Prev/next navigation.** `WeekView` currently takes `weekOf` as a **prop** and the full page passes
+`currentWeekMonday()` (`App.tsx:174`). Prev/next therefore needs `weekOf` to become **state on the full
+page**, with `addWeeks(parseISO(weekOf), ±1)`. This is the one genuinely new piece of state in AC2.
+`hooks/useWeekWorklogs.ts` keys on `['week-worklogs', weekOf]`, so a new week is simply a new query key —
+**no cache surgery, and D-7.2-2's ban on `invalidateQueries(['week-worklogs'])` is not engaged.** Do not
+touch `staleTime`/`refetchOnWindowFocus`/`refetchOnReconnect`.
+
+### D-7.7-26 — Cell anatomy, cross-checked value by value against the design source
+
+**Creator decision** (routine — SD-6 transcription and reconciliation).
+
+Every AC4 claim, checked against `imports/jira-time-logger.dc.html`:
+
+| AC4 says | Design source | Cite | Verdict |
+|---|---|---|---|
+| 34 px box | `height:34px` | `:391` | **Confirmed** |
+| `rounded-md` | `border-radius:6px` | `:391` | **Confirmed** — `--radius-md: 6px`, `globals.css:198` |
+| white fill | `fill: "#FFFFFF"` when text | `:794` | **Confirmed** — `--color-surface` |
+| `#EDECF2` border | `border: text ? "#EDECF2" : "transparent"` | `:794` | **Confirmed** — but un-tokenised, see D-7.7-28 |
+| empty → `faint-decorative` middot | `text \|\| "·"`, `color:"#ADACB9"`, border+fill `transparent` | `:792,795,794` | **Confirmed** — `#ADACB9` **is** `--color-faint-decorative` (`globals.css:117`), exact match |
+| focused → primary border | `border: "#594F74"` | `:804` | **Confirmed** — `--color-primary`, exact |
+| focused → `ring-focus` | `ring: "0 0 0 3px rgba(89,79,116,.13)"` | `:804` | **Confirmed** — byte-identical to the `ring-focus` utility, `globals.css:235-237` |
+| time-off fill `#F6F5FA` | `fill: "#F6F5FA"` | `:806` | **Confirmed** — un-tokenised, see D-7.7-28 |
+| time-off purple text | `color: "#594F74"` | `:806` | **Confirmed** — `--color-primary` / `--color-legacy-purple` |
+| time-off filled `Diamond` @ 11 px | **ABSENT — the design renders bare purple `8.0`, no icon** | `:806` | **Spine adds it — see below** |
+
+**Three findings the AC does not state, which the design source does:**
+
+1. **The time-off cell has its OWN border, `#E2E0EE`** (`:806`) — not the `#EDECF2` of an ordinary cell.
+   The AC omits it. Implement it (it is the design's intent: a purple-washed cell gets a purple-washed
+   edge), and see D-7.7-28 for the token question.
+2. **A weekend cell that holds a value dims its text to `#6B6678`** (`--color-muted`) and its empty middot
+   to `#C9C8D3` (`:799`) — dimmer than the ordinary `#ADACB9`. This is part of AC3's "one recessive
+   object". `#C9C8D3` is un-tokenised; nearest is `--color-grandeur-grey #ADACB9` (already the ordinary
+   middot) or `--color-grandeur-lite #E7E7ED`. **Recommendation: keep the ordinary
+   `faint-decorative` middot on weekend cells too** — the column tint already carries the recession, and
+   inventing a token for a decorative middot inside a tinted column is not worth a new value. Flagged.
+3. **The `Diamond` is the spine's addition, not the mockup's.** `DESIGN.md:469` says time-off cells "carry
+   `{icons.time-off}` at 11px" and the AC repeats it; the mockup at `:806` has no icon. **The spine wins on
+   intent (SD-6), and here the intent is WCAG:** a purple number in a purple-washed cell is
+   *colour-alone*, which NFR12 forbids. The `Diamond` is what makes the state non-colour-alone. **Include
+   it.** This is also why obligation 3 (`size`) exists.
+
+### D-7.7-27 — `week-gaps.ts:61` is CLOSED, not re-deferred, and the fix is a one-line deletion
+
+**Creator decision** (routine in mechanism; the *decision* to close rather than defer was already made for
+us by **D-7.6-38**, which assigned it here).
+
+**Verdict.** **Delete the `if (ptoDays[i]) continue;` guard** at `lib/week-gaps.ts:73`, and delete the
+now-unused `ptoDays` accumulator (`:63-69`).
+
+**Why this is a one-liner, verified at this baseline.** The bug exists because the function treats
+time-off as a *reason to skip the arithmetic*. But the arithmetic already handles time-off correctly:
+`lib/week-grid.ts:179` accumulates `dayTotalsSeconds[dayIndex] += worklog.timeSpentSeconds` **inside the
+per-worklog loop with no category filter** — so a time-off worklog's seconds are already in
+`grid.dayTotalsSeconds`. Therefore, with the guard gone:
+
+| Day | Time off | Other work | `dayTotalsSeconds` | `>= 8h target`? | Result |
+|---|---|---|---|---|---|
+| Full day off | 8h | 0 | 8h | yes | **not a gap** — correct, unchanged |
+| Half day off | 4h | 0 | 4h | no | **gap, 4h short** — the bug, now fixed |
+| Half day off + work | 4h | 4h | 8h | yes | **not a gap** — correct |
+
+The guard was not merely wrong, it was **redundant for the case it was meant to protect.** No new summing
+logic, no new parameter, no clock read. The function stays pure.
+
+**One copy change follows.** `gapSummary` (`week-gaps.ts:100-104`) ends every line with
+`", not marked time off"`. Once a half-day-off day can be a gap, that clause becomes **false** for exactly
+the day this fix newly surfaces. Replace the fixed suffix with the honest per-day note — reuse
+`dayStatusNote` from `lib/day-status.ts`, which after D-7.6-38 already distinguishes "Half-day time off ·
+2.5h short". Do **not** write a second note formatter.
+
+**Consequences and how we would know it was wrong.**
+- `week-gaps.test.ts` must gain a **half-day-off-is-a-gap** case, RED-proved by restoring the `continue`.
+- A user who books a half day and logs nothing else now gets the gap dialog where before they did not.
+  That is the point: the previous behaviour let the week be closed 4 h short, and `EXPERIENCE.md:315` says
+  accounting reads these numbers as final once the week is closed.
+- Watch for a **double-count**: do not also add `timeOffSeconds` to the comparison. `dayTotalsSeconds`
+  already includes them. Adding them again would make a full day off read as 16 h.
+- `week-gaps.ts:56-62`'s long comment block documents the old hand-off and the `ptoDays` divergence.
+  **Rewrite it** to record that 7.7 closed it — do not leave a comment describing a bug that no longer
+  exists.
+
+### D-7.7-28 — `#EDECF2`, `#F6F5FA` and `#E2E0EE`: three un-tokenised hexes and D-7.3-14 — **ESCALATION**
+
+**Creator escalation.** This needs an orchestrator ruling; I have not guessed.
+
+**The conflict.** **D-7.3-14** ruled that an un-tokenised spec hex **loses to the nearest existing token**
+(it made the resume card use `border-border`, not the spec's `#DEDCE9`). The epic also forbids new colour
+values. But AC4 names two of these hexes **literally in the acceptance criterion**, which D-7.3-14's
+subject did not.
+
+| Hex | Role | Cite | Nearest token | Δ |
+|---|---|---|---|---|
+| `#EDECF2` | ordinary cell border; totals bar track | `:794`, `:408` | `--color-border-faint #F0EFF5` | very close |
+| | | | `--color-primary-soft #ECEBF3` | very close |
+| `#F6F5FA` | time-off cell fill | `:806` | `--color-weekend #F1F0F6` | close-ish, wrong axis |
+| | | | `--color-primary-soft #ECEBF3` | noticeably darker |
+| `#E2E0EE` | time-off cell border | `:806` | `--color-border #E4E3EC` | very close |
+
+**Why I did not just apply D-7.3-14.**
+
+- For `#EDECF2` → `border-faint (#F0EFF5)`: the design uses `#F0EFF5` **separately and deliberately** for
+  the *column separators* (`:376,402`) while using `#EDECF2` for the *cell box border* (`:794`). Collapsing
+  them onto one token erases a distinction the designer drew on purpose — a cell box would become
+  invisible against its own column rule.
+- For `#F6F5FA`: there is no near token. `--color-primary-soft #ECEBF3` is materially darker, and 7.6
+  **already** uses `bg-primary-soft` for the time-off `<td>` tint (`STATUS_TINT_CLASS['time-off']`,
+  `DayStatusIndicator.tsx:119`). So the `<td>` wash and the inner 34 px box fill are two nested surfaces;
+  making them the same token makes the box vanish into its cell.
+- `#E2E0EE` → `border (#E4E3EC)` is genuinely close enough that I would apply D-7.3-14 without asking.
+
+**Options for the orchestrator.**
+- **(a)** Add all three as **tokens** in `styles/globals.css`, on the D-7.6-39 precedent (a value specified
+  by an authoritative design source but missing from the token layer is a *missing* token, not a new
+  colour). Keeps token discipline and preserves the designer's distinctions.
+- **(b)** Apply D-7.3-14 strictly: `border-faint`, `primary-soft`, `border`. Zero token churn, but
+  flattens two nested surfaces into one and loses the cell-border/column-rule distinction.
+- **(c)** Hybrid: tokenise `#EDECF2` and `#F6F5FA` (where no near token exists or the distinction is
+  load-bearing); map `#E2E0EE` → `border`.
+
+**Creator's recommendation: (c).** It is the smallest change that keeps every surface visible, and it
+follows D-7.6-39's own reasoning about missing-vs-new. Whichever is chosen, **the AA contrast of the
+time-off number (`#594F74`) on the chosen fill must be hand-computed** — the axe harness has
+`color-contrast` disabled (`lib/test/axe.ts`), and this exact class of failure produced Story 7.6's
+Blocker. `#594F74` on `#F6F5FA` is a large ratio and will pass; on a darker fill it narrows.
+
+### D-7.7-29 — `variant="stacked"`'s two shape defects are fixed here, against a real call site
+
+**Creator decision** (routine — `deferred-work.md` assigned it and named the fix).
+
+**Verdict.** Fix both defects in `DayStatusIndicator.tsx`, **as the first task after the totals cell has a
+real container**, not speculatively.
+
+1. **Width.** The wrapper is `inline-flex flex-col items-end` (`:248`), so the bar's `w-full` resolves to
+   the widest **sibling line**, not the container — the same percentage renders a different pixel length
+   depending on that render's note length. Fix: give the wrapper a definite width (`flex w-full` rather
+   than `inline-flex`, so it fills the totals `<td>`). This is only *verifiable* now because D-7.7-23 gives
+   the column a fixed 104 px — that is exactly why `deferred-work.md` refused to fix it blind in 7.6.
+2. **Quantisation.** `Math.round(pct / 5)` (`:153`) maps 97.6% → `w-full` (reads as done) and 2.4% →
+   `w-0` (reads as empty). Fix: `Math.floor`, plus a **non-zero floor** so any non-zero percentage renders
+   at least `w-[5%]`. Reserve `w-0` for a genuine zero.
+
+**Verification, and it must be behavioural.** Two tests that would have caught each defect:
+- Render the same `percent` twice with a short note and a long note; assert the **same** width class.
+- `percent={97.6}` → not `w-full`; `percent={2.4}` → not `w-0`; `percent={0}` → `w-0`.
+
+Both must be **RED-proved** by reverting the fix. Across 7.3–7.6 reviewers found **eleven** tests that
+passed whether or not the feature worked; a width assertion is a prime candidate for a twelfth.
+
+**Shared-seam warning.** `DayStatusIndicator` is consumed by `WeeklyGrid`, `DayCell` (via
+`STATUS_TINT_CLASS`) **and** `ManagerMatrix`. Changing the `stacked` wrapper from `inline-flex` to `flex`
+is a **layout change to a shared component.** `stacked` has no other production call site today (that is
+the premise of this fix), but you must **prove** it: run a transitive import-closure analysis over
+`DayStatusIndicator` and grep for every `variant="stacked"` before and after. Do not rely on the suite —
+see "Shared-seam discipline" in Dev Notes.
+
+### D-7.7-30 — `size` is added to the frozen contract, and to D-7.6-3's canonical block
+
+**Creator decision** (routine — `deferred-work.md` deferred it *until a story's AC pinned the value*, and
+AC4 pins it at 11 px).
+
+**Verdict.** Add to `DayStatusIndicatorProps`:
+
+```
+/** Icon edge length in px. Default 12. DESIGN.md's icons.defaults.size
+ *  permits 11–13; 11 is pinned by Story 7.7's AC4 for the time-off cell. */
+size?: 11 | 12 | 13;
+```
+
+A closed union, not `number` — DESIGN.md bounds the range at 11–13, and a union makes an out-of-range value
+a type error rather than a review finding. `ICON_SIZE = 12` becomes the default.
+
+**This is an edit to a contract 7.6 declared frozen, so it is not slipped in.** Per obligation 3 and
+`deferred-work.md`, the developer must **also** update **D-7.6-3's canonical block in
+`epic-7-decision-log.md:1862`** so the contract in the log matches the code. A reviewer may reject this
+story for a code/log mismatch — 7.6 was explicitly held to the same standard.
+
+### D-7.7-31 — The weekend tint at three levels, from `isWeekend(iso)`
+
+**Creator decision** (routine — D-7.6-46 already ruled the mechanism and assigned the application here).
+
+**Verdict.** Apply `bg-weekend` from the **exported `isWeekend(iso)` predicate** (`lib/day-status.ts:63`)
+at all three levels: the `<th scope="col">` day header, the body `<td>`, and the totals `<td>`.
+
+**The token is exact.** `--color-weekend: #f1f0f6` (`globals.css:118`) is byte-identical to the design
+source's `const wk = "#F1F0F6"` (`:780`). Confirmed applied to Sat/Sun at header (`:786-787`, with
+`headColor:"#6B6B72"` = `--color-faint`), body cells (`:799` `bg: wk`) and totals (`:817`
+`bg: kind === "off" ? wk : "transparent"`).
+
+**Do not** derive it from day status, and **do not** put it on the `<col>`. Deriving from status is exactly
+what D-7.6-46 reverted — a per-cell status cannot express "tint the column as one object", which is why
+`weekend` is deliberately absent from `STATUS_TINT_CLASS`. And a `<col>` background sits *below* cell
+backgrounds, so any `<td>` with its own fill would punch a hole in the column — the tint must be on the
+cells to be uniform. `DayCell.tsx:315` already does the body level correctly; add the header and totals.
+
+**Precedence.** A status that carries its own tint (`time-off`) outranks `weekend` — D-7.6-6's precedence,
+already implemented at `DayCell.tsx:314-315` (`statusTint || isWeekend(...)`). Keep that shape; do not
+layer two backgrounds.
+
+### D-7.7-32 — The `stacked` bar colour cannot express the design's `partial` bar — **ESCALATION**
+
+**Creator escalation.** A genuine gap in the frozen contract, found by cross-checking AC6 against the
+design source. Not guessed.
+
+**The finding.** AC6 says the 3 px bar is "coloured by day status", and `DayStatusIndicator`'s `stacked`
+branch renders the fill as **`bg-current`** (`:263`) — i.e. it inherits the status's *text* colour. For
+most statuses that is right. For `partial` it is **not**, because the design deliberately uses two
+different colours:
+
+| Design `kind` | Text colour | Bar colour | Cite |
+|---|---|---|---|
+| `met` | `#15803D` | `#15803D` | `:811` — same, `bg-current` works |
+| **`part`** | **`#1E1B2E`** | **`#615B99`** | `:812` — **different** |
+| `none` | `#7A3E06` | `#B45309` | `:813` — different |
+| `pto` | `#594F74` | `#8B84AE` | `:814` — different |
+| `off` | `#6B6B72` | `#D8D7E1` | `:815` — different (and `weekend` renders no bar at all) |
+
+`STATUS_COLOR_CLASS['partial'] = 'text-foreground'` (`#1E1B2E`), so `bg-current` would paint the
+`partial` bar **near-black** where the design wants royal purple `#615B99` (= `--color-royal-purple`,
+`globals.css:105`). `partial` is the *most common* state in a normal week — this would be the most visible
+cell in the grid rendered wrong.
+
+Note `none`/`pto` follow a consistent pattern: the bar is a **lighter, desaturated sibling** of the text
+colour. `#B45309` is `--color-status-dirty`, so `none`'s pair is already fully tokenised
+(`text-amber-ink` + `bg-status-dirty`). `pto`'s `#8B84AE` and `off`'s `#D8D7E1` are **not** tokenised.
+
+**Options.**
+- **(a)** Add a `STATUS_BAR_CLASS: Record<StatusKind, string>` map inside `DayStatusIndicator.tsx` — the
+  one file D-7.6-2 allows to own status→colour maps — and use it instead of `bg-current`. Faithful to the
+  design; needs a ruling on the two un-tokenised bar hexes (same question as D-7.7-28).
+- **(b)** Keep `bg-current` and accept a near-black `partial` bar. Cheapest; visibly wrong on the
+  commonest state; a reviewer will raise it.
+- **(c)** Special-case only `partial` → `bg-royal-purple`. Smallest diff, but a one-off conditional inside
+  the shared component is precisely the per-status special-casing D-7.6-3 was written to prevent, and 7.6's
+  `met`-only chrome exception had to be *corrected* by D-7.6-40 for exactly this reason.
+
+**Creator's recommendation: (a).** It keeps the single-registry discipline (the map lives in the one
+sanctioned file), it is the design's actual intent, and it makes the bar colour a *derived, non-overridable*
+property exactly like the icon and the text colour. Pair with D-7.7-28's ruling on the two loose hexes.
+
+### D-7.7-33 — The in-place editing focus model, concretely
+
+**Creator decision** (routine — specifies an AC that is otherwise untestable).
+
+**What already works** (`DayCell.tsx`, do not rebuild): editing is in place (`:319-355`); `⏎` saves
+(`:287-292`); `Esc` reverts (`:293-296`); an empty cell accepts a value with **no "add" ceremony** — the
+display-mode `<button>` (`:375`) opens the editor on click and `commit()` POSTs when there was no prior
+worklog (`:270`). A single edit session commits exactly once, guarded by `resolvedRef` (`:235`) — **do not
+break that guard**; it is what prevents duplicate POSTs on the blur that fires when the editor unmounts.
+
+**The delta.**
+
+- **`Tab` moves across the day.** "Across the day" = along the **row**, to the next day's cell — the
+  natural reading direction, and it is what a browser's default `Tab` order already does inside a table
+  row. So: `Tab` must **commit** the current cell and let focus proceed naturally. Concretely, `Tab` is
+  **not** intercepted in `handleKeyDown`; instead the existing `onBlur` → `commit()` path (`:274-283`)
+  already fires. **Verify** the committed cell returns to display mode with its `<button>` focusable so
+  the next `Tab` lands on the next day. Do not add a `preventDefault` on `Tab` — that would break the
+  a11y-mandated tab order and trap the user.
+- **`⏎` saves and moves to the next row.** This is the genuinely new behaviour. `⏎` already commits
+  (`:287-292`); after commit, focus must move to the **same day's cell in the next row**. `DayCell` cannot
+  do this alone — it does not know its siblings. **`WeeklyGrid` must own it**, and it already has the
+  mechanism: `cellEditRefs` (`:350`), a `Map` keyed `` `${rowKey}-${dayIndex}` `` that already exposes each
+  cell's "open editor" action for Story 4.4's day-scoped add. Add a sibling registry for "focus this cell"
+  keyed identically, and give `DayCell` an `onCommitAdvance?: () => void` the grid wires to the next row's
+  entry.
+- **Ordering trap.** The grid re-sorts rows after a mutation (`week-grid.ts:66-70` sorts by category then
+  descending row total), and `WeekView.handleMutated` invalidates the query (`:109-111`). So "the next row"
+  can be **a different row by the time the refetch lands.** Resolve "next row" from the row order
+  **at the moment `⏎` was pressed**, synchronously, before the invalidation resolves — otherwise focus
+  jumps somewhere the user did not ask for. This is the same class of race as Story 4.4's deferred
+  `requestAnimationFrame` lookup, which `deferred-work.md` already records as fragile. **Do not** copy the
+  double-`rAF` pattern; resolve the target key synchronously, then focus it once mounted.
+- **Last row.** `⏎` on the last row commits and stays put (or returns focus to the just-committed cell's
+  button). It must not wrap to the first row and must not throw.
+
+### D-7.7-34 — The gap dialog: the full delta from what exists
+
+**Creator decision** (routine transcription; the copy is all quoted).
+
+`components/week/GapAcknowledgmentDialog.tsx` is 82 lines and needs substantial change. It **keeps** its
+Radix `Dialog` base — that is what supplies the AC's **focus trap** for free, and it is already the
+canonical pattern here.
+
+| Element | Today | AC7 requires | Cite |
+|---|---|---|---|
+| Title | "Submit week with gaps?" (`:13`) | **"Close the week at N of 40h?"** | `:428`, `EXPERIENCE.md:120` |
+| Framing | "N days are short of target and not marked as time off. Submit anyway?" (`:43`) | **"Three days are under 8h. That's fine if it's accurate — accounting reads these numbers as final once the week is closed."** | `:429`, `EXPERIENCE.md:120,315` |
+| Evidence | `<ul><li>` of `gapSummary` (`:66-70`) | **bordered evidence rows**: day (78 px), logged (62 px, tabular), note (flex) | `:433-437` |
+| Checkbox | **none** | **required** "These hours are correct. I'm not missing time." | `:443`, `EXPERIENCE.md:121` |
+| Secondary | "Cancel" (`:73`) | **"Keep editing"** | `:446` |
+| Primary | "Submit anyway" (`:76`) | **"Close the week"** | `:447` |
+| Focus trap | inherited from Radix ✓ | inherited from Radix ✓ | — |
+| Backdrop click | **dismisses** → `onCancel` (`:52`) | **must NOT dismiss** | AC7 |
+
+**The four substantive changes.**
+
+1. **The checkbox gates the primary.** "Close the week" is `disabled` until checked. This is the whole
+   point of the friction (`EXPERIENCE.md:317`: *"The friction did its job without moralising"*). Wire the
+   `disabled` state to real checkbox state — do not render a decorative checkbox. The design's checkbox is
+   `16×16`, `radius 4px`, `border 1.5px solid #594F74`, `background #594F74` when checked, white ✓
+   (`:442`). Use a real `<input type="checkbox">` with an associated `<label>` (the design already wraps it
+   in a `<label>`, `:441`) — not a `<span>` with a click handler, which is unreachable by keyboard.
+2. **Backdrop must not dismiss.** Add `onPointerDownOutside={(e) => e.preventDefault()}` to
+   `DialogContent`. **Leave `Esc` working** — it routes to `onCancel` = "Keep editing", which is the safe
+   direction, and suppressing `Esc` in a modal is itself an a11y regression. AC7 constrains the *backdrop*
+   only.
+3. **Initial focus moves.** Today it force-focuses the primary (`:47-49,55-60`). With the primary starting
+   **disabled**, focusing it is both useless and confusing. Focus **the checkbox** — it is the required
+   next action. Replace the `submitRef` steering accordingly, keeping the `onOpenAutoFocus`
+   `preventDefault()` mechanism.
+4. **"N of 40h" is the week total, not the gap count.** `28 of 40h` in the design (`:428`) is
+   logged-vs-target for the **whole week**. The dialog currently receives only `gaps`. It needs
+   `loggedSeconds` and `targetSeconds` for the week — `WeekView` already computes exactly this
+   (`:128-132`: `loggedSeconds` and `targetHours * WORKDAYS_PER_WEEK`). **Thread the existing values
+   through; do not recompute the week total in a third place.**
+
+**Copy, verbatim, with SD-7 applied.** The design source's own totals row says **"full-day PTO"** at
+`:823`. **That is a design-source string, and SD-7 overrides it: every user-facing string says "time
+off".** Any new string this story adds says "time off" from the outset. Evidence-row notes follow the
+design's honest, factual register (`:831-833`: "2.5h unaccounted", "today — still open").
+
+**The framing sentence's day count must be real.** The design hard-codes "Three days". Compute it from
+`gaps.length` with correct singular/plural, and "under 8h" from the actual `targetHours` — a settings value
+(`targetHoursItem`), not a constant. A user on a 7-hour target must not read "under 8h".
+
+### D-7.7-35 — how the time-off cell renders its `Diamond` without breaking the 7.6 grep test — **ESCALATION, RESOLVED by D-7.7-17**
+
+Creator escalation, originally recorded as item 3 of the story's "Decisions the orchestrator
+should rule on" list (not given its own `###` heading in "Resolved questions" since it was raised as a
+blocking question, not a routine decision).
+
+**The question.** `lib/day-status-vocabulary.grep.test.ts` enforces that **only** `DayStatusIndicator.tsx`
+may import `Diamond` from `lucide-react`, so `DayCell` **cannot** render one directly. But
+`DayStatusIndicator` has no icon-only mode **by design** — D-7.6-3 ruled "silence is the ABSENCE of the
+component", and Finding 16 deliberately made `label=""` fall back to the default label so no caller can
+suppress the visible word. A 104×34 px cell cannot fit "Full-day time off" next to the number.
+
+**Creator recommended** adding a `variant="cell"` to the contract: renders `value` + icon, with the label in
+a visually-hidden span. AA would hold because the label is still **text** in the accessibility tree, and the
+**visible** words for that day already appear in the totals cell directly below in the same column. This
+touches the frozen contract, so it needed a ruling rather than a guess.
+
+**Resolved by D-7.7-17 (already recorded above): the `variant="cell"` proposal is REJECTED — D-7.7-35
+dissolves.** The time-off DATA cell renders no icon at all; `DayCell.tsx`'s `boxColorClass` is fill/text/
+border only (D-7.7-15/17). AA is satisfied a different way: the totals cell directly below, in the same
+column, already carries the filled `Diamond` + the visible words via `variant="stacked"`, so deleting the
+data cell's colour still leaves the day's status readable from the totals row. No `variant="cell"` exists
+anywhere in code — mutation-proved by the code review's independent grep.
+
+### D-7.7-21f — The "no monospace" constraint is NOT met product-wide; ownership assigned
+**Orchestrator decision** (routine, but it corrects an over-broad claim and closes an ownership gap that
+would otherwise let an epic-wide constraint ship unmet).
+
+**Verdict.** `font-mono` still appears **14 times** across the product. The two occurrences with **no
+remaining owner** are fixed now, inside Story 7.7's commit; the rest are assigned to the stories that own
+their surfaces, and the epic cannot be marked done until all are gone.
+
+**Situation.** The 7.7 finisher fixed `font-mono` at `WeeklyGrid.tsx:571` as instructed — **verified: that
+file is now clean** — but reported it as *"repo-wide grep: zero occurrences anywhere."* That broader claim
+was **false**, and it matters because "no monospace anywhere" is a **standing Epic 7 constraint**
+(`epics.md`), not a per-story detail. KKP has no monospace face; numbers use the `tabular` utility. Had the
+claim gone unchecked, the epic would have shipped violating its own rule with a green audit.
+
+**In plain terms:** a narrower claim ("I fixed the file you named") was true; the wider claim ("it's gone
+everywhere") was not. The check that caught it was one grep.
+
+**The full partition, by owning story:**
+
+| Owner | Occurrences |
+|---|---|
+| **Story 7.8** (manager) | `ManagerMatrix.tsx:373`, `DrillDownPanel.tsx:166,171` |
+| **Story 7.10** (settings) | `DiagnosticsBlock.tsx:68,73`, `ManagerDisplay.tsx:55,63`, `CatchAllProjectField.tsx:111`, `entrypoints/options/App.tsx:143` |
+| **No owner — fix now** | `QuickLogForm.tsx:217`, `TicketPicker.tsx:665,734` |
+
+**Why the ownerless three are fixed in 7.7's commit rather than deferred.** `QuickLogForm` is a popup
+component and `TicketPicker` is now week-surface-only (Story 7.5 removed it from the popup). Every story that
+owned those surfaces — 7.3, 7.4, 7.5, 7.7 — has already shipped, so no future story would pick them up and
+they would have survived to epic close as a silent violation. The change is three class swaps
+(`font-mono` → `tabular`), which is proportionate to fix in place rather than reopening a story for.
+
+**Consequences.** Stories 7.8 and 7.10 each carry an explicit, named obligation to clear their rows above —
+recorded here so it is not rediscovered by grep at the end. **Before `epic-7` is marked done, a repo-wide
+`grep -rn "font-mono"` over `components/ lib/ entrypoints/` must return only test assertions** — the one at
+`LoggedToday.test.tsx:116,137` is a legitimate guard *asserting the absence* of monospace and stays. Consider
+adding this to the existing design-token grep guard so it is enforced mechanically rather than by memory.
+
+*Method note worth carrying:* this is the second time in two stories that a sub-agent's **scope-widened
+summary claim** ("gone everywhere", "all frozen files unchanged") outran what it actually verified, while its
+narrow claim was accurate. Verifying the broad claim costs one command and has now caught two real defects.

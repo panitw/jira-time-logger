@@ -1,5 +1,5 @@
 # generated: 2026-05-11 22:45:02
-# last_updated: 2026-07-26 (Story 7-6 → done — 2 Blockers + 8 Majors + 11 Minors + 6 Nits triaged; 23 fixed (D-7.6-49 overruled 1 deferral to fixed), 2 deferred (canonical deferred-work.md), 1 no-change-needed; 95 files / 1273 passed / 1 skipped, all 5 guard-test mutations confirmed to redden)
+# last_updated: 2026-07-26 (Story 7-7 → done — 0 Blockers + 4 Majors + 7 Minors + 4 Nits + 4 escalations triaged; 17 fixed, 1 dismissed (Finding 13 — design source verified ASCII apostrophes, not the typographic ones claimed), all 4 escalations resolved per owner/orchestrator ruling; 96 files / 1351 passed / 1 skipped, all 6 previously-green mutations confirmed to redden)
 # project: jira-time-logger
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-11 22:45:02
-last_updated: 2026-07-26 (Story 7-6 → done — review findings triaged and closed, tests 1240→1273)
+last_updated: 2026-07-26 (Story 7-7 → done — chrome header, grid geometry/anatomy, in-place Tab/Enter, totals stacked bar (now in tfoot), gap dialog rebuild, dayStatusNote fourth arm; 96 files/1351 passed/1 skipped, same 1 known pre-existing rejection)
 project: jira-time-logger
 # 2026-06-21: Story 2-7 created (ready-for-dev) — completes Epic 2
 # 2026-06-21: Story 3-1 created (ready-for-dev); Epic 3 → in-progress
@@ -222,6 +222,61 @@ project: jira-time-logger
 #             pre-existing canonical `_bmad-output/implementation-artifacts/deferred-work.md` and the root
 #             copy deleted (not recreated). Tests 1271 -> 1273 (+2). compile/lint/build all clean, same
 #             single pre-existing unhandled rejection. Commit amended, not a second commit.
+# 2026-07-26: Story 7-7 created (ready-for-dev) at baseline bbe0645 -- full-page surface & week review.
+#             Explicit-mode creation (NOT auto-picked). Scope is SMALLER than the AC list suggests: AC1 is
+#             ALREADY MET by Story 7.2 per D-7.2-1 (fullpage entrypoint + section routing + "Open week" all
+#             exist and are pinned by PopupActionBar.test.tsx:100) -- recorded as verify-don't-rebuild. And
+#             the grid is ALREADY a semantic <table> with scoped headers (WeeklyGrid.tsx:436-499 +
+#             DayCell.tsx <td>), so AC3 needs only the 104px column geometry and the announcement content:
+#             there is NO div->table migration and ZERO blast radius from one. 7.7's real scope is the
+#             chrome header, grid geometry, cell anatomy, in-place editing, the totals row and the gap
+#             dialog. All FOUR inherited obligations given ACs + tasks, none dropped: (1) week-gaps.ts:61
+#             is CLOSED, not re-deferred -- and the fix is a one-line guard deletion, verified safe because
+#             week-grid.ts:179 already accumulates time-off seconds into dayTotalsSeconds with no category
+#             filter, so the arithmetic already handles a full day off and a half day correctly once the
+#             skip is gone (gapSummary's "not marked time off" suffix must go too -- it becomes false for
+#             exactly the day this surfaces); (2) variant="stacked" gets its real call site in Task 2,
+#             BEFORE the width/quantisation fixes, per deferred-work.md's refusal to fix it blind;
+#             (3) size?: 11|12|13 added to DayStatusIndicatorProps AND to D-7.6-3's canonical block;
+#             (4) the weekend tint applied at header + cell + totals from isWeekend(iso) per D-7.6-46 --
+#             NOT from status, and NOT on <col> (a col background sits under cell fills and would punch
+#             holes). Every AC2/AC4 value cross-checked against the vendored design source per SD-6 with
+#             file:line citations; three exact token matches found (--color-weekend == wk #F1F0F6 :780,
+#             --color-faint-decorative == the empty-cell middot #ADACB9 :795, ring-focus byte-identical to
+#             :804), three values the AC omits (#E2E0EE time-off border, dimmed weekend text/middot), and
+#             one the MOCKUP omits that the spine requires (the 11px Diamond -- :806 has no icon; DESIGN.md
+#             :469 and NFR12 both demand it, since a purple number on a purple wash is colour-alone).
+#             Creator decisions D-7.7-1..13 (later renumbered D-7.7-22..34 by the finisher, D-7.3-11);
+#             orchestrator/owner rulings were meant to reserve D-7.7-30+ to avoid the collision that bit
+#             7.4/7.5, though in practice they landed at D-7.7-15..21. SIX decisions flagged for the
+#             orchestrator, THREE blocking:
+#             D-7.7-28 (three un-tokenised hexes vs D-7.3-14 -- collapsing #EDECF2 onto border-faint would
+#             erase the designer's cell-border/column-rule distinction, and #F6F5FA has no near token),
+#             D-7.7-32 (stacked's bg-current renders partial's bar near-black where the design wants royal
+#             purple #615B99 -- partial is the commonest state in a normal week), and D-7.7-35 (the 7.6
+#             grep test forbids DayCell importing Diamond, but DayStatusIndicator has no icon-only mode BY
+#             DESIGN, and "Full-day time off" cannot fit a 104x34px cell -- proposes variant="cell").
+# 2026-07-26: Story 7-7 -> done. Finisher triaged 0 Blockers / 4 Majors / 7 Minors / 4 Nits + 4 escalations.
+#             17 FIXED, 1 DISMISSED (Finding 13 claimed the design source uses typographic apostrophes;
+#             byte-verified it uses ASCII throughout -- the implementation was already exact to its source
+#             of truth, so the suggested fix would have moved AWAY from fidelity). All four escalations
+#             were pre-ruled (D-7.7-20 owner, D-7.7-21a-e orchestrator) and implemented, not re-litigated:
+#             dayStatusNote gained a fourth arm so a near-full time-off booking (7.5h/8h) never claims
+#             "half-day" (D-7.7-20); totals row moved <thead> -> <tfoot> (D-7.7-21a); gapSummary was
+#             INVESTIGATED first -- the rebuilt gap-dialog evidence row genuinely announces the same info
+#             (no aria-hidden, role=listitem, clean axe scan), confirmed NOT an a11y regression, then
+#             deleted as dead code with its 4 vacuous tests (D-7.7-21b); WeekChromeHeader's own copy of the
+#             stacked-bar quantisation defect fixed in isolation, Story 7.9 obliged to extract the shared
+#             helper rather than refactoring all three copies here (D-7.7-21c). The two guard-coverage
+#             holes (STATUS_BAR_CLASS zero grep coverage; bg-weekend missing its per-occurrence companion,
+#             both reproducing D-7.6-43) closed; all 6 of the reviewer's previously-green mutations
+#             re-applied and confirmed genuinely RED, then every mutated file restored byte-identical
+#             (cp + md5/diff, never git checkout). Creator decisions D-7.7-1..14 renumbered D-7.7-22..35
+#             and folded into epic-7-decision-log.md as canonical (D-7.3-11); 7 drifted design-source
+#             citations independently re-verified against the vendored source and corrected in both files.
+#             Tests 1340 -> 1351 (+11 net: several new RED-proved tests minus 4 removed dead gapSummary
+#             tests), 0 new files, same single pre-existing ManagerView.test.tsx unhandled rejection.
+#             compile/lint/build all clean.
 project_key: NOKEY
 tracking_system: file-system
 story_location: "{project-root}/_bmad-output/implementation-artifacts"
@@ -297,7 +352,7 @@ development_status:
   7-4-search-as-the-browse-mechanism: done
   7-5-logged-today-recently-worked-55-ticket-handoff: done
   7-6-day-status-vocabulary-time-off-rename: done
-  7-7-full-page-surface-week-review: backlog
+  7-7-full-page-surface-week-review: done
   7-8-manager-matrix-silent-correctness-loud-exceptions: backlog
   7-9-popup-states-loading-offline-error-time-off-disconnected: backlog
   # 2026-07-25: UNBLOCKED. Claude Design round 2 delivered both surfaces; spines and

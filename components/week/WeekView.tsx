@@ -1,10 +1,10 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { format, parseISO, isValid } from 'date-fns';
+import { format } from 'date-fns';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { WeekChromeHeader } from '@/components/week/WeekChromeHeader';
 import { WeeklyGrid } from '@/components/week/WeeklyGrid';
 import { useWeekWorklogs } from '@/hooks/useWeekWorklogs';
-import { secondsToHoursDisplay } from '@/lib/hours';
 import { log } from '@/lib/log';
 import { sendMessage } from '@/lib/messages';
 import {
@@ -19,20 +19,27 @@ import {
 } from '@/lib/storage/view-state';
 import { buildWeekGrid, computeDayStatuses } from '@/lib/week-grid';
 
-type Props = { weekOf: ISODate };
+type Props = {
+  weekOf: ISODate;
+  /** Story 7.7, D-7.7-25: `weekOf` lives as state on the full page (App.tsx);
+   * these fire the chrome header's prev/next nav. Required, not defaulted
+   * (Finding 14b): the only production caller (`entrypoints/fullpage/
+   * App.tsx`) always wires both, and a silent no-op default would let a
+   * FUTURE caller drop the wiring invisibly — the type system should reject
+   * that, not swallow it. */
+  onPrevWeek: () => void;
+  onNextWeek: () => void;
+};
 
 /** Local `YYYY-MM-DD` (not UTC) so today/future comparisons match local days. */
 function localToday(): ISODate {
   return format(new Date(), 'yyyy-MM-dd');
 }
 
-const WORKDAYS_PER_WEEK = 5;
 const SKELETON_ROW_COUNT = 5;
 const DAY_COLUMN_COUNT = 7;
 
 const STRINGS = {
-  headingPrefix: 'Week of',
-  invalidDate: 'Unknown week',
   connectHeading: 'Connect to Jira',
   connectBody: 'Your session expired. Reconnect to load this week.',
   connectCta: 'Connect to Jira',
@@ -48,12 +55,11 @@ function openOptions(): void {
   chrome.runtime.openOptionsPage();
 }
 
-export function WeekView({ weekOf }: Props): React.ReactElement {
-  const parsed = parseISO(weekOf);
-  const displayDate = isValid(parsed)
-    ? format(parsed, 'EEE, MMM d')
-    : STRINGS.invalidDate;
-
+export function WeekView({
+  weekOf,
+  onPrevWeek,
+  onNextWeek,
+}: Props): React.ReactElement {
   const [targetHours, setTargetHours] = useState(8);
   const [catchAllProjectKey, setCatchAllProjectKey] = useState('');
   const [ptoSubtaskKey, setPtoSubtaskKey] = useState('');
@@ -125,19 +131,25 @@ export function WeekView({ weekOf }: Props): React.ReactElement {
     [grid, targetHours, today],
   );
 
-  const loggedSeconds = grid
-    ? grid.dayTotalsSeconds.reduce((sum, s) => sum + s, 0)
-    : 0;
-  const loggedDisplay = secondsToHoursDisplay(loggedSeconds).replace(/h$/, '');
-  const targetDisplay = targetHours * WORKDAYS_PER_WEEK;
-
   return (
     <div className="motion-safe:animate-fade-in">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold text-neutral-900">
-          {STRINGS.headingPrefix} {displayDate}
-        </h2>
-        {isMarkedDone ? (
+      {/* Story 7.7, AC2: the chrome header supersedes the old plain-text
+       * heading + logged/target paragraph — it paints unconditionally
+       * (title/eyebrow/nav) even before `grid` loads, same pattern as the
+       * popup's `ChromeHeader.tsx`; the week figure/bar and the (now
+       * relocated, sole) "Mark week as done" CTA gate on `grid`. */}
+      <WeekChromeHeader
+        weekOf={weekOf}
+        grid={grid}
+        targetHours={targetHours}
+        today={today}
+        isMarkedDone={isMarkedDone}
+        onMarkedDone={handleMarkedDone}
+        onPrevWeek={onPrevWeek}
+        onNextWeek={onNextWeek}
+      />
+      {isMarkedDone ? (
+        <div className="mt-2 flex justify-end">
           <span className="inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-700">
             {STRINGS.weekDone}
             <span aria-hidden className="text-neutral-300">
@@ -152,16 +164,8 @@ export function WeekView({ weekOf }: Props): React.ReactElement {
               {STRINGS.undo}
             </button>
           </span>
-        ) : null}
-      </div>
-      {!query.isPending && !query.isError && (
-        <p className="mt-1 text-sm text-neutral-500">
-          <span className="font-mono">
-            {loggedSeconds > 0 ? loggedDisplay : '0'}
-          </span>{' '}
-          / {targetDisplay}h
-        </p>
-      )}
+        </div>
+      ) : null}
 
       <div className="mt-3">
         {query.isPending ? (
@@ -186,12 +190,9 @@ export function WeekView({ weekOf }: Props): React.ReactElement {
           >
             <WeeklyGrid
               grid={grid}
-              weekOf={weekOf}
               onMutated={handleMutated}
               ptoSubtaskKey={ptoSubtaskKey || null}
               targetHours={targetHours}
-              isMarkedDone={isMarkedDone}
-              onMarkedDone={handleMarkedDone}
               // Finding 13: pass the SAME memoised `today` that derived
               // `dayStatuses` above — `WeeklyGrid` otherwise falls back to
               // its own default-parameter `todayDateString()`, re-evaluated

@@ -21,8 +21,24 @@ vi.mock('@/lib/storage/settings', () => ({
 }));
 
 vi.mock('@/components/week/WeekView', () => ({
-  WeekView: ({ weekOf }: { weekOf: string }) => (
-    <div data-testid="week-view">Week of {weekOf}</div>
+  WeekView: ({
+    weekOf,
+    onPrevWeek,
+    onNextWeek,
+  }: {
+    weekOf: string;
+    onPrevWeek?: () => void;
+    onNextWeek?: () => void;
+  }) => (
+    <div data-testid="week-view">
+      Week of {weekOf}
+      <button type="button" onClick={onPrevWeek}>
+        mock-prev
+      </button>
+      <button type="button" onClick={onNextWeek}>
+        mock-next
+      </button>
+    </div>
   ),
 }));
 
@@ -138,6 +154,23 @@ describe('fullpage App', () => {
       expect(screen.getByRole('heading', { name: 'Connect to Jira' })).toBeTruthy();
     });
     expect(screen.queryByTestId('week-view')).toBeNull();
+  });
+
+  // Story 7.7, D-7.7-25: `weekOf` is lifted to full-page state so the chrome
+  // header's prev/next nav has somewhere to live.
+  it('prev/next nav moves the queried week by one week (D-7.7-25)', async () => {
+    render(<App />);
+    const before = (await screen.findByTestId('week-view')).textContent;
+    fireEvent.click(screen.getByText('mock-next'));
+    await waitFor(() => {
+      expect(screen.getByTestId('week-view').textContent).not.toBe(before);
+    });
+    const afterNext = screen.getByTestId('week-view').textContent;
+    fireEvent.click(screen.getByText('mock-prev'));
+    await waitFor(() => {
+      expect(screen.getByTestId('week-view').textContent).toBe(before);
+    });
+    expect(afterNext).not.toBe(before);
   });
 
   it('has zero Critical/Serious axe violations', async () => {

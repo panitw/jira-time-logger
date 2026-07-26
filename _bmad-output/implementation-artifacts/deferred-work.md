@@ -198,7 +198,18 @@ pre-existing Epic 5 code for 7.8's restyle to reconcile.
 (`status-clean` == `state-success` == `#15803D`) is still what makes ANY
 `text-status-clean`/AC3-vocabulary colour collide with this cell's fill.
 
-### `variant="stacked"` (Finding 11) — two shape defects, un-fixed because it has zero production call sites in this story
+### `variant="stacked"` (Finding 11) — two shape defects — **RESOLVED, Story 7.7 / D-7.7-29**
+
+Story 7.7 gave `variant="stacked"` its first real call site (`WeeklyGrid.tsx`'s
+`TotalsCell`, D-7.7-23's 104px column) and fixed both defects against it: the
+wrapper is now `flex w-full` (container-relative, not siblings-relative), and
+`pctToWidthClass` uses `Math.floor` + a non-zero floor (97.6% no longer reads
+`w-full`; 2.4% no longer reads `w-0`). Both RED-proved live. The story's own
+finisher pass additionally caught and fixed a THIRD copy of the exact same
+quantisation defect, freshly introduced in the same story's new
+`WeekChromeHeader.tsx` (review Finding 1 / D-7.7-21c) — see that entry below.
+
+Original deferral text, kept for history:
 
 **Where:** `components/shared/DayStatusIndicator.tsx`'s `stacked` branch.
 
@@ -223,7 +234,15 @@ instead of `Math.round`) but needs a real consumer to verify against.
 renders a consistent, correctly-quantised length before treating the
 contract as final.
 
-### No `size` prop (Finding 17) — 7.7/7.8 both need icon geometry the frozen contract can't express
+### No `size` prop (Finding 17) — **RESOLVED, Story 7.7 / D-7.7-30**
+
+Story 7.7's AC4 pinned the concrete value (11px, the time-off/totals-row
+glyph): `size?: 11 | 12 | 13` was added to `DayStatusIndicatorProps`
+(`ICON_SIZE = 12` stays the default) AND to D-7.6-3's canonical block in
+`epic-7-decision-log.md`, per the obligation D-7.7-30 itself states. Verified
+by the code review: the log and the code no longer disagree.
+
+Original deferral text, kept for history:
 
 **Where:** `components/shared/DayStatusIndicator.tsx` — `ICON_SIZE = 12` is a
 module constant, not a prop.
@@ -258,7 +277,23 @@ Story 7.4 `TicketPicker` scrolling regression, and the JQL-widening leak).
 `key.startsWith(ptoSubtaskKey + '-')`. Cheap, but needs its own story/PR so
 the fix is attributable and tested in isolation.
 
-### `lib/week-gaps.ts:61` — a half-day-off week can be marked done while genuinely short (pre-existing, explicitly D-7.6-38's hand-off)
+### `lib/week-gaps.ts:61` — a half-day-off week can be marked done while genuinely short — **RESOLVED, Story 7.7 / D-7.7-27/D-7.7-19/D-7.7-20**
+
+Closed by deleting the `if (ptoDays[i]) continue` guard (D-7.7-27/D-7.7-19):
+`dayTotalsSeconds` already sums time-off seconds with no category filter, so
+the guard was redundant for a full day off and actively wrong for a half day
+off. RED-proved against all three truth-table cases (full day off → not a
+gap; half day off → a gap, 4h short; half day off + work → not a gap). The
+fix newly surfaced a SECOND, more subtle defect the code review caught: a
+near-full time-off booking under target (e.g. 7.5h against an 8h target)
+printed the false "Half-day time off" note. Closed by an owner ruling,
+D-7.7-20 — the GAP rule stays uniform (any day below target is a gap, no
+exemption), but `dayStatusNote`'s time-off branch gained a fourth arm so
+"half-day" is reserved for an actual half booking and any other under-target
+amount states the real hours + shortfall. See `lib/day-status.ts`'s
+`dayStatusNote` for the code.
+
+Original deferral text, kept for history:
 
 **Where:** `lib/week-gaps.ts`'s `computeWeekGaps` — `if (ptoDays[i]) continue`
 treats ANY time-off seconds that day as "not a gap," so a 4-hour half-day off
@@ -273,3 +308,7 @@ tracking point; the code-level pointer lives in `lib/week-gaps.ts`'s own
 comment above `ptoDays`.
 
 **Owner:** Story 7.7 — must close it or explicitly re-defer with a reason.
+
+## Deferred from: code review of story-7.7 (2026-07-26)
+
+- **Three copies of the chrome progress-bar quantisation logic, one shared helper needed.** `ChromeHeader.tsx` (popup, pre-existing), `WeekChromeHeader.tsx` (new this story), and `DayStatusIndicator.tsx`'s `stacked` branch each keep their own `pctToWidthClass`/width-table pair. This story's finisher pass fixed the `WeekChromeHeader.tsx` copy's quantisation defect (review Finding 1) but deliberately did NOT extract a shared helper or touch the popup's `ChromeHeader.tsx:50-53`, which carries the identical latent `Math.round` bug — per owner ruling D-7.7-21c, a shared-seam refactor at finisher stage is how this epic got burned three times (7.2 TicketPicker, 7.4 JQL leak, 7.6 over-applied indicator). **Owner: Story 7.9**, which already owns the popup chrome states — it is hereby obliged to extract the shared helper and fix the popup's pre-existing instance as part of that work, so a fourth uncoordinated copy never appears. [components/shell/ChromeHeader.tsx:50-53, components/week/WeekChromeHeader.tsx, components/shared/DayStatusIndicator.tsx]

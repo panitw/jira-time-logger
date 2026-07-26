@@ -1,3 +1,4 @@
+import { addWeeks, format, parseISO } from 'date-fns';
 import { useCallback, useEffect, useState } from 'react';
 import { ManagerView } from '@/components/manager/ManagerView';
 import { Button } from '@/components/ui/button';
@@ -7,19 +8,25 @@ import { log } from '@/lib/log';
 import { hasDirectReports } from '@/lib/manager-resolution';
 import { approvalCycleItem } from '@/lib/storage/settings';
 import { getAuth, hasValidAuth } from '@/lib/storage/tokens';
+import type { ISODate } from '@/lib/storage/view-state';
 import { currentWeekMonday } from '@/lib/week-of';
 
 /**
  * Full-page host shell (Story 7.2, AC5/AC7, ORCHESTRATOR DECISION D-7.2-1):
- * a THIN shell only — Week/Manager/Settings section routing that mounts the
- * EXISTING `WeekView`/`ManagerView` completely unchanged and unrestyled.
- * Removing the popup's tabs orphans them; this is where they now live. No
- * router library — a discriminated-union view state seeded from `?section=`
- * on the URL (architecture.md > View routing).
+ * a THIN shell only — Week/Manager/Settings section routing. Removing the
+ * popup's tabs orphans them; this is where they now live. No router library
+ * — a discriminated-union view state seeded from `?section=` on the URL
+ * (architecture.md > View routing). The nav, the URL contract, and the
+ * `WeekView`/`ManagerView` MOUNT POINTS are unchanged (D-7.7-22) —
+ * `ManagerView`/`ManagerMatrix` are still untouched.
  *
- * Story 7.7 gives this page its KKP chrome header, the revamped week grid,
- * cell anatomy, totals row, and the gap dialog. Do NOT restyle `WeekView` /
- * `WeeklyGrid` / `ManagerView` / `ManagerMatrix` here.
+ * Story 7.7 gives the Week section its KKP chrome header, the revamped week
+ * grid, cell anatomy, totals row, and the gap dialog — all INSIDE
+ * `WeekView`/`WeeklyGrid` themselves (D-7.7-22's verdict: this shell adds no
+ * chrome of its own above the section content). The one genuinely new piece
+ * of state here is `weekOf`, lifted so the chrome header's prev/next nav has
+ * somewhere to live (D-7.7-25) — `WeekView` still receives it as a prop,
+ * exactly as it always has.
  */
 
 type Section = 'week' | 'manager' | 'settings';
@@ -61,6 +68,18 @@ export function App(): React.ReactElement {
   // (UX-DR18) — reproduces the removed popup tab's exact semantics.
   const [managesReports, setManagesReports] = useState<boolean | null>(null);
   const [approvalCycle, setApprovalCycle] = useState('calendar-month');
+  // Story 7.7, D-7.7-25: the ONE genuinely new piece of state AC2 needs — the
+  // chrome header's prev/next nav. `useWeekWorklogs` keys on
+  // `['week-worklogs', weekOf]`, so moving weeks is just a new query key; no
+  // cache surgery, and D-7.2-2's ban on
+  // `invalidateQueries(['week-worklogs'])` is not engaged.
+  const [weekOf, setWeekOf] = useState<ISODate>(() => currentWeekMonday());
+  const handlePrevWeek = useCallback(() => {
+    setWeekOf((prev) => format(addWeeks(parseISO(prev), -1), 'yyyy-MM-dd'));
+  }, []);
+  const handleNextWeek = useCallback(() => {
+    setWeekOf((prev) => format(addWeeks(parseISO(prev), 1), 'yyyy-MM-dd'));
+  }, []);
 
   const setSection = useCallback((next: Section): void => {
     setSectionState(next);
@@ -171,7 +190,13 @@ export function App(): React.ReactElement {
             </div>
           ) : (
             <>
-              {section === 'week' && <WeekView weekOf={currentWeekMonday()} />}
+              {section === 'week' && (
+                <WeekView
+                  weekOf={weekOf}
+                  onPrevWeek={handlePrevWeek}
+                  onNextWeek={handleNextWeek}
+                />
+              )}
               {section === 'manager' && managesReports === true && (
                 <ManagerView
                   cycle={getCurrentCycleId(approvalCycle)}

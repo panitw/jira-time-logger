@@ -11,13 +11,15 @@ vi.mock('@/hooks/useWeekWorklogs', () => ({
 
 const weeklyGridProps = vi.fn();
 vi.mock('@/components/week/WeeklyGrid', () => ({
+  // Story 7.7: `WeeklyGrid` no longer owns "Mark week as done" — that CTA
+  // relocated to `WeekChromeHeader` (AC2), rendered by `WeekView` itself and
+  // deliberately left UNMOCKED in this file so at least one test composes
+  // the real `WeekChromeHeader` → `MarkAsDoneButton` → `GapAcknowledgmentDialog`
+  // chain against real `WeekView`-derived data (shared-seam discipline).
   WeeklyGrid: (props: {
-    weekOf?: string;
     onMutated?: () => void;
     ptoSubtaskKey?: string | null;
     targetHours?: number;
-    isMarkedDone?: boolean;
-    onMarkedDone?: () => void;
   }) => {
     weeklyGridProps(props);
     return (
@@ -25,11 +27,6 @@ vi.mock('@/components/week/WeeklyGrid', () => ({
         <button type="button" onClick={() => props.onMutated?.()}>
           trigger-mutated
         </button>
-        {!props.isMarkedDone ? (
-          <button type="button" onClick={() => props.onMarkedDone?.()}>
-            Mark week as done
-          </button>
-        ) : null}
       </div>
     );
   },
@@ -37,9 +34,11 @@ vi.mock('@/components/week/WeeklyGrid', () => ({
 
 const getMarkDoneStateMock = vi.fn(async () => null as unknown);
 const clearWeekMarkedDoneMock = vi.fn(async () => {});
+const setWeekMarkedDoneMock = vi.fn(async (..._args: unknown[]) => {});
 vi.mock('@/lib/storage/view-state', () => ({
   getMarkDoneState: () => getMarkDoneStateMock(),
   clearWeekMarkedDone: () => clearWeekMarkedDoneMock(),
+  setWeekMarkedDone: (...args: unknown[]) => setWeekMarkedDoneMock(...args),
 }));
 
 const sendMessageMock = vi.fn(async (..._args: unknown[]) => {});
@@ -62,14 +61,16 @@ const { hoursToSeconds } = await import('@/lib/hours');
 
 function renderView(weekOf = '2026-06-15') {
   const client = new QueryClient();
+  const onPrevWeek = vi.fn();
+  const onNextWeek = vi.fn();
   const utils = render(
     React.createElement(
       QueryClientProvider,
       { client },
-      React.createElement(WeekView, { weekOf }),
+      React.createElement(WeekView, { weekOf, onPrevWeek, onNextWeek }),
     ),
   );
-  return { ...utils, client };
+  return { ...utils, client, onPrevWeek, onNextWeek };
 }
 
 describe('WeekView', () => {
@@ -79,6 +80,7 @@ describe('WeekView', () => {
     getMarkDoneStateMock.mockReset();
     getMarkDoneStateMock.mockResolvedValue(null);
     clearWeekMarkedDoneMock.mockClear();
+    setWeekMarkedDoneMock.mockClear();
     sendMessageMock.mockClear();
   });
 
@@ -269,7 +271,12 @@ describe('WeekView', () => {
       expect(screen.getByRole('button', { name: 'Mark week as done' })).toBeTruthy();
     });
 
-    it('onMarkedDone flips into the marked-done state (chip appears, button hides)', async () => {
+    // dataLoaded()'s fixture logs 8h on Monday only — Tue–Fri are genuine
+    // gaps, so a real click opens the REAL gap dialog (composed via the
+    // UNMOCKED `WeekChromeHeader` → `MarkAsDoneButton` →
+    // `GapAcknowledgmentDialog` chain). Proves the whole chain end-to-end,
+    // not just WeekView's own `isMarkedDone` state wiring.
+    it('marking done through the real gap dialog flips into the marked-done state (chip appears, button hides)', async () => {
       dataLoaded();
       getMarkDoneStateMock.mockResolvedValue(null);
       renderView('2026-06-15');
@@ -277,20 +284,61 @@ describe('WeekView', () => {
       const markBtn = await screen.findByRole('button', {
         name: 'Mark week as done',
       });
-      fireEvent.click(markBtn); // mock WeeklyGrid calls onMarkedDone
+      fireEvent.click(markBtn);
+      expect(await screen.findByRole('dialog')).toBeTruthy();
+      fireEvent.click(
+        screen.getByRole('checkbox', {
+          name: "These hours are correct. I'm not missing time.",
+        }),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Close the week' }));
+      await waitFor(() =>
+        expect(setWeekMarkedDoneMock).toHaveBeenCalledWith('2026-06-15'),
+      );
       await waitFor(() => expect(screen.getByText('Week done')).toBeTruthy());
       expect(screen.queryByRole('button', { name: 'Mark week as done' })).toBeNull();
     });
 
-    it('threads weekOf + onMarkedDone to WeeklyGrid', async () => {
+    it('a no-gap week marks done immediately with no dialog (real composition, zero gaps)', async () => {
+      // Overrides dataLoaded() with a full Mon–Fri week — no gaps.
+      useWeekWorklogsMock.mockReturnValue({
+        isPending: false,
+        isError: false,
+        data: [
+          {
+            key: 'PROJ-1',
+            summary: 'A',
+            worklogs: [
+              { id: 'w1', timeSpentSeconds: hoursToSeconds(8), started: '2026-06-15T09:00:00.000+0000' },
+              { id: 'w2', timeSpentSeconds: hoursToSeconds(8), started: '2026-06-16T09:00:00.000+0000' },
+              { id: 'w3', timeSpentSeconds: hoursToSeconds(8), started: '2026-06-17T09:00:00.000+0000' },
+              { id: 'w4', timeSpentSeconds: hoursToSeconds(8), started: '2026-06-18T09:00:00.000+0000' },
+              { id: 'w5', timeSpentSeconds: hoursToSeconds(8), started: '2026-06-19T09:00:00.000+0000' },
+            ],
+          },
+        ],
+      });
+      getMarkDoneStateMock.mockResolvedValue(null);
+      renderView('2026-06-15');
+      await screen.findByTestId('weekly-grid');
+      fireEvent.click(await screen.findByRole('button', { name: 'Mark week as done' }));
+      expect(screen.queryByRole('dialog')).toBeNull();
+      await waitFor(() => expect(setWeekMarkedDoneMock).toHaveBeenCalledWith('2026-06-15'));
+      await waitFor(() => expect(screen.getByText('Week done')).toBeTruthy());
+    });
+
+    it('threads ptoSubtaskKey + targetHours to WeeklyGrid (WeeklyGrid no longer receives weekOf/isMarkedDone)', async () => {
       dataLoaded();
       renderView('2026-06-15');
       await screen.findByTestId('weekly-grid');
       await waitFor(() => {
         expect(weeklyGridProps).toHaveBeenCalledWith(
-          expect.objectContaining({ weekOf: '2026-06-15' }),
+          expect.objectContaining({ targetHours: 8 }),
         );
       });
+      const lastCall = weeklyGridProps.mock.calls.at(-1)?.[0];
+      expect(lastCall).not.toHaveProperty('weekOf');
+      expect(lastCall).not.toHaveProperty('isMarkedDone');
     });
   });
 });

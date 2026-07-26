@@ -344,6 +344,91 @@ describe('dayStatusNote — D-7.6-47 #2 / Finding 6: time off is weekend-aware a
   });
 });
 
+// Finisher fix, D-7.7-20 / Finding 4: the reviewer probed 7.5h of time off
+// against an 8h target and got "Half-day time off · 0.5h short" — false,
+// since 7.5h is not a half day. The RULE stays uniform (any day below
+// target is a gap, time off included); only the NOTE's wording was wrong.
+// RED-proved by reverting the `isActualHalf` arm: all four cases below
+// still pass with the day-status-for-the-day DERIVATION unchanged (the gap
+// itself was already closed by D-7.7-19), but the near-full case's note
+// reverts to the false "Half-day time off · 0.5h short".
+describe('dayStatusNote — D-7.7-20 / Finding 4: "half-day" is reserved for an ACTUAL half booking', () => {
+  it('a full day at target is not a gap and reads "Full-day time off"', () => {
+    const note = dayStatusNote({
+      status: 'time-off',
+      loggedSeconds: TARGET,
+      timeOffSeconds: TARGET, // 8h off, 8h target — exactly full
+      targetSeconds: TARGET,
+      iso: '2026-06-15',
+      today: '2026-06-17',
+    });
+    expect(note).toBe('Full-day time off');
+  });
+
+  it('a near-full booking under target (7.5h of an 8h target) never claims "half-day" — states the real hours + shortfall', () => {
+    const note = dayStatusNote({
+      status: 'time-off',
+      loggedSeconds: 7.5 * 3600,
+      timeOffSeconds: 7.5 * 3600,
+      targetSeconds: TARGET,
+      iso: '2026-06-15',
+      today: '2026-06-17',
+    });
+    expect(note).toBe('Time off · 7.5h · 0.5h short');
+    expect(note).not.toContain('Half-day');
+  });
+
+  it('another near-full case (0.9x target) also avoids the false "half-day" label', () => {
+    const note = dayStatusNote({
+      status: 'time-off',
+      loggedSeconds: TARGET * 0.9,
+      timeOffSeconds: TARGET * 0.9,
+      targetSeconds: TARGET,
+      iso: '2026-06-15',
+      today: '2026-06-17',
+    });
+    expect(note).not.toContain('Half-day');
+    expect(note).toContain('7.2h');
+  });
+
+  it('a booking just above half (0.6x target) also avoids the false "half-day" label', () => {
+    const note = dayStatusNote({
+      status: 'time-off',
+      loggedSeconds: TARGET * 0.6,
+      timeOffSeconds: TARGET * 0.6,
+      targetSeconds: TARGET,
+      iso: '2026-06-15',
+      today: '2026-06-17',
+    });
+    expect(note).not.toContain('Half-day');
+    expect(note).toContain('4.8h');
+  });
+
+  it('an ACTUAL half booking (exactly target/2, the logHalfDayPto shape) still reads "Half-day time off"', () => {
+    const note = dayStatusNote({
+      status: 'time-off',
+      loggedSeconds: TARGET / 2,
+      timeOffSeconds: TARGET / 2, // exactly 4h of an 8h target
+      targetSeconds: TARGET,
+      iso: '2026-06-15',
+      today: '2026-06-17',
+    });
+    expect(note).toBe('Half-day time off · 4h short');
+  });
+
+  it('a normal short workday (no time off at all) is unaffected — still the plain shortfall', () => {
+    const note = dayStatusNote({
+      status: 'partial',
+      loggedSeconds: 3 * 3600,
+      timeOffSeconds: 0,
+      targetSeconds: TARGET,
+      iso: '2026-06-15',
+      today: '2026-06-17',
+    });
+    expect(note).toBe('5h short');
+  });
+});
+
 describe('dayStatusNote — Finding 10: "met" states the actual hours logged, verbatim per D-7.6-12', () => {
   it('"Target met — Xh logged", using the day\'s actual logged seconds', () => {
     const note = dayStatusNote({

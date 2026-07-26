@@ -1,11 +1,12 @@
 import { useMutation } from '@tanstack/react-query';
 import { Clock } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { STATUS_TINT_CLASS } from '@/components/shared/DayStatusIndicator';
+import { STATUS_TINT_CLASS, TIME_OFF_TEXT_CLASS } from '@/components/shared/DayStatusIndicator';
 import { isWeekend } from '@/lib/day-status';
 import {
   parseHours,
   hoursToSeconds,
+  hoursPhrase,
   secondsToCellDisplay,
   secondsToHours,
   MAX_HOURS_PER_ENTRY,
@@ -71,7 +72,28 @@ export type DayCellProps = {
    * column. Registers on mount, unregisters on unmount. No-op for multi cells.
    */
   registerOpenEditor?: (open: (() => void) | null) => void;
+  /**
+   * Story 7.7, D-7.7-33: exposes this cell's "focus me" action (the
+   * display-mode button) so `WeeklyGrid` can move focus here from a `⏎` in
+   * the SAME day's cell in the previous row. Registered/unregistered
+   * exactly like `registerOpenEditor` — present only in display mode
+   * (unregistered while editing or for a multi-worklog read-only cell).
+   */
+  registerFocusable?: (focus: (() => void) | null) => void;
+  /**
+   * Story 7.7, AC5/D-7.7-33: fired after `⏎` commits, so the OWNER
+   * (`WeeklyGrid`, which knows the row order) can move focus to the same
+   * day's cell in the next row. `DayCell` itself has no visibility into its
+   * siblings.
+   */
+  onCommitAdvance?: () => void;
 };
+
+/** Empty-cell glyph inside the 34px anatomy box (AC4/D-7.7-26) — a
+ * `faint-decorative` middot, distinct from `secondsToCellDisplay`'s
+ * em-dash-pair convention used elsewhere (totals/multi-cell display). Scoped
+ * to THIS one box, not a change to the shared conversion utility. */
+const EMPTY_CELL_GLYPH = '·';
 
 export function DayCell({
   rowKey,
@@ -82,6 +104,8 @@ export function DayCell({
   status,
   onMutated,
   registerOpenEditor,
+  registerFocusable,
+  onCommitAdvance,
 }: DayCellProps): React.ReactElement {
   const editability = cellEditability(cell);
   const isMulti = editability === 'multi';
@@ -290,12 +314,20 @@ export function DayCell({
         // Enter on an unparseable/over-limit value is a no-op (stay editing).
         if (validation.kind === 'unparseable' || validation.kind === 'over-limit') return;
         commit();
+        // AC5/D-7.7-33: `⏎` saves AND moves focus to the next row — the
+        // NEW delta over the pre-7.7 behaviour (which only saved). `Tab` is
+        // deliberately left un-intercepted below (no `else if` branch, no
+        // `preventDefault`) so the browser's native tab order — which
+        // already lands on the next day's cell inside this table row —
+        // keeps working; the existing `onBlur` → `commit()` path handles
+        // the save for that case.
+        onCommitAdvance?.();
       } else if (e.key === 'Escape') {
         e.preventDefault();
         cancelEdit();
       }
     },
-    [hoursInput, commit, cancelEdit],
+    [hoursInput, commit, cancelEdit, onCommitAdvance],
   );
 
   // Tailwind tint per day status, carried through to body cells (AC #9;
@@ -370,16 +402,63 @@ export function DayCell({
   }
 
   // ---- Display mode (empty or single → editable) ----
+  // AC4 cell anatomy, cross-checked value-by-value against the design
+  // source (D-7.7-26/D-7.7-15): a 34px `rounded-md` box, white fill + the
+  // `cell-border` token when the cell holds a value, transparent fill/border
+  // with a `faint-decorative` middot when empty, a primary border + the
+  // EXISTING `ring-focus` utility (never static — D-7.3-15) when focused,
+  // and — for a time-off day — its OWN fill/text/border triple (D-7.7-15),
+  // no icon (D-7.7-17: the filled Diamond belongs to the totals row, not
+  // this cell).
+  const hasValue = cell.seconds > 0;
+  const isTimeOff = status === 'time-off';
+  // D-7.7-26/D-7.7-15: a WEEKEND cell holding a value dims its text to
+  // `text-muted` (#6B6678) rather than the ordinary `text-foreground`
+  // (#1E1B2E) — part of AC3's "one recessive object" (the column already
+  // reads as recessive via `bg-weekend`; the text follows suit). The EMPTY
+  // middot deliberately does NOT also dim (flagged decision, kept as
+  // `faint-decorative`) — the column tint alone already carries the
+  // recession for an empty cell, and a fourth colour value for one pixel of
+  // difference was judged not worth it.
+  const weekend = isWeekend(dayISO);
+  // Finding 11: the hover class now lives per-branch, token-based, so a
+  // time-off cell's hover doesn't blow away its `bg-time-off-fill` purple
+  // wash with a raw, non-semantic `bg-neutral-100` grey — `hover:bg-primary-
+  // soft` reinforces the SAME time-off tint family (`TIME_OFF_TEXT_CLASS`'s
+  // own colour, `--color-primary`), while an ordinary/empty cell gets the
+  // existing border-faint wash.
+  const boxColorClass = isTimeOff
+    ? `border-time-off-border bg-time-off-fill hover:bg-primary-soft ${TIME_OFF_TEXT_CLASS}`
+    : hasValue
+      ? `border-cell-border bg-surface hover:bg-border-faint ${weekend ? 'text-muted' : 'text-foreground'}`
+      : 'border-transparent bg-transparent hover:bg-border-faint text-faint-decorative';
+  // Finding 12: `text-right` dropped — it was inert under `justify-center`
+  // (which the design's own `justify-content:center`, `:391`, confirms is
+  // the intended alignment), a dead class left over from an earlier button.
+  const boxClass = `flex h-[34px] w-full items-center justify-center rounded-md border tabular focus-visible:outline-none focus-visible:border-primary focus-visible:ring-focus ${boxColorClass}`;
+
   return (
-    <td className={tdClass}>
+    <td
+      className={tdClass}
+      // D-7.7-24: the value-bearing cell's accessible name — spoken hours,
+      // not the visible "4.0" (most screen readers read "4.0" as "four
+      // point zero"). Empty cells carry no such label; the button's own
+      // `editAria` ("Hours for …") still serves them.
+      {...(hasValue
+        ? { 'aria-label': `${dayName}, ${rowKey}, ${hoursPhrase(cell.seconds)}` }
+        : {})}
+    >
       <button
+        ref={(el) => {
+          registerFocusable?.(el ? () => el.focus() : null);
+        }}
         type="button"
         onClick={startEdit}
         aria-label={editAria}
         disabled={isPending}
-        className="w-full rounded px-1 text-right text-neutral-700 hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className={boxClass}
       >
-        {secondsToCellDisplay(cell.seconds)}
+        {hasValue ? secondsToCellDisplay(cell.seconds) : EMPTY_CELL_GLYPH}
       </button>
       {chip?.kind === 'pending' && (
         <span

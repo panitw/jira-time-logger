@@ -84,10 +84,15 @@ describe('DayCell', () => {
     deleteWorklogMock.mockResolvedValue({ kind: 'ok', value: undefined });
   });
 
-  it('renders an empty cell as em-dash with an edit button', () => {
+  // Story 7.7, AC4/D-7.7-26: the 34px anatomy box shows a `faint-decorative`
+  // middot for an empty cell, not the em-dash pair `secondsToCellDisplay`
+  // uses elsewhere (totals/multi-cell) — a deliberate, scoped divergence.
+  it('renders an empty cell as a faint middot with an edit button', () => {
     renderCell(emptyCell());
     const btn = screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid');
-    expect(btn.textContent).toBe('——');
+    expect(btn.textContent).toBe('·');
+    expect(btn.className).toContain('text-faint-decorative');
+    expect(btn.className).toContain('border-transparent');
   });
 
   it('POSTs a new worklog when an empty cell is filled + Enter', async () => {
@@ -246,5 +251,267 @@ describe('DayCell', () => {
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(deleteWorklogMock).not.toHaveBeenCalled();
     expect(postWorklogMock).not.toHaveBeenCalled();
+  });
+
+  // --- Story 7.7, AC4: cell anatomy ---------------------------------------
+
+  describe('cell anatomy (AC4/D-7.7-26)', () => {
+    it('a value-bearing cell is a white box with the cell-border token', () => {
+      renderCell(singleCell(hoursToSeconds(4)));
+      const btn = screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid');
+      expect(btn.className).toContain('h-[34px]');
+      expect(btn.className).toContain('rounded-md');
+      expect(btn.className).toContain('border-cell-border');
+      expect(btn.className).toContain('bg-surface');
+    });
+
+    it('the focused (focus-visible) cell takes a primary border plus ring-focus, never static', () => {
+      renderCell(singleCell(hoursToSeconds(4)));
+      const btn = screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid');
+      const classTokens = btn.className.split(/\s+/);
+      // D-7.3-15: applied via focus-visible:, never unconditionally present
+      // (no bare "border-primary"/"ring-focus" token, only the prefixed one).
+      expect(classTokens).toContain('focus-visible:border-primary');
+      expect(classTokens).toContain('focus-visible:ring-focus');
+      expect(classTokens).not.toContain('border-primary');
+      expect(classTokens).not.toContain('ring-focus');
+    });
+
+    it('a weekend cell holding a value dims its text to text-muted (D-7.7-26/15, "one recessive object")', () => {
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={client}>
+          <table>
+            <tbody>
+              <tr>
+                <DayCell
+                  rowKey="PROJ-1"
+                  rowSummary="Build the grid"
+                  dayIndex={5}
+                  dayName="Saturday"
+                  dayISO="2026-06-20"
+                  cell={singleCell(hoursToSeconds(2))}
+                  status={null}
+                  onMutated={vi.fn()}
+                />
+              </tr>
+            </tbody>
+          </table>
+        </QueryClientProvider>,
+      );
+      const btn = screen.getByLabelText('Hours for Saturday, PROJ-1 Build the grid');
+      expect(btn.className).toContain('text-muted');
+      expect(btn.className).not.toContain('text-foreground');
+    });
+
+    it('a weekend cell with NO value keeps the ordinary faint-decorative middot (flagged decision, kept simple)', () => {
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={client}>
+          <table>
+            <tbody>
+              <tr>
+                <DayCell
+                  rowKey="PROJ-1"
+                  rowSummary="Build the grid"
+                  dayIndex={5}
+                  dayName="Saturday"
+                  dayISO="2026-06-20"
+                  cell={emptyCell()}
+                  status={null}
+                  onMutated={vi.fn()}
+                />
+              </tr>
+            </tbody>
+          </table>
+        </QueryClientProvider>,
+      );
+      const btn = screen.getByLabelText('Hours for Saturday, PROJ-1 Build the grid');
+      expect(btn.textContent).toBe('·');
+      expect(btn.className).toContain('text-faint-decorative');
+    });
+
+    it('a time-off cell fills with its own token trio — no icon (D-7.7-17)', () => {
+      renderCell(singleCell(hoursToSeconds(8)), vi.fn(), 'time-off');
+      const btn = screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid');
+      expect(btn.className).toContain('bg-time-off-fill');
+      expect(btn.className).toContain('text-legacy-purple');
+      expect(btn.className).toContain('border-time-off-border');
+      expect(btn.querySelector('svg')).toBeNull();
+    });
+
+    it("the value-bearing cell's <td> carries the spoken-hours accessible name (D-7.7-24)", () => {
+      renderCell(singleCell(hoursToSeconds(4)));
+      const td = screen
+        .getByLabelText('Hours for Monday, PROJ-1 Build the grid')
+        .closest('td')!;
+      expect(td.getAttribute('aria-label')).toBe('Monday, PROJ-1, 4 hours');
+    });
+
+    it('an empty cell\'s <td> carries no spoken-hours label (only the button label serves it)', () => {
+      renderCell(emptyCell());
+      const td = screen
+        .getByLabelText('Hours for Monday, PROJ-1 Build the grid')
+        .closest('td')!;
+      expect(td.getAttribute('aria-label')).toBeNull();
+    });
+  });
+
+  // --- Story 7.7, AC5: in-place editing — Tab / Enter ---------------------
+
+  describe('in-place editing: Tab and Enter (AC5/D-7.7-33)', () => {
+    it('Tab is never intercepted — no preventDefault, so native tab order (and the existing blur-commit) keeps working', () => {
+      renderCell(singleCell(hoursToSeconds(4)));
+      fireEvent.click(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'));
+      const input = screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid');
+      const preventDefault = vi.fn();
+      fireEvent.keyDown(input, { key: 'Tab', preventDefault });
+      expect(preventDefault).not.toHaveBeenCalled();
+    });
+
+    it('Enter commits AND fires onCommitAdvance (the new 7.7 delta)', async () => {
+      const onCommitAdvance = vi.fn();
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={client}>
+          <table>
+            <tbody>
+              <tr>
+                <DayCell
+                  rowKey="PROJ-1"
+                  rowSummary="Build the grid"
+                  dayIndex={0}
+                  dayName="Monday"
+                  dayISO="2026-06-15"
+                  cell={emptyCell()}
+                  status={null}
+                  onMutated={vi.fn()}
+                  onCommitAdvance={onCommitAdvance}
+                />
+              </tr>
+            </tbody>
+          </table>
+        </QueryClientProvider>,
+      );
+      fireEvent.click(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'));
+      const input = screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid');
+      fireEvent.change(input, { target: { value: '2' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+      expect(onCommitAdvance).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(postWorklogMock).toHaveBeenCalled());
+    });
+
+    it('Enter does NOT advance when the value is invalid (stays editing, no commit)', () => {
+      const onCommitAdvance = vi.fn();
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={client}>
+          <table>
+            <tbody>
+              <tr>
+                <DayCell
+                  rowKey="PROJ-1"
+                  rowSummary="Build the grid"
+                  dayIndex={0}
+                  dayName="Monday"
+                  dayISO="2026-06-15"
+                  cell={emptyCell()}
+                  status={null}
+                  onMutated={vi.fn()}
+                  onCommitAdvance={onCommitAdvance}
+                />
+              </tr>
+            </tbody>
+          </table>
+        </QueryClientProvider>,
+      );
+      fireEvent.click(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'));
+      const input = screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid');
+      fireEvent.change(input, { target: { value: 'abc' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+      expect(onCommitAdvance).not.toHaveBeenCalled();
+      expect(postWorklogMock).not.toHaveBeenCalled();
+    });
+  });
+
+  // --- Story 7.7, D-7.7-33: registerFocusable ------------------------------
+
+  describe('registerFocusable (D-7.7-33)', () => {
+    it('registers a focus function in display mode and unregisters while editing', () => {
+      const registerFocusable = vi.fn();
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={client}>
+          <table>
+            <tbody>
+              <tr>
+                <DayCell
+                  rowKey="PROJ-1"
+                  rowSummary="Build the grid"
+                  dayIndex={0}
+                  dayName="Monday"
+                  dayISO="2026-06-15"
+                  cell={emptyCell()}
+                  status={null}
+                  onMutated={vi.fn()}
+                  registerFocusable={registerFocusable}
+                />
+              </tr>
+            </tbody>
+          </table>
+        </QueryClientProvider>,
+      );
+      // Registered with a real focus function while displaying.
+      expect(registerFocusable).toHaveBeenCalledWith(expect.any(Function));
+      registerFocusable.mockClear();
+
+      fireEvent.click(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'));
+      // Unregistered (null) once the button unmounts for the editor.
+      expect(registerFocusable).toHaveBeenCalledWith(null);
+    });
+
+    it('the registered focus function actually focuses the display button', () => {
+      const captured: { fn: (() => void) | null } = { fn: null };
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={client}>
+          <table>
+            <tbody>
+              <tr>
+                <DayCell
+                  rowKey="PROJ-1"
+                  rowSummary="Build the grid"
+                  dayIndex={0}
+                  dayName="Monday"
+                  dayISO="2026-06-15"
+                  cell={emptyCell()}
+                  status={null}
+                  onMutated={vi.fn()}
+                  registerFocusable={(fn) => {
+                    captured.fn = fn;
+                  }}
+                />
+              </tr>
+            </tbody>
+          </table>
+        </QueryClientProvider>,
+      );
+      captured.fn?.();
+      expect(document.activeElement).toBe(
+        screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'),
+      );
+    });
   });
 });

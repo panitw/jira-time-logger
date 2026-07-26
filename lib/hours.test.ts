@@ -6,6 +6,7 @@ import {
   secondsToHoursDisplay,
   secondsToFixedHoursDisplay,
   secondsToCellDisplay,
+  hoursPhrase,
   MAX_HOURS_PER_ENTRY,
 } from './hours';
 
@@ -175,5 +176,34 @@ describe('secondsToCellDisplay', () => {
 describe('MAX_HOURS_PER_ENTRY', () => {
   it('is 24', () => {
     expect(MAX_HOURS_PER_ENTRY).toBe(24);
+  });
+});
+
+// Story 7.7, D-7.7-24: the spoken-quantity phrase for a body cell's
+// accessible name — "Wednesday, MBS-135, 4 hours", not "4.0".
+describe('hoursPhrase', () => {
+  it('pluralizes a whole number of hours (4 hours)', () => {
+    expect(hoursPhrase(hoursToSeconds(4))).toBe('4 hours');
+  });
+
+  it('singularizes exactly one hour (1 hour)', () => {
+    expect(hoursPhrase(hoursToSeconds(1))).toBe('1 hour');
+  });
+
+  it('keeps a fractional hour value (4.5 hours)', () => {
+    expect(hoursPhrase(hoursToSeconds(4.5))).toBe('4.5 hours');
+  });
+
+  it('spells sub-hour amounts as minutes, not a fraction (30 minutes)', () => {
+    expect(hoursPhrase(hoursToSeconds(0.5))).toBe('30 minutes');
+  });
+
+  it('singularizes exactly one minute (1 minute)', () => {
+    expect(hoursPhrase(60)).toBe('1 minute');
+  });
+
+  it('returns "0 hours" for a zero/empty duration', () => {
+    expect(hoursPhrase(0)).toBe('0 hours');
+    expect(hoursPhrase(-100)).toBe('0 hours');
   });
 });

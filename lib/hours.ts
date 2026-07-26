@@ -107,3 +107,24 @@ export function secondsToCellDisplay(seconds: number): string {
   if (seconds <= 0) return '\u2014\u2014';
   return secondsToHours(seconds).toFixed(1);
 }
+
+/**
+ * Spoken-quantity phrase for a screen-reader accessible name (Story 7.7,
+ * D-7.7-24): `4 hours`, `1 hour`, `4.5 hours`, `30 minutes`. Distinct from
+ * `secondsToCellDisplay` \u2014 that is the VISIBLE `4.0`, which most screen
+ * readers read as "four point zero"; this is the WORDS the AC's literal
+ * example ("Wednesday, MBS-135, 4 hours") requires. Sub-hour amounts spell
+ * out minutes rather than a fraction of an hour ("30 minutes", not "0.5
+ * hours") \u2014 the more natural spoken quantity for a booking that small.
+ */
+export function hoursPhrase(seconds: number): string {
+  if (seconds <= 0) return '0 hours';
+  const hours = secondsToHours(seconds);
+  if (hours < 1) {
+    const minutes = Math.round(seconds / SECONDS_PER_MINUTE);
+    return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+  }
+  const rounded = Math.round(hours * 10) / 10;
+  const label = rounded.toFixed(1).replace(/\.0$/, '');
+  return `${label} hour${rounded === 1 ? '' : 's'}`;
+}

@@ -142,6 +142,27 @@
   --color-error-border: #f3c9c9;
   --color-error-ink: #991b1b;
 
+  /* ---------------------------------------------------------------------
+   * Story 7.7 additions (D-7.7-15/16) — values the vendored design source
+   * specifies for the week grid but the token layer was missing. Same class
+   * of fix as D-7.2-3's spacing scale / D-7.6-39's chrome token: a MISSING
+   * token, not a new colour. Deliberately NOT collapsed onto a near
+   * neighbour (D-7.3-14) because the design draws these as distinct
+   * surfaces from their nearest lookalikes — see D-7.7-15 for the full
+   * reasoning.
+   * ------------------------------------------------------------------- */
+  /* Ordinary cell border AND the totals progress-bar track (double duty,
+   * confirmed at imports/jira-time-logger.dc.html:794 and :406). NOT the
+   * same as --color-border-faint, which is the column separator rule. */
+  --color-cell-border: #edecf2;
+  --color-time-off-fill: #f6f5fa; /* time-off cell fill */
+  --color-time-off-border: #e2e0ee; /* time-off cell's own border */
+  /* Totals-row progress-bar colour is a SEPARATE axis from status text
+   * colour (D-7.7-16) — only `met`'s bar equals its text colour. These two
+   * are the bar hexes with no existing token match. */
+  --color-time-off-bar: #8b84ae;
+  --color-weekend-bar: #d8d7e1;
+
   /* NOT a day-status colour (D-7.6-40, correcting D-7.6-39's original
    * rationale) — the chrome gradient renders day status in white/opacity
    * ONLY, for every status including "met". This token's real consumer is

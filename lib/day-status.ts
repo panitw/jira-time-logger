@@ -161,6 +161,19 @@ function shortfallLabel(seconds: number): string {
  * honest "some hours off" phrasing that claims no fraction, and — like
  * `partial` — never asserts a shortfall for a day that has not happened or
  * has no target to be short against.
+ *
+ * Finisher fix, D-7.7-20 (Finding 4): the rule stays uniform — ANY day below
+ * target is a gap, time off included, no exemption, no tolerance threshold.
+ * What was wrong was the NOTE, not the rule: 7.5h of time off against an 8h
+ * target used to fall into the same bucket as a genuine 4h "half day"
+ * (`timeOffSeconds >= targetSeconds / 2`) and print "Half-day time off",
+ * which is false — the user took the whole day, just booked (or was
+ * configured with) a slightly different number of hours than the target.
+ * "Half-day time off" is now reserved for an ACTUAL half booking — the
+ * value `logHalfDayPto` posts (`targetHours / 2`, D-7.6-9/38) — and every
+ * other under-target time-off amount states the real hours booked plus the
+ * shortfall, exactly like a normal short workday, never claiming a fraction
+ * it isn't.
  */
 export function dayStatusNote(input: {
   status: DayStatus;
@@ -195,6 +208,19 @@ export function dayStatusNote(input: {
       // fraction" phrasing as the weekend/no-target case above, rather than
       // "Half-day time off" printing for any sub-target amount at all.
       if (timeOffSeconds < targetSeconds / 2) {
+        return `Time off · ${timeOffHours}h`;
+      }
+      // D-7.7-20 (Finding 4)'s fourth arm: "half-day" is reserved for an
+      // ACTUAL half booking (`logHalfDayPto`'s `targetHours / 2`, rounded to
+      // the nearest second the same way it was posted) — anything strictly
+      // between half and full is a near-full booking that landed short (the
+      // 7.5h-vs-8h-target case the reviewer found), and claiming "half" for
+      // it is the exact defect being fixed. State the real hours instead.
+      const isActualHalf = timeOffSeconds === Math.round(targetSeconds / 2);
+      if (!isActualHalf) {
+        if (!future && loggedSeconds < targetSeconds) {
+          return `Time off · ${timeOffHours}h · ${shortfallLabel(targetSeconds - loggedSeconds)}`;
+        }
         return `Time off · ${timeOffHours}h`;
       }
       const base = 'Half-day time off';

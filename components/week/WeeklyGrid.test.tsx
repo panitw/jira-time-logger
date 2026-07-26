@@ -45,13 +45,6 @@ vi.mock('@/lib/log', () => ({
   log: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
 }));
 
-// Story 4.5: the wired-up MarkAsDoneButton writes via view-state. Stub the
-// local-only flag write so these grid tests stay isolated from storage.
-const setWeekMarkedDoneMock = vi.fn(async (..._args: unknown[]) => {});
-vi.mock('@/lib/storage/view-state', () => ({
-  setWeekMarkedDone: (...args: unknown[]) => setWeekMarkedDoneMock(...args),
-}));
-
 const { WeeklyGrid } = await import('./WeeklyGrid');
 
 const DAYS: WeekGrid['days'] = [
@@ -209,23 +202,18 @@ describe('WeeklyGrid', () => {
     expect(screen.queryByText(/Build the grid/)).toBeNull();
   });
 
-  it('shows the add-subtask affordance and the mark-week-done CTA', () => {
+  it('shows the add-subtask affordance', () => {
     renderGrid(<WeeklyGrid grid={emptyGrid()} />);
     expect(screen.getByText(/Add a subtask to this week/)).toBeTruthy();
-    const markDone = screen.getByRole('button', { name: /Mark week as done/i });
-    expect(markDone).toBeTruthy();
   });
 
-  it('the mark-week-done CTA is enabled (Story 4.5 wired up; gap-check on click)', () => {
+  // Story 7.7: the "Mark week as done" CTA (Story 4.5) moved to
+  // `WeekChromeHeader` (AC2) — the grid itself must never render it, so the
+  // product never ships two (Dev Notes "Files" section). Real coverage for
+  // the CTA + gap dialog now lives in `WeekChromeHeader.test.tsx` and
+  // `MarkAsDoneButton.test.tsx`.
+  it('never renders a "Mark week as done" button — relocated to WeekChromeHeader (D-7.7 Files)', () => {
     renderGrid(<WeeklyGrid grid={emptyGrid()} />);
-    const markDone = screen.getByRole('button', {
-      name: /Mark week as done/i,
-    }) as HTMLButtonElement;
-    expect(markDone.disabled).toBe(false);
-  });
-
-  it('hides the mark-week-done CTA when the week is already marked done', () => {
-    renderGrid(<WeeklyGrid grid={emptyGrid()} weekOf="2026-06-15" isMarkedDone />);
     expect(
       screen.queryByRole('button', { name: /Mark week as done/i }),
     ).toBeNull();
@@ -406,6 +394,179 @@ describe('WeeklyGrid', () => {
     });
     await waitFor(() => expect(onMutated).toHaveBeenCalled());
     expect(sendMessageMock).toHaveBeenCalledWith('badge-update', { hoursMissing: 0 });
+  });
+
+  // --- Story 7.7, AC3: column geometry (D-7.7-23) ---------------------------
+
+  describe('column geometry (AC3/D-7.7-23)', () => {
+    it('is table-fixed with a colgroup: a flexing subtask column + seven 104px day columns', () => {
+      const { container } = renderGrid(<WeeklyGrid grid={gridWithOneRow()} />);
+      const table = container.querySelector('table')!;
+      expect(table.className).toContain('table-fixed');
+      const cols = container.querySelectorAll('colgroup col');
+      expect(cols).toHaveLength(2);
+      expect(cols[1]?.getAttribute('span')).toBe('7');
+      expect(cols[1]?.className).toContain('w-[104px]');
+    });
+  });
+
+  // Finisher fix, D-7.7-21a (Finding 7): the totals row moves from
+  // `<thead>` to `<tfoot>` — matching the design (totals render LAST, with
+  // a top border) and correct table semantics (`<td>` data cells belong in
+  // a body/footer section, not a header one).
+  describe('totals row placement (D-7.7-21a/Finding 7)', () => {
+    it('the totals row lives in <tfoot>, not <thead>', () => {
+      const { container } = renderGrid(<WeeklyGrid grid={gridWithOneRow()} />);
+      const tfoot = container.querySelector('tfoot');
+      expect(tfoot).toBeTruthy();
+      expect(tfoot?.querySelector('tr')?.getAttribute('aria-label')).toBe('Daily totals');
+      const thead = container.querySelector('thead');
+      expect(thead?.textContent).not.toContain('Daily totals');
+    });
+  });
+
+  // --- Story 7.7, AC3: weekend tint as ONE recessive object (D-7.7-31) ----
+
+  describe('weekend tint (AC3/D-7.7-31)', () => {
+    // DAYS fixture: index 5 = 2026-06-20 (Saturday), index 6 = 2026-06-21 (Sunday).
+    it('tints the Saturday header, body cell, AND totals cell — all three levels', () => {
+      const statuses: (DayStatus | null)[] = [null, null, null, null, null, 'weekend', null];
+      renderGrid(<WeeklyGrid grid={gridWithOneRow()} dayStatuses={statuses} today="2026-06-20" />);
+      const colHeaders = screen.getAllByRole('columnheader');
+      // Index 0 is the "Subtask" header; day headers follow Mon..Sun.
+      const satHeader = colHeaders[6]!; // Subtask(0) Mon(1) Tue(2) Wed(3) Thu(4) Fri(5) Sat(6)
+      expect(satHeader.className).toContain('bg-weekend');
+
+      const satCell = screen
+        .getByLabelText('Hours for Saturday, PROJ-1 Build the grid')
+        .closest('td')!;
+      expect(satCell.className).toContain('bg-weekend');
+
+      const totalsRow = screen.getByRole('row', { name: /Daily totals/i });
+      const totalsCells = within(totalsRow).getAllByRole('cell');
+      expect(totalsCells[5]?.className).toContain('bg-weekend'); // Sat totals cell
+    });
+
+    it('does NOT tint a weekday header or totals cell', () => {
+      renderGrid(<WeeklyGrid grid={gridWithOneRow()} />);
+      const colHeaders = screen.getAllByRole('columnheader');
+      const monHeader = colHeaders[1]!;
+      expect(monHeader.className).not.toContain('bg-weekend');
+    });
+
+    it('dims the weekend header text to text-faint via PtoPopover', () => {
+      renderGrid(<WeeklyGrid grid={gridWithOneRow()} />);
+      const satTrigger = screen.getByRole('button', {
+        name: /Time off and worklog actions for Saturday, Jun 20/,
+      });
+      expect(satTrigger.className).toContain('text-faint');
+    });
+  });
+
+  // --- Story 7.7, AC6: totals row shows value/target/bar (variant="stacked") --
+
+  describe('totals row anatomy — variant="stacked" (AC6/D-7.7-29/D-7.7-30)', () => {
+    it('shows value AND the daily target on line one', () => {
+      const statuses: (DayStatus | null)[] = ['partial', null, null, null, null, null, null];
+      renderGrid(
+        <WeeklyGrid grid={gridWithOneRow()} dayStatuses={statuses} targetHours={8} today="2026-06-20" />,
+      );
+      const cell = screen.getByLabelText('Monday, 4.0, 4h short');
+      expect(within(cell).getByText('4.0 / 8h')).toBeTruthy();
+    });
+
+    it("renders the totals-row glyph at 11px (D-7.7-30/17's consumer)", () => {
+      const statuses: (DayStatus | null)[] = ['met', null, null, null, null, null, null];
+      renderGrid(
+        <WeeklyGrid grid={gridWithOneRow()} dayStatuses={statuses} today="2026-06-20" />,
+      );
+      const cell = screen.getByLabelText('Monday, 4.0, Target met — 4h logged');
+      expect(cell.querySelector('svg')?.getAttribute('width')).toBe('11');
+    });
+
+    it('renders a 3px progress bar for the day, coloured by its own bar token (not bg-current)', () => {
+      const statuses: (DayStatus | null)[] = ['partial', null, null, null, null, null, null];
+      renderGrid(
+        <WeeklyGrid grid={gridWithOneRow()} dayStatuses={statuses} today="2026-06-20" />,
+      );
+      const cell = screen.getByLabelText('Monday, 4.0, 4h short');
+      const track = cell.querySelector('.h-\\[3px\\]');
+      expect(track).toBeTruthy();
+      const bar = track?.querySelector('span');
+      expect(bar?.className).toContain('bg-royal-purple');
+      expect(bar?.className).not.toContain('bg-current');
+    });
+  });
+
+  // --- Story 7.7, AC5: Enter advances focus to the next row (D-7.7-33) ----
+
+  describe('in-place editing: Enter advances to the next row (AC5/D-7.7-33)', () => {
+    function twoRowGrid(): WeekGrid {
+      // Both rows' cells start EMPTY (0 seconds, no worklogs) so a commit
+      // always POSTs (via the properly-mocked `postWorklogMock`) rather
+      // than PUTting (`updateWorklog` has no configured resolved value in
+      // this file's mock setup) — keeps the focus-advance assertion free
+      // of an unrelated, un-awaited mutation.
+      const rowA: WeekGridCell[] = Array.from({ length: 7 }, () => singleCell(0, '', ''));
+      const rowB: WeekGridCell[] = Array.from({ length: 7 }, () => singleCell(0, '', ''));
+      return {
+        days: DAYS,
+        rows: [
+          {
+            key: 'AAA-1',
+            summary: 'Row A',
+            category: 'task',
+            cells: rowA,
+            cellsSeconds: rowA.map((c) => c.seconds),
+            rowTotalSeconds: hoursToSeconds(1),
+          },
+          {
+            key: 'BBB-2',
+            summary: 'Row B',
+            category: 'task',
+            cells: rowB,
+            cellsSeconds: rowB.map((c) => c.seconds),
+            rowTotalSeconds: 0,
+          },
+        ],
+        dayTotalsSeconds: rowA.map((c, i) => c.seconds + (rowB[i]?.seconds ?? 0)),
+      };
+    }
+
+    it('⏎ on row A\'s Monday cell commits, then moves focus to row B\'s Monday cell', async () => {
+      renderGrid(<WeeklyGrid grid={twoRowGrid()} />);
+      const cellA = screen.getByLabelText('Hours for Monday, AAA-1 Row A');
+      fireEvent.click(cellA);
+      const input = screen.getByLabelText('Hours for Monday, AAA-1 Row A');
+      fireEvent.change(input, { target: { value: '2' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+
+      await waitFor(() => {
+        expect(document.activeElement).toBe(
+          screen.getByLabelText('Hours for Monday, BBB-2 Row B'),
+        );
+      });
+    });
+
+    it('⏎ on the LAST row commits and stays put — no wrap, no throw', async () => {
+      renderGrid(<WeeklyGrid grid={twoRowGrid()} />);
+      const cellB = screen.getByLabelText('Hours for Monday, BBB-2 Row B');
+      fireEvent.click(cellB);
+      const input = screen.getByLabelText('Hours for Monday, BBB-2 Row B');
+      fireEvent.change(input, { target: { value: '3' } });
+      expect(() => fireEvent.keyDown(input, { key: 'Enter' })).not.toThrow();
+
+      await waitFor(() => {
+        expect(postWorklogMock).toHaveBeenCalledWith('BBB-2', {
+          timeSpentSeconds: hoursToSeconds(3),
+          started: expect.any(String),
+        });
+      });
+      // Focus never wraps back to row A.
+      expect(document.activeElement).not.toBe(
+        screen.getByLabelText('Hours for Monday, AAA-1 Row A'),
+      );
+    });
   });
 
   // --- Story 6.1 AC1: axe a11y scan of the Week grid ----------------------

@@ -214,7 +214,7 @@ export function QuickLogForm({
       onKeyDown={handleKeyDown}
     >
       <div className="flex items-center gap-2">
-        <span className="font-mono text-sm font-medium text-neutral-900 shrink-0">
+        <span className="tabular text-sm font-medium text-neutral-900 shrink-0">
           {ticketKey}
         </span>
         <span className="text-sm text-neutral-700 truncate">{ticketSummary}</span>

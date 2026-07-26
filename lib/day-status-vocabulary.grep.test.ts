@@ -220,7 +220,7 @@ describe('AC3 — no surface hard-codes a day-status colour token (source-level 
   // `ManagerMatrix.tsx`'s own `CellStatus` axis, D-7.6-4 — so a blanket ban
   // on those two would be false at baseline, the same reasoning that scopes
   // `text-amber-ink` below rather than banning it outright.)
-  it('no file other than DayStatusIndicator.tsx / DayCell.tsx / globals.css contains bg-amber-soft or bg-weekend', () => {
+  it('no file other than DayStatusIndicator.tsx / DayCell.tsx / globals.css contains bg-amber-soft', () => {
     const allowlist = new Set([
       INDICATOR_FILE,
       'components/week/DayCell.tsx',
@@ -232,6 +232,30 @@ describe('AC3 — no surface hard-codes a day-status colour token (source-level 
       if (allowlist.has(rel)) continue;
       const source = stripCommentLines(readFileSync(file, 'utf-8'));
       if (source.includes('bg-amber-soft')) violations.push(`${rel}: bg-amber-soft`);
+    }
+    expect(violations).toEqual([]);
+  });
+
+  // Story 7.7, D-7.7-31: the weekend tint is now applied at THREE levels —
+  // `DayCell.tsx`'s body `<td>` (pre-existing), plus `WeeklyGrid.tsx`'s
+  // `<th scope="col">` day header AND its totals `<td>` (new) — "one
+  // recessive object" across the whole column. This is the SAME sanctioned
+  // mechanism (the literal `bg-weekend` class, gated by the SAME exported
+  // `isWeekend(iso)` predicate) reaching a second legitimate call site, not
+  // an undisclosed second implementation — so the allowlist widens rather
+  // than the check being removed.
+  it('no file other than DayStatusIndicator.tsx / DayCell.tsx / WeeklyGrid.tsx / globals.css contains bg-weekend', () => {
+    const allowlist = new Set([
+      INDICATOR_FILE,
+      'components/week/DayCell.tsx',
+      'components/week/WeeklyGrid.tsx',
+      'styles/globals.css',
+    ]);
+    const violations: string[] = [];
+    for (const file of [...ALL_SOURCE_FILES, ...CSS_FILES]) {
+      const rel = relPath(file);
+      if (allowlist.has(rel)) continue;
+      const source = stripCommentLines(readFileSync(file, 'utf-8'));
       if (source.includes('bg-weekend')) violations.push(`${rel}: bg-weekend`);
     }
     expect(violations).toEqual([]);
@@ -279,6 +303,65 @@ describe('AC3 — no surface hard-codes a day-status colour token (source-level 
   // regardless of which file it's hidden in.
   it('text-amber-ink never appears as an object-literal property value (a hidden status-colour map) outside DayStatusIndicator.tsx', () => {
     const mapValuePattern = /[\w'"-]+\s*:\s*(['"`])(?:(?!\1).)*text-amber-ink(?:(?!\1).)*\1/;
+    const violations: string[] = [];
+    for (const file of ALL_SOURCE_FILES) {
+      const rel = relPath(file);
+      if (rel === INDICATOR_FILE) continue;
+      const source = stripCommentLines(readFileSync(file, 'utf-8'));
+      if (mapValuePattern.test(source)) violations.push(rel);
+    }
+    expect(violations).toEqual([]);
+  });
+
+  // Story 7.7, D-7.7-16 / Finding 2: `STATUS_BAR_CLASS` is a SECOND,
+  // independent status->colour axis (the totals-row/chrome-adjacent
+  // progress-bar fill) that shipped with ZERO grep coverage — the review's
+  // mutation table found `bg-time-off-bar`, `bg-weekend-bar`,
+  // `bg-royal-purple` and `bg-status-dirty`, written as literals in
+  // `WeeklyGrid.tsx`, and a hard-coded status->bar-colour object map in
+  // `DayCell.tsx`, all passed undetected. Grep-confirmed (see the finisher's
+  // commit) that all five `StatusKind` bar-colour values are exclusive to
+  // this one file (plus their own tests) — no legitimate non-day-status use
+  // anywhere else — so, exactly like `text-status-clean`/`text-legacy-purple`
+  // above, a strict "nowhere but the indicator" check is safe and catches
+  // BOTH a bare literal and an object-map value in one pass (the check does
+  // not care about surrounding syntax, only presence).
+  it('no file other than DayStatusIndicator.tsx / globals.css contains a STATUS_BAR_CLASS token', () => {
+    const allowlist = new Set([INDICATOR_FILE, 'styles/globals.css']);
+    const BAR_TOKENS = [
+      'bg-status-clean',
+      'bg-royal-purple',
+      'bg-status-dirty',
+      'bg-time-off-bar',
+      'bg-weekend-bar',
+    ];
+    const violations: string[] = [];
+    for (const file of [...ALL_SOURCE_FILES, ...CSS_FILES]) {
+      const rel = relPath(file);
+      if (allowlist.has(rel)) continue;
+      const source = stripCommentLines(readFileSync(file, 'utf-8'));
+      for (const tok of BAR_TOKENS) {
+        if (source.includes(tok)) violations.push(`${rel}: ${tok}`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  // Story 7.7, D-7.7-31 / Finding 3: `bg-weekend` gained a second legitimate
+  // call site (`WeeklyGrid.tsx`, header + totals) via a FILE-level allowlist
+  // widening above, but D-7.6-43's own precedent (the `text-amber-ink` guard
+  // just above) is that a file-level allowlist alone is not enough on a
+  // day-status surface — it needs the narrower, per-OCCURRENCE companion
+  // that still permits the class as a plain `className=` string but never as
+  // an OBJECT-LITERAL PROPERTY VALUE (a hidden status->tint map). Mutation-
+  // proved: `{ weekend: 'bg-weekend', partial: 'bg-weekend' }` dropped into
+  // the newly-allowlisted `WeeklyGrid.tsx` passed undetected before this
+  // test existed; the three legitimate `isWeekend(iso) ? 'bg-weekend' : ''`
+  // ternaries in `WeeklyGrid.tsx`/`DayCell.tsx` do NOT match this pattern
+  // (the class name sits in the ternary's TRUTHY branch, before the colon,
+  // never immediately after one), so this guard adds no false positive.
+  it('bg-weekend never appears as an object-literal property value (a hidden status-tint map) outside DayStatusIndicator.tsx', () => {
+    const mapValuePattern = /[\w'"-]+\s*:\s*(['"`])(?:(?!\1).)*bg-weekend(?:(?!\1).)*\1/;
     const violations: string[] = [];
     for (const file of ALL_SOURCE_FILES) {
       const rel = relPath(file);

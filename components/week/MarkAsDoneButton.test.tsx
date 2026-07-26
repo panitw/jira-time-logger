@@ -109,11 +109,14 @@ describe('MarkAsDoneButton', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(2);
   });
 
-  it('Submit anyway writes the flag + fires badge-update + closes', async () => {
+  it('"Close the week" (after checking the required box) writes the flag + fires badge-update + closes', async () => {
     const { onMarkedDone } = renderButton(gappyGrid());
     fireEvent.click(screen.getByRole('button', { name: 'Mark week as done' }));
     await screen.findByRole('dialog');
-    fireEvent.click(screen.getByRole('button', { name: 'Submit anyway' }));
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: "These hours are correct. I'm not missing time." }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Close the week' }));
     await waitFor(() =>
       expect(setWeekMarkedDoneMock).toHaveBeenCalledWith('2026-06-15'),
     );
@@ -124,13 +127,36 @@ describe('MarkAsDoneButton', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
-  it('Cancel closes the dialog without writing', async () => {
+  it('"Close the week" is disabled until the checkbox is checked — no write on a bare click', async () => {
+    renderButton(gappyGrid());
+    fireEvent.click(screen.getByRole('button', { name: 'Mark week as done' }));
+    await screen.findByRole('dialog');
+    fireEvent.click(screen.getByRole('button', { name: 'Close the week' }));
+    expect(setWeekMarkedDoneMock).not.toHaveBeenCalled();
+  });
+
+  it('"Keep editing" closes the dialog without writing', async () => {
     const { onMarkedDone } = renderButton(gappyGrid());
     fireEvent.click(screen.getByRole('button', { name: 'Mark week as done' }));
     await screen.findByRole('dialog');
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(setWeekMarkedDoneMock).not.toHaveBeenCalled();
     expect(onMarkedDone).not.toHaveBeenCalled();
+  });
+
+  it('renders the white-on-gradient chrome variant when `chrome` is set', () => {
+    render(
+      <MarkAsDoneButton
+        grid={fullGrid()}
+        weekOf="2026-06-15"
+        targetHours={8}
+        chrome
+        onMarkedDone={vi.fn()}
+      />,
+    );
+    const btn = screen.getByRole('button', { name: 'Mark week as done' });
+    expect(btn.className).toContain('bg-surface');
+    expect(btn.className).not.toContain('bg-accent');
   });
 });

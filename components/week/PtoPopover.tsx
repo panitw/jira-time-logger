@@ -46,6 +46,12 @@ type Props = {
   targetHours: number;
   onAddWorklog: () => void;
   onMutated?: () => void;
+  /** Story 7.7, AC3/D-7.7-31: the weekend column tint applies at header,
+   * cell, AND totals level as one recessive object — the header's TEXT
+   * (not just its background) dims to `text-faint` for Sat/Sun
+   * (`imports/jira-time-logger.dc.html:787`). This trigger renders the
+   * header's visible day-name text, so the dimming has to reach in here. */
+  weekend?: boolean;
 };
 
 export function PtoPopover({
@@ -58,6 +64,7 @@ export function PtoPopover({
   targetHours,
   onAddWorklog,
   onMutated,
+  weekend = false,
 }: Props): React.ReactElement {
   const [open, setOpen] = useState(false);
   const [showError, setShowError] = useState(false);
@@ -214,7 +221,7 @@ export function PtoPopover({
         aria-label={STRINGS.triggerAria(dayName, dayLabel)}
         {...(open ? { 'aria-describedby': footerId } : {})}
         onClick={handleTriggerClick}
-        className="inline-flex h-8 min-w-[2rem] items-center justify-end rounded px-1 text-xs font-medium text-neutral-500 hover:text-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className={`inline-flex h-8 min-w-[2rem] items-center justify-end rounded px-1 text-xs font-medium hover:text-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${weekend ? 'text-faint' : 'text-neutral-500'}`}
       >
         {shortLabel}
       </button>

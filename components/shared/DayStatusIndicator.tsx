@@ -56,6 +56,18 @@ const STATUS_COLOR_CLASS: Record<StatusKind, string> = {
 };
 
 /**
+ * Story 7.7, D-7.7-15/17: `DayCell.tsx`'s time-off cell fill needs this SAME
+ * text colour (the cell's purple tint is reinforcement, not the carrier of
+ * meaning — the totals row's Diamond+words already satisfy AC8, D-7.7-17).
+ * Exposed as ONE named value, not the whole map, so the AC3 grep guard
+ * (`lib/day-status-vocabulary.grep.test.ts`) still catches an UNDISCLOSED
+ * re-implementation elsewhere — `DayCell.tsx` reads this constant rather
+ * than writing the literal class string, so the map still has exactly one
+ * owner.
+ */
+export const TIME_OFF_TEXT_CLASS = STATUS_COLOR_CLASS['time-off'];
+
+/**
  * On the chrome gradient, day status renders in white / white-at-opacity
  * ONLY — no per-status colour, for ANY status, `met` included (D-7.6-40,
  * which corrects D-7.6-39/this file's own earlier `met`-only exception).
@@ -119,6 +131,27 @@ export const STATUS_TINT_CLASS: Partial<Record<DayStatus, string>> = {
   'time-off': 'bg-primary-soft',
 };
 
+/**
+ * Story 7.7, D-7.7-16: the totals-row progress bar's colour is its OWN axis,
+ * independent of `STATUS_COLOR_CLASS` (the text/icon colour) — `bg-current`
+ * used to make the bar inherit the text colour, which rendered `partial`
+ * (the commonest state in a normal week) as a near-black bar where the
+ * design wants royal purple. Only `met` has bar == text; the other four
+ * differ (`imports/jira-time-logger.dc.html:811-815`). This is the ONLY
+ * `Record<StatusKind, colourClass>` for bar colour, living in the same file
+ * D-7.6-2 already designates as the sole owner of status→colour maps.
+ */
+const STATUS_BAR_CLASS: Record<StatusKind, string> = {
+  met: 'bg-status-clean',
+  partial: 'bg-royal-purple',
+  attention: 'bg-status-dirty',
+  'time-off': 'bg-time-off-bar',
+  weekend: 'bg-weekend-bar', // never actually painted — `weekend` renders no bar
+  restricted: 'bg-faint',
+  loading: 'bg-primary',
+  error: 'bg-status-error',
+};
+
 const ICON_SIZE = 12; // 11-13px per DESIGN.md icons.defaults.size
 
 // Quantised to 5% steps — Tailwind's build-time scanner cannot see a
@@ -148,10 +181,19 @@ const BAR_WIDTH_CLASSES = [
   'w-full',
 ] as const;
 
+/**
+ * Story 7.7, D-7.7-29 (defect 2 — quantisation): `Math.round` mapped 97.6% to
+ * `w-full` (reads as fully done) and 2.4% to `w-0` (reads as empty).
+ * `Math.floor` plus a non-zero floor fixes both directions: any genuinely
+ * non-zero percentage renders at least `w-[5%]`, and only a true zero
+ * renders `w-0`. `w-full` is now reserved for a percentage that actually
+ * rounds down to 100 (or exceeds it, after clamping).
+ */
 function pctToWidthClass(pct: number): string {
   const clamped = Math.min(100, Math.max(0, pct));
-  const index = Math.round(clamped / 5);
-  return BAR_WIDTH_CLASSES[index] ?? 'w-0';
+  if (clamped <= 0) return 'w-0';
+  const index = Math.max(1, Math.floor(clamped / 5));
+  return BAR_WIDTH_CLASSES[index] ?? 'w-full';
 }
 
 export type DayStatusIndicatorProps = {
@@ -188,6 +230,14 @@ export type DayStatusIndicatorProps = {
    * own"), regardless of `percent`. */
   percent?: number;
 
+  /** Icon edge length in px. Default 12. DESIGN.md's icons.defaults.size
+   * permits 11-13; 11 is pinned by Story 7.7's AC4 for the week-totals row's
+   * glyph (`imports/jira-time-logger.dc.html:405`) — NOT for a cell icon;
+   * see D-7.7-17, which found the time-off DATA cell carries no icon at
+   * all. A closed union, not `number`, so an out-of-range value is a type
+   * error rather than a review finding (D-7.7-30). */
+  size?: 11 | 12 | 13;
+
   /** 'data' (default), 'chrome', or 'chrome-solid'.
    *  'chrome'       — D-7.6-5/40: white at 85% opacity, calibrated for the
    *                   popup's purple gradient (`ChromeHeader`'s progress
@@ -208,6 +258,7 @@ export function DayStatusIndicator({
   label,
   note,
   percent,
+  size,
   tone = 'data',
   className = '',
 }: DayStatusIndicatorProps): React.ReactElement {
@@ -230,7 +281,7 @@ export function DayStatusIndicator({
 
   const icon = (
     <Icon
-      size={ICON_SIZE}
+      size={size ?? ICON_SIZE}
       aria-hidden="true"
       {...(filled ? { fill: 'currentColor' } : {})}
     />
@@ -244,8 +295,16 @@ export function DayStatusIndicator({
     // (Finding 16): `note=""` must not suppress the fallback.
     const noteText = note || text;
     return (
+      // D-7.7-29 (defect 1 — width): `inline-flex` let `w-full` on the bar
+      // resolve against the widest SIBLING line (value+icon, or the note
+      // text) rather than the wrapper's own box, so the same `percent`
+      // rendered a different pixel length depending on how long that
+      // render's note happened to be. `flex w-full` gives the wrapper a
+      // definite width — it now fills its container (the totals `<td>`,
+      // pinned to 104px by D-7.7-23) — so the inner bar's `w-full` is
+      // container-relative like every other bar in the product.
       <span
-        className={`inline-flex flex-col items-end gap-0.5 ${colorClass} ${className}`}
+        className={`flex w-full flex-col items-end gap-0.5 ${colorClass} ${className}`}
       >
         <span className="flex items-center gap-0.5">
           {value !== undefined ? <span className="tabular">{value}</span> : null}
@@ -255,12 +314,12 @@ export function DayStatusIndicator({
           <span
             aria-hidden="true"
             className={`h-[3px] w-full overflow-hidden rounded-full ${
-              tone === 'chrome' ? 'bg-white/20' : 'bg-border-faint'
+              tone === 'chrome' ? 'bg-white/20' : 'bg-cell-border'
             }`}
           >
             <span
               className={`block h-full rounded-full ${
-                tone === 'chrome' ? 'bg-white' : 'bg-current'
+                tone === 'chrome' ? 'bg-white' : STATUS_BAR_CLASS[status]
               } ${pctToWidthClass(percent ?? 0)}`}
             />
           </span>
