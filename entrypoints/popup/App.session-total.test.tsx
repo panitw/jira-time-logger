@@ -41,6 +41,22 @@ vi.mock('@/lib/storage/settings', () => ({
   targetHoursItem: { getValue: vi.fn(async () => 8) },
   catchAllProjectKeyItem: { getValue: vi.fn(async () => 'KNP') },
   approvalCycleItem: { getValue: vi.fn(async () => 'calendar-month') },
+  // Story 7.3: `useResumeTicket` reads this to exclude the PTO subtask from
+  // its week-worklog enrichment (D-7.3-12). `null` = not configured, so
+  // nothing is excluded in this file's fixtures.
+  ptoSubtaskKeyItem: { getValue: vi.fn(async () => null) },
+}));
+
+// Story 7.3: the resume card's data seam. `getLastLoggedTicket` resolves to
+// `null` by default so `useResumeTicket` falls through to its free
+// week-scan enrichment (the same `PROJ-9` worklog `useTodayTotal` already
+// consumes) — the resume card genuinely mounts in this file's real
+// composition root, which is exactly what the new guard test below needs.
+const getLastLoggedTicketMock = vi.fn(async () => null as unknown);
+const setLastLoggedTicketMock = vi.fn((..._args: unknown[]) => Promise.resolve());
+vi.mock('@/lib/storage/last-logged', () => ({
+  getLastLoggedTicket: () => getLastLoggedTicketMock(),
+  setLastLoggedTicket: (...args: unknown[]) => setLastLoggedTicketMock(...args),
 }));
 
 vi.mock('@/components/today/PtoQuickAction', () => ({
@@ -216,5 +232,49 @@ describe('App — session total double-count guard (Story 7.2, Finding 1)', () =
 
     // Direct confirmation: the week query was fetched exactly once.
     expect(fetchByIssueMock).toHaveBeenCalledTimes(1);
+  });
+
+  // ---- Story 7.3: the resume card composes over the SAME week-worklogs
+  // query (D-7.3-2) — a log made through the card must be exactly as
+  // additive as one made through TicketPicker/QuickLogForm, and must not
+  // add a second fetch. `getLastLoggedTicketMock` resolves `null` (its file-
+  // level default), so `useResumeTicket` resolves the resume ticket from
+  // the free week-scan alone: `PROJ-9`, the same issue `useTodayTotal`
+  // already sums into the initial 1.0h.
+  it('a resume-card log does not double-count either — the header stays additive and the week query is fetched exactly once', async () => {
+    postWorklogMock.mockResolvedValue({
+      kind: 'ok',
+      value: { id: 'wl-resume-1', timeSpentSeconds: 5400 },
+    });
+
+    const { container } = renderApp();
+
+    // Initial server-only total: 3600s = 1.0h (PROJ-9's existing worklog).
+    await waitFor(() => expect(figureText(container)).toMatch(/^1\.0/));
+
+    // The resume card auto-resolved PROJ-9 from the free week scan.
+    const resumeInput = await screen.findByLabelText('Hours for PROJ-9');
+    fireEvent.change(resumeInput, { target: { value: '1.5' } });
+    fireEvent.keyDown(resumeInput, { key: 'Enter' });
+
+    await waitFor(() => expect(postWorklogMock).toHaveBeenCalledWith('PROJ-9', {
+      timeSpentSeconds: 5400,
+      started: expect.any(String),
+    }));
+
+    // Correct additive total: 3600 (server, unchanged) + 5400 (session) =
+    // 9000s = 2.5h — NOT 3600 (server) + 5400 (session) + 5400 (a phantom
+    // refetch double-counting the just-posted write) = 3.5h.
+    await waitFor(() => expect(figureText(container)).toMatch(/^2\.5/), {
+      timeout: 1000,
+    });
+
+    // The week query was fetched exactly once — shared by useTodayTotal AND
+    // useResumeTicket, and never invalidated after the post.
+    expect(fetchByIssueMock).toHaveBeenCalledTimes(1);
+    // The resume card's own write path stamped the data seam.
+    expect(setLastLoggedTicketMock).toHaveBeenCalledWith(
+      expect.objectContaining({ key: 'PROJ-9', seconds: 5400 }),
+    );
   });
 });

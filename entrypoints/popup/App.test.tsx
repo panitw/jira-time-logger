@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockGetAuth = vi.fn();
 const mockHasValidAuth = vi.fn();
 const mockUseTodayTotal = vi.fn();
+const mockUseResumeTicket = vi.fn();
 
 vi.mock('@/lib/storage/tokens', () => ({
   getAuth: () => mockGetAuth(),
@@ -19,6 +20,14 @@ vi.mock('@/lib/storage/settings', () => ({
 
 vi.mock('@/hooks/useTodayTotal', () => ({
   useTodayTotal: (...args: unknown[]) => mockUseTodayTotal(...args),
+}));
+
+// Story 7.3: resolved once in App.tsx and passed down as a prop — mocking
+// the hook (rather than `ResumeCard` itself) lets these tests drive the
+// REAL card through its resolved status, exactly like `mockUseTodayTotal`
+// already does for the chrome figure.
+vi.mock('@/hooks/useResumeTicket', () => ({
+  useResumeTicket: () => mockUseResumeTicket(),
 }));
 
 vi.mock('@/components/today/TodayView', () => ({
@@ -37,6 +46,19 @@ vi.mock('@/lib/storage/outbox', () => ({ enqueue: vi.fn(async () => ({})) }));
 vi.mock('@/components/today/PtoQuickAction', () => ({
   PtoQuickAction: () => <div data-testid="pto-quick-action" />,
 }));
+
+// The REAL `ResumeCard` renders here (driven via the mocked hook above), so
+// its own storage/network boundary needs the same treatment as every other
+// producer in this file. `@wxt-dev/storage`'s `defineItem` kicks off an
+// unawaited background read the instant a module calls it — merely
+// IMPORTING the real `lib/storage/last-logged` (as `ResumeCard.tsx` does)
+// is enough to trigger it, so this must be mocked even though no test here
+// drives a submission through the card.
+vi.mock('@/lib/storage/last-logged', () => ({
+  getLastLoggedTicket: vi.fn(async () => null),
+  setLastLoggedTicket: vi.fn(async () => {}),
+}));
+vi.mock('@/lib/jira-client', () => ({ postWorklog: vi.fn() }));
 
 vi.mock('@/lib/log', () => ({
   log: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
@@ -60,6 +82,7 @@ beforeEach(() => {
   mockGetAuth.mockResolvedValue(null);
   mockHasValidAuth.mockReturnValue(false);
   mockUseTodayTotal.mockReturnValue({ seconds: 0, isPending: false, isError: false });
+  mockUseResumeTicket.mockReturnValue({ status: 'none' });
   // @ts-expect-error minimal chrome stub
   globalThis.chrome = { runtime: { openOptionsPage: vi.fn(), getURL: vi.fn((path: string) => `chrome-extension://abc/${path}`) }, tabs: { create: vi.fn() } };
 });
@@ -188,6 +211,70 @@ describe('App', () => {
     renderApp();
     await waitFor(() => {
       expect(screen.getByTestId('today-view')).toBeTruthy();
+    });
+  });
+
+  // ---- Story 7.3, AC1/AC5: the resume card's mount/collapse contract -----
+  describe('resume card (Story 7.3)', () => {
+    const READY_TICKET = {
+      status: 'ready' as const,
+      key: 'PROJ-1',
+      summary: 'Fix the flaky checkout test',
+      prefillSeconds: 9000,
+      startedAt: new Date().toISOString(),
+    };
+
+    it('AC1: mounts as the first child of the scroll region and breaks the header baseline when status is "ready"', async () => {
+      stubConnected();
+      mockUseResumeTicket.mockReturnValue(READY_TICKET);
+      const { container } = renderApp();
+      await waitFor(() => expect(screen.getByTestId('today-view')).toBeTruthy());
+
+      const main = container.querySelector('main')!;
+      expect(main.className).toContain('-mt-[10px]');
+      // The card (identified by its unique shadow-lift class) is the first
+      // element inside <main>, above the (stubbed) TodayView.
+      expect(main.firstElementChild?.querySelector('.shadow-lift')).toBeTruthy();
+      const todayView = screen.getByTestId('today-view');
+      const card = main.querySelector('.shadow-lift')!;
+      expect(
+        card.compareDocumentPosition(todayView) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    it('AC5: collapses to nothing with no history — no card, and <main> carries no -mt-[10px]', async () => {
+      stubConnected();
+      mockUseResumeTicket.mockReturnValue({ status: 'none' });
+      const { container } = renderApp();
+      await waitFor(() => expect(screen.getByTestId('today-view')).toBeTruthy());
+
+      const main = container.querySelector('main')!;
+      expect(main.className).not.toContain('-mt-[10px]');
+      expect(main.querySelector('.shadow-lift')).toBeNull();
+      // Finding 3: the two assertions above cannot tell "no card" apart from
+      // "an empty reserved-space wrapper where the card would go" — D-7.3-1's
+      // named deliverable is specifically "no reserved dead space", and a
+      // stray `<div className="mb-3" />` left in the wrapper's place would
+      // satisfy both assertions above while still holding the gap open.
+      // Assert the resume slot contributes NO element at all: <main>'s only
+      // child is the (stubbed) TodayView.
+      expect(main.children.length).toBe(1);
+      expect(main.firstElementChild).toBe(screen.getByTestId('today-view'));
+    });
+
+    it('renders a skeleton that shares the ready card\'s offset (Finding 5) while status is "loading"', async () => {
+      stubConnected();
+      mockUseResumeTicket.mockReturnValue({ status: 'loading' });
+      const { container } = renderApp();
+      await waitFor(() => expect(screen.getByTestId('today-view')).toBeTruthy());
+
+      const main = container.querySelector('main')!;
+      // Finding 5: the boolean is `resume.status !== 'none'`, not
+      // `=== 'ready'` — the skeleton and the resolved card must share one
+      // offset (and, per ResumeCard's skeleton shape, one height) so the
+      // 'loading' → 'ready' transition never double-shifts the layout.
+      expect(main.className).toContain('-mt-[10px]');
+      expect(main.querySelector('.animate-skeleton')).toBeTruthy();
     });
   });
 });

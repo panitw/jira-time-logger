@@ -10,6 +10,7 @@ import {
 import { currentCycleRange, isWithinCycle } from '@/lib/cycle-range';
 import { formatStartedISO, formatDateForInput } from '@/lib/worklog-date';
 import { approvalCycleItem } from '@/lib/storage/settings';
+import { setLastLoggedTicket } from '@/lib/storage/last-logged';
 import { log } from '@/lib/log';
 import { sendMessage } from '@/lib/messages';
 import { enqueue as enqueueOutbox } from '@/lib/storage/outbox';
@@ -120,6 +121,19 @@ export function QuickLogForm({
         setSubmitState('success');
         // Broadcast badge update (NFR4 — SW badge logic is Story 3.1)
         void sendMessage('badge-update', { hoursMissing: 0 });
+        // Story 7.3, D-7.3-2: stamp the resume card's data seam on every
+        // CONFIRMED post — never on outbox-enqueue or refusal (see the
+        // other two onSuccess branches below). Fire-and-forget: a storage
+        // failure must never break the log itself.
+        void setLastLoggedTicket({
+          key: ticketKey,
+          summary: ticketSummary,
+          seconds: vars.seconds,
+          startedAt: vars.started,
+          recordedAt: new Date().toISOString(),
+        }).catch((e) => {
+          log.error('last-logged.write.failed', { key: ticketKey, cause: String(e) });
+        });
         const entry: LoggedEntry = {
           key: ticketKey,
           summary: ticketSummary,

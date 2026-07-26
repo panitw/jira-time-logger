@@ -19,6 +19,11 @@ vi.mock('@/hooks/useTodayTotal', () => ({
   useTodayTotal: () => ({ seconds: 9000, isPending: false, isError: false }),
 }));
 
+const mockUseResumeTicket = vi.fn();
+vi.mock('@/hooks/useResumeTicket', () => ({
+  useResumeTicket: () => mockUseResumeTicket(),
+}));
+
 // Story 7.2 Finding 9 (nit): TodayView and PtoQuickAction are stubbed to bare
 // divs below, so the scans in this file cover the CHROME SHELL ONLY (header,
 // action bar, disconnected panel) — not the popup body a user actually sees.
@@ -42,6 +47,15 @@ vi.mock('@/components/today/PtoQuickAction', () => ({
   PtoQuickAction: () => <div data-testid="pto-quick-action" />,
 }));
 
+// The REAL `ResumeCard` renders here — see the matching comment in
+// `App.test.tsx` for why `lib/storage/last-logged` must be mocked even
+// though no test drives an actual submission through the card.
+vi.mock('@/lib/storage/last-logged', () => ({
+  getLastLoggedTicket: vi.fn(async () => null),
+  setLastLoggedTicket: vi.fn(async () => {}),
+}));
+vi.mock('@/lib/jira-client', () => ({ postWorklog: vi.fn() }));
+
 vi.mock('@/lib/log', () => ({
   log: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
 }));
@@ -61,6 +75,7 @@ function renderApp() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockUseResumeTicket.mockReturnValue({ status: 'none' });
   // @ts-expect-error minimal chrome stub
   globalThis.chrome = { runtime: { openOptionsPage: vi.fn(), getURL: vi.fn((path: string) => `chrome-extension://abc/${path}`) }, tabs: { create: vi.fn() } };
 });
@@ -86,6 +101,24 @@ describe('Popup shell a11y (Story 7.2 AC8)', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Connect to Jira' })).toBeTruthy(),
     );
+    const results = await scan(container);
+    expect(criticalOrSerious(results.violations)).toEqual([]);
+  });
+
+  // Story 7.3: the real ResumeCard mounted with a resolved ticket — zero
+  // Critical/Serious, same gate as the rest of the shell.
+  it('connected popup with the resume card mounted has zero Critical/Serious axe violations', async () => {
+    mockGetAuth.mockResolvedValue({ kind: 'oauth', access_token: 't' });
+    mockHasValidAuth.mockReturnValue(true);
+    mockUseResumeTicket.mockReturnValue({
+      status: 'ready',
+      key: 'PROJ-1',
+      summary: 'Fix the flaky checkout test',
+      prefillSeconds: 9000,
+      startedAt: new Date().toISOString(),
+    });
+    const { container } = renderApp();
+    await waitFor(() => expect(screen.getByTestId('today-view')).toBeTruthy());
     const results = await scan(container);
     expect(criticalOrSerious(results.violations)).toEqual([]);
   });

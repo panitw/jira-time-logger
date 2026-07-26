@@ -1,5 +1,5 @@
 # generated: 2026-05-11 22:45:02
-# last_updated: 2026-07-25 (Epic 7 UX/UI revamp added from ux-designs/ux-jira-time-logger-2026-07-25 spines; 7-1 token+font foundation already landed and marked done)
+# last_updated: 2026-07-26 (Story 7-3 done — resume card; review found 1 blocker/3 majors/4 minors/2 nits, all FIXED by the finisher including the owner's three D-7.3-9/10/11 escalation rulings)
 # project: jira-time-logger
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-11 22:45:02
-last_updated: 2026-07-26 (Story 7-2 → done — all 9 review findings fixed, all gates green)
+last_updated: 2026-07-26 (Story 7-3 → done — resume card, review findings resolved, all gates green)
 project: jira-time-logger
 # 2026-06-21: Story 2-7 created (ready-for-dev) — completes Epic 2
 # 2026-06-21: Story 3-1 created (ready-for-dev); Epic 3 → in-progress
@@ -65,6 +65,16 @@ project: jira-time-logger
 #             guard real test teeth (verified by injecting the reviewer's exact hazard, confirming RED,
 #             then reverting) and restoring the time-off in-popup edit/delete correction path the review
 #             caught as lost. Final gates: 83 files / 998 passed / 1 skipped, build green.
+# 2026-07-26: Story 7-3 → done. Code review found 1 blocker / 3 majors / 4 minors / 2 nits. The owner and
+#             orchestrator ruled on the three escalations before this pass (epic-7-decision-log.md
+#             D-7.3-9 froze the server-wins override's identity at first paint; D-7.3-10 time-bounded the
+#             cold-start skeleton at a named 2000ms constant; D-7.3-11 made the decision log canonical
+#             D-7.3-* numbering, folding 5 new entries D-7.3-12..16). The finisher implemented all three
+#             rulings plus every other finding (all FIX; only 4 sub-items of the catch-all Finding 10 were
+#             dismissed, each with recorded rationale). The Blocker's write-target-retargeting regression
+#             test and all 4 previously-toothless class-presence tests were proven RED without their fixes
+#             and green with them, by hand, before commit. Final gates: 86 files / 1049 passed / 1 skipped
+#             (net +7 tests, 0 new files), lint 0 errors/53 warnings (unchanged), build green.
 project_key: NOKEY
 tracking_system: file-system
 story_location: "{project-root}/_bmad-output/implementation-artifacts"
@@ -136,7 +146,7 @@ development_status:
   # public/fonts/). No story file exists for it — verified by compile + build + full test suite.
   7-1-design-token-foundation-bundled-fonts: done
   7-2-popup-shell-one-job-one-scroll-region: done
-  7-3-resume-card-the-first-move: ready-for-dev
+  7-3-resume-card-the-first-move: done
   7-4-search-as-the-browse-mechanism: backlog
   7-5-logged-today-recently-worked-55-ticket-handoff: backlog
   7-6-day-status-vocabulary-time-off-rename: backlog

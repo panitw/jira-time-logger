@@ -71,6 +71,16 @@ vi.mock('@/lib/log', () => ({
   log: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
 }));
 
+// Story 7.3, Task 1: `QuickLogForm` (rendered for real by this file) now
+// stamps the resume card's data seam on a confirmed post. `@wxt-dev/
+// storage`'s `defineItem` fires an unawaited background read the instant a
+// module calls it, so the real `lib/storage/last-logged` must be mocked
+// here too — not just where a test explicitly asserts on the write.
+vi.mock('@/lib/storage/last-logged', () => ({
+  getLastLoggedTicket: vi.fn(async () => null),
+  setLastLoggedTicket: vi.fn(async () => {}),
+}));
+
 const { useHierarchyTickets } = await import('@/hooks/useHierarchyTickets');
 const { TodayView } = await import('./TodayView');
 

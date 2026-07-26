@@ -400,19 +400,284 @@ source-level guard test pins it so a future story can't quietly add a second one
 
 ---
 
-## Open question awaiting the owner
+## Run resumed 2026-07-26
 
-**Should the resume card survive a cold start on a fresh install?** (Story 7.3, from D-7.3-2.)
+The run was paused after Story 7.3's file was written (`ready-for-dev`) and before the developer was
+launched. It resumes here at **Develop 7.3**, with the same standing decisions SD-1 … SD-5 in force.
 
-The situation: a brand-new user, or anyone whose most recent worklog predates the current week,
-opens the popup and sees no resume card — just the search field. It fixes itself the moment they
-log anything.
+**Baseline re-verified at resume**, at commit `5fd70a1`, before any new work:
 
-Covering it properly means widening the recency lookup beyond the current week, which costs a Jira
-search plus one GET per issue **on the first-paint path** — directly against NFR1's 400 ms
-interactive budget, to serve a case that occurs once per user.
+- `pnpm test` — **83 test files, 998 passed, 1 skipped**, and the same known pre-existing
+  `ManagerView.test.tsx` unhandled rejection (`Cannot read properties of undefined (reading
+  'runtime')` inside `@wxt-dev/storage`) still makes the command exit non-zero with every test
+  passing.
 
-Current ruling is **no** — accept the limitation and state it honestly in the story. The cheaper
-alternative, if the owner wants it covered: Story 7.5 already needs a wider "recently worked"
-recency source, so `useResumeTicket` could compose over that instead, at no extra network cost.
-Say the word and it becomes a named dependency rather than a documented limitation.
+This is now the baseline that "pre-existing" means for stories 7.3 → 7.11. It is identical to the
+post-7.2 numbers recorded above, which confirms nothing drifted while the run was paused. Any *new*
+failure, or any drop below 998 passing, is a regression and must be fixed — not labelled pre-existing.
+
+### D-7.3-5 — The resume card accepts the cold-start blind spot; the lookup is not widened
+**Owner decision** (asked, because it is a product trade-off between a real user-visible gap and a
+hard performance NFR — the kind of fork where reasonable engineers disagree).
+
+**Verdict.** `useResumeTicket` keeps the data sources settled in D-7.3-2 — the persisted
+`local:lastLoggedTicket` record, enriched by the already-fetched current-week worklog query. The
+recency lookup is **not** widened beyond the current Monday–Sunday week, and Story 7.3 does **not**
+gain a dependency on Story 7.5. The gap is documented in the story as an accepted limitation rather
+than left implicit.
+
+**The situation.** The resume card needs to know which ticket you last logged against. It learns that
+one of two ways: from a small record the extension writes locally every time a worklog post
+succeeds, or by reading back the worklogs Jira already returned for the current week (which the
+popup fetches anyway for the chrome header's "logged / target" figure, so it is free). Both sources
+are silent for a user who has never logged anything through the extension *and* has no worklog inside
+the current week. For that user the popup opens with no resume card at all.
+
+**In simple terms.** Two people open the popup for the first time on a Monday morning. Ravi installed
+the extension last month and logged four hours on Friday — Friday is in the previous week, and he has
+never posted through the extension, so neither source knows anything about him. Priya installed it
+this morning and has logged nothing anywhere. Both see the same thing: no resume card, just the
+search field, which is exactly what the "no history" branch of AC5 already specifies. The moment
+either of them logs one hour, the local record is written and the card appears on the next open and
+every open after. So the blind spot is one popup open, once, per user — and the fallback it degrades
+to is a designed state, not a broken one.
+
+**Options considered.** (a) *Widen the lookup inside 7.3* — query Jira for the user's most recent
+worklog across all time, then GET each matching issue for its summary. Rejected: that is a search
+call plus N per-issue GETs sitting **on the first-paint path**, and NFR1 budgets the popup at 400 ms
+to interactive. Paying that on every cold open to serve a once-per-user case inverts the cost. (b)
+*Make it a named dependency on Story 7.5* — 7.5 must build a wider "recently worked" recency source
+anyway, so `useResumeTicket` could compose over it later at no extra network cost. Genuinely cheap,
+and it stays available if the owner reverses this. Rejected for now on the owner's instruction: it
+would leave 7.3 shipping a knowingly unmet criterion and hand 7.5 an obligation it did not ask for,
+to close a gap that self-heals. (c) *Accept and document* — chosen.
+
+**Why this wins.** The failure mode is benign and self-correcting, and the alternative charges every
+user on every cold open for it. The accepted downside, stated plainly: a returning user whose last
+worklog fell in a previous week gets no resume card on their first open of the week — they see the
+search field and must find their ticket manually that once. That is a real, if small, cost, and it is
+being accepted deliberately rather than overlooked.
+
+**Consequences.** `useResumeTicket` must not add a network call of its own — it composes only over
+`useWeekWorklogs` (same query key, zero extra requests) and `lib/storage/last-logged.ts`. A test must
+pin the empty case so it renders the AC5 no-history branch cleanly rather than an empty card or
+reserved dead space. Story 7.5 carries **no** obligation from this decision. If option (b) is ever
+taken up, it belongs in 7.5's own acceptance criteria, not as a silent change to 7.3's hook.
+
+**How we'd know it was wrong.** Users reporting "the card is never there for me" rather than "it
+wasn't there the first time" — that would mean the local record is failing to persist, which is a
+different bug in the write path, not this trade-off. A steady trickle of first-open confusion would
+be the signal to take option (b) in 7.5.
+
+### D-7.3-9 — The server-wins override is frozen at first paint; it may never retarget a live card
+**Owner decision** (asked — this is a write-correctness fork on the money path, and the owner
+reframed the question in a way that improved the answer; see below).
+
+**Verdict.** The server-wins override survives, but it may only decide which subtask the resume card
+shows **before the card first renders `ready`**. Once the card is on screen with a resolved identity,
+that identity is **fixed for the remainder of the popup session** — no enrichment re-render may change
+the card's subtask, its pre-fill, or its write target. Across sessions the override remains free to
+correct a stale local record, which is the whole reason it exists.
+
+**Situation.** The card answers one question — *what did you last log against?* — and two sources
+disagree about the answer. The local record (`local:lastLoggedTicket`) knows only what **this
+extension** posted. Jira's own worklogs know what you logged **anywhere**: the Jira web UI, a phone,
+another browser profile. The local record is therefore blind to worklogs made outside the extension,
+and D-7.3-2 added the override to reconcile that staleness.
+
+Nothing is wrong with the correction itself. The defect is **timing**: storage resolves in single-digit
+milliseconds, the network in hundreds. So the card paints with the stored answer, the user starts
+typing, and the corrected answer lands underneath them. `useResumeTicket.ts:166-178` returned a new
+`key`, and `ResumeCard.tsx:112-117` re-seeded the input on any identity change — its comment claimed it
+"never re-seeds on an enrichment re-render", which held only for the *same*-subtask case. The override
+is precisely the case that changes identity, so the guard was scoped to the wrong branch.
+
+**In simple terms.** Both keys here are **subtasks** — this product posts worklogs at subtask level
+(confirmed at `useResumeTicket.ts:46`, which compares `issue.key` against the configured time-off
+*subtask* key). The reviewer's probe named them `PROJ-1`/`PROJ-9`, which made them look like top-level
+projects; they are not.
+
+So: you open the popup, the card offers subtask **MBS-135**, you type `3` meaning three hours on
+MBS-135. A few hundred milliseconds later the week query answers, and the override notices a fresher
+worklog on subtask **MBS-142** — picked from anywhere in the week, with no parent affinity, so it may
+sit under an entirely different parent epic. The card silently re-seeds to MBS-142 with *its* last
+duration, `2`. You press Enter. Jira receives **2 hours against MBS-142**. You intended three against
+MBS-135. Nothing warned you, and this is the product's primary affordance. Because Epic 5 rolls
+approvals up per epic, the misattributed subtask also lands those hours under the wrong epic on a
+manager's approval matrix.
+
+**Options considered.** (a) *Freeze at first paint* — chosen. (b) *Swap only while the input is
+pristine* — freeze on first keystroke or quick-post click. Better than the status quo, but leaves a
+window where the subtask changes under someone who is about to press Enter on the pre-filled value
+without typing anything; the pre-fill is a fully valid input, so "hasn't typed" does not mean "isn't
+about to submit". (c) *Drop the override entirely* — safest and simplest, and genuinely on the table:
+the owner was asked directly whether time is ever logged outside the extension, because if it never is,
+the local record is never stale and the override is pure risk for zero benefit. The owner confirmed
+outside logging **does** happen sometimes, which is exactly what the override is for — so removing it
+would trade a real correctness win for a timing bug that has a cheaper fix. (d) *Swap but preserve the
+typed value and signal the change* — still moves the write target under the user and relies on them
+noticing a change they did not ask for.
+
+**Why this wins.** It keeps the correction where it is safe (choosing what to show) and forbids it
+where it is dangerous (changing what is about to be written). The cost is close to zero in practice:
+the week query shares its `['week-worklogs', weekOf]` key with Story 7.2's `useTodayTotal`, so on a
+warm open it is frequently already in cache and the override still wins **before** first paint. The
+accepted downside, stated plainly: on a cold open where the network is slow, a worklog you made in
+Jira web will not be reflected until your *next* popup open. Stale for one session, never wrong.
+
+**The owner's reframing, which is why this entry exists.** The question was first put as a straight
+three-way choice between freezing, pristine-only swapping, and signalling. The owner did not pick from
+the menu — they asked *why the server suggests a different ID at all*, and *whether the card should
+simply always be the same ID*. That reframing is what surfaced option (c) and forced the override to
+justify itself on evidence rather than be tuned by default. The resulting rule — **stable within a
+session, free to correct between sessions** — is a cleaner statement of the intent than any of the
+original options, and it is the rule the implementation must encode.
+
+**Consequences.** `ResumeCard`'s seed effect must not key off identity changes alone; identity must be
+latched once `status` first becomes `ready` (a ref, in the same spirit as the existing focus latch) and
+the latched value used for both the pre-fill and the write target. A test must pin the exact reproduced
+hazard — type a value, land an enrichment swap, submit, and assert the write goes to the **original**
+subtask with the **typed** amount. That test must be proven to go red without the fix. Story 7.9's
+banners and any future re-render source inherit this invariant: **nothing may change the resume card's
+write target while it is on screen.**
+
+**How we'd know it was wrong.** Users reporting hours appearing against a subtask they did not choose,
+or a manager's matrix showing time under an unexpected epic. Conversely, if users start reporting that
+worklogs made in Jira web "never show up" in the card, the freeze is too aggressive and the pristine
+window (option b) becomes the compromise.
+
+### D-7.3-10 — The cold-start skeleton stays, but is time-bounded
+**Owner decision.**
+
+**Verdict.** The no-stored-record branch of `useResumeTicket` keeps returning `'loading'` (rendering a
+skeleton) while the week query is in flight, but that state is **bounded**: if the query has not settled
+within a short named budget, the hook falls through to `'none'` and the card slot collapses per AC5.
+
+**Situation.** The developer fixed a genuine pop-in — the branch used to report `'none'` immediately,
+rendering nothing, then flip to `'ready'` and shove the card in once data landed. The fix made it wait.
+But *every existing user* hits this branch on their first open after rollout, because the
+`local:lastLoggedTicket` seam is new and nobody has a record yet. The reviewer flagged this as an NFR1
+(400 ms popup TTI) regression on the primary affordance.
+
+**In simple terms.** Neither option actually gets a focusable input on screen any sooner — in the
+`'none'` branch there is no card at all, so there is no input to focus either. The real choice is
+between showing a placeholder in the card's shape while the answer is fetched, or showing empty space
+that later jumps as a card drops in. Meanwhile Story 7.2's chrome header still paints instantly in both
+cases, so the popup as a whole is never blocked. The only new risk the skeleton introduces is an
+*unbounded* one: on a stalled or retrying query, the slot could show a shimmer forever.
+
+**Options considered.** (a) *Bounded skeleton* — chosen. (b) *Unbounded skeleton* — the developer's fix
+as built; rejected only for the hang case. (c) *Revert to no-card-then-pop-in* — reintroduces the exact
+defect the developer correctly identified and fixed.
+
+**Why this wins.** It keeps the honest loading shape and the absence of a layout jump, and removes the
+one failure mode the skeleton added. The accepted cost is a magic number.
+
+**Consequences.** The budget is a **named exported constant**, not an inline literal, set at **2000 ms**
+and pinned by a fake-timer test asserting the fall-through to `'none'`. It applies **only** to the
+no-stored-record branch — the common path (a stored record exists) resolves from storage alone and must
+never be delayed by it. This state is transitional and self-heals the first time a user logs anything.
+
+**How we'd know it was wrong.** Reports of the resume slot shimmering and then emptying on a normal
+connection would mean 2000 ms is too tight.
+
+### D-7.3-11 — The decision log is the canonical `D-7.3-*` numbering
+**Orchestrator decision** (routine — a documentation defect, no behaviour attached).
+
+**Verdict.** This file is authoritative for `D-7.3-*` identifiers. The story file and the code comments
+in `ResumeCard.tsx` / `useResumeTicket.ts` are reconciled **to it**, not the other way round.
+
+**Situation.** The reviewer found the numbering has diverged: the story file and this log disagree from
+`-3` onward, `ResumeCard.tsx` cites `D-7.3-4` for two different decisions 104 lines apart, and
+`D-7.3-7` / `D-7.3-8` are cited in code but defined in neither document. A code comment pointing at a
+decision ID that does not exist is worse than no comment — it sends the next reader looking for a
+rationale they will never find, and it makes this log look unreliable when it is the audit trail.
+
+**Why it matters enough to fix now.** Six more stories in this epic will cite these IDs. Divergence
+compounds silently and is far cheaper to correct while the story is still open.
+
+**Consequences.** The finisher audits every `D-7.3-*` citation in the story file and in source comments,
+repoints each to the correct entry here, and for any citation with no matching entry either repoints it
+or deletes the reference. Note the authoritative meanings that were being misquoted: **D-7.3-3** is the
+−10 px offset living on the scroll container, and **D-7.3-5** is the owner's accepted cold-start
+limitation. No behaviour changes.
+
+### D-7.3-12 through D-7.3-16 — folding the "Spec ambiguities resolved in 7.3" bullets and the PTO-exclusion rule into numbered entries
+**Finisher, per D-7.3-11's consequence** ("preferably fold the log's unnumbered 'Spec ambiguities'
+bullets into numbered entries so the log becomes the superset, then renumber the story file's citations
+to match"). These five decisions already existed as prose — four as unnumbered bullets under "Spec
+ambiguities resolved in 7.3" below D-7.3-5, one (PTO exclusion) only in the story file's own numbering,
+nowhere in this log. Numbered here, continuing after D-7.3-11, so every `D-7.3-*` citation in code and
+the story file resolves to exactly one entry. No behaviour changed by this entry — documentation only.
+
+### D-7.3-12 — Time off never becomes the resume ticket
+
+**Verdict.** `PtoQuickAction` writes no `last-logged` record, and `useResumeTicket`'s week-worklog
+enrichment excludes the configured PTO subtask (`ptoSubtaskKeyItem`, `lib/storage/settings.ts`). Time
+off can never become the resume card's ticket.
+
+**Why.** If a time-off post stamped the last-logged record, the popup's primary affordance would open
+pre-loaded with "log more time off" — wrong on its own terms, and directly at odds with 7.6's
+day-status vocabulary where time off is a *settled* state that "stops asking" (EXPERIENCE.md line 187).
+The catch-all project itself is **not** filtered — Admin/Meetings work under the catch-all is
+legitimately resumable; only the configured PTO subtask is excluded.
+
+**Consequences.** Pinned by a source-level guard (`PtoQuickAction.test.tsx`) proving the component never
+imports `setLastLoggedTicket`, and by `useResumeTicket.test.ts` proving the PTO key is excluded from
+both the plain enrichment scan and the server-wins override.
+
+### D-7.3-13 — `+0.5`/`+1`/`+2` post that amount; they do not increment the input
+
+**Verdict.** The quick-post buttons log exactly the labelled amount immediately, and never mutate the
+hour input's value.
+
+**Why.** `epics.md` AC3 ("post immediately without a confirmation step") is genuinely ambiguous — a
+developer could reasonably build either a stepper (buttons increment the input; Enter posts the running
+total) or three independent one-tap log actions. Settled by `EXPERIENCE.md` line 130: *"`+0.5 / +1 / +2`
+**write immediately** without a confirm step."* They read as "add to my day," not "add to this field."
+
+**Consequences.** Pinned by `ResumeCard.test.tsx` — each button posts the exact labelled seconds and the
+input's value is unchanged before and after.
+
+### D-7.3-14 — `border-border`, not the spec's un-tokenised `#DEDCE9`
+
+**Verdict.** The resume card's border uses the `border-border` token (`#E4E3EC`), not `DESIGN.md`'s
+literal `components.resume-card.border: 1px solid #DEDCE9`.
+
+**Why.** `#DEDCE9` is a raw hex with no matching design token. Introducing a fourth border hex for one
+component breaks the token discipline D-7.2-3 established, for a difference imperceptible under
+`shadow-lift`. Recorded as a deliberate, minor deviation for the DESIGN.md owner to fold back in.
+
+**Consequences.** No change to `styles/globals.css` — no new token, no new hex, no new `@utility`.
+
+### D-7.3-15 — `ring-focus` via `focus-within:`, not statically
+
+**Verdict.** The hour input's focus ring is applied as `focus-within:ring-focus` on the input wrapper,
+not as a static class.
+
+**Why.** AC3 says the input "carries a 1.5 px primary border plus `ring-focus`". Applied statically, the
+ring would keep glowing after focus moved elsewhere (e.g. 7.4's `/`-to-search), lying to sighted users
+about where focus actually is. `focus-within:` is on exactly when AC3's "When the popup opens" condition
+holds, and stays honest afterwards. The 1.5 px primary border stays unconditional, per DESIGN.md's
+`hour-input` component.
+
+**Consequences.** Pinned by `ResumeCard.test.tsx`'s class-presence guard (Finding 6 fix).
+
+### D-7.3-16 — Unparseable input is amber, not red
+
+**Verdict.** Unparseable or over-limit hour input renders amber (`text-amber-ink`); red is reserved for
+a write Jira actually refused.
+
+**Why.** Standing Epic 7 constraint: red only for a write Jira actually refused. `QuickLogForm` currently
+uses `text-state-danger` for parse errors — pre-existing Epic 2 code, out of scope for this story to
+change — so the two surfaces intentionally differ until a future story reconciles them.
+
+**Consequences.** Pinned by `ResumeCard.test.tsx` (unparseable/over-limit render amber and do not post;
+a refused write renders red).
+
+### D-7.3-6 — Cadence unchanged for the remaining nine stories
+**Owner decision.** Continue running 7.3 → 7.11 continuously: a report after each story lands, with
+a pause only for a genuinely load-bearing decision. Confirms SD-3 rather than replacing it. The two
+heaviest upcoming stories were offered as explicit checkpoints and declined — so 7.6 (the shared
+day-status component that 7.7 and 7.8 both consume) and 7.10 (which carries the "Re-authenticate"
+scope trap from SD-1) will be flagged in-flight if they fork, not stopped for pre-emptively.

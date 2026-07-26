@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -177,6 +179,21 @@ describe('PtoQuickAction', () => {
         body: expect.objectContaining({ timeSpentSeconds: 28800 }),
       }),
     );
+  });
+
+  // ---- D-7.3-12 guard: time off never becomes the resume ticket -----------
+  // A source-level pin, not a mock-call assertion — this file's component
+  // under test does not import `lib/storage/last-logged` at all today, so a
+  // "was it called" spy would trivially pass without proving anything. The
+  // meaningful guarantee is that the source itself never wires up the
+  // resume card's writer, so a future edit that DOES add it would have to
+  // touch (and update) this test.
+  it('never writes the resume card’s last-logged record (D-7.3-12)', () => {
+    const source = readFileSync(
+      path.resolve(process.cwd(), 'components/today/PtoQuickAction.tsx'),
+      'utf-8',
+    );
+    expect(source).not.toMatch(/last-logged|setLastLoggedTicket/);
   });
 
   it('Esc closes the popover', async () => {

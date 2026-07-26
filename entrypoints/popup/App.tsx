@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { ChromeHeader } from '@/components/shell/ChromeHeader';
 import { PopupActionBar } from '@/components/shell/PopupActionBar';
 import type { EditPatch, LoggedEntry } from '@/components/today/LoggedToday';
+import { ResumeCard } from '@/components/today/ResumeCard';
 import { TodayView } from '@/components/today/TodayView';
 import { Button } from '@/components/ui/button';
+import { useResumeTicket } from '@/hooks/useResumeTicket';
 import { useTodayTotal } from '@/hooks/useTodayTotal';
 import { log } from '@/lib/log';
 import { targetHoursItem } from '@/lib/storage/settings';
@@ -47,9 +49,10 @@ export function App(): React.ReactElement {
   const [userInitial, setUserInitial] = useState<string | null>(null);
   const [targetHours, setTargetHours] = useState(8);
 
-  // Two independent contributions to "seconds logged this popup session"
+  // Three independent contributions to "seconds logged this popup session"
   // (D-7.2-2): TodayView's own QuickLogForm-originated entries (lifted via
-  // `onTotalChange`), and the relocated action-bar PtoQuickAction's entries.
+  // `onTotalChange`), the relocated action-bar PtoQuickAction's entries, and
+  // (Story 7.3) the resume card's own post path.
   //
   // Story 7.2 Finding 3: the PTO contribution is a full entries LIST owned
   // here (`ptoEntries`), not a monotonic seconds accumulator — a monotonic
@@ -59,10 +62,15 @@ export function App(): React.ReactElement {
   // `TodayView` as `externalEntries` so it renders in "Logged today" with
   // working edit/delete (routed back here), and `ptoSeconds` is derived from
   // it so editing/deleting a PTO entry is reflected in the header for free.
+  // Story 7.3 copies the same LIST pattern for `resumeEntries` — never a
+  // counter, for the identical reason.
   const [todayViewSeconds, setTodayViewSeconds] = useState(0);
   const [ptoEntries, setPtoEntries] = useState<LoggedEntry[]>([]);
+  const [resumeEntries, setResumeEntries] = useState<LoggedEntry[]>([]);
   const ptoSeconds = ptoEntries.reduce((sum, e) => sum + e.seconds, 0);
-  const sessionSeconds = todayViewSeconds + ptoSeconds;
+  const resumeSeconds = resumeEntries.reduce((sum, e) => sum + e.seconds, 0);
+  const sessionSeconds = todayViewSeconds + ptoSeconds + resumeSeconds;
+  const externalEntries = [...ptoEntries, ...resumeEntries];
 
   useEffect(() => {
     const ac = new AbortController();
@@ -94,14 +102,40 @@ export function App(): React.ReactElement {
     setPtoEntries((prev) => [...prev, entry]);
   }, []);
 
-  const handlePtoEntryEdited = useCallback((worklogId: string, patch: EditPatch): void => {
+  const handleResumeLogged = useCallback((entry: LoggedEntry): void => {
+    setResumeEntries((prev) => [...prev, entry]);
+  }, []);
+
+  // Story 7.3, Task 5: `externalEntries` now merges TWO externally-owned
+  // lists (`ptoEntries`, `resumeEntries`). Route an edit/delete to whichever
+  // list actually owns the `worklogId` — mirrors `TodayView.handleAnyEdited`
+  // / `handleAnyDeleted`'s own ownership check. Returning the SAME array
+  // reference when a list does not own the id lets React bail out of that
+  // list's re-render (no-op `setState`).
+  const handleExternalEntryEdited = useCallback((worklogId: string, patch: EditPatch): void => {
     setPtoEntries((prev) =>
-      prev.map((e) => (e.worklogId === worklogId ? { ...e, ...patch } : e)),
+      prev.some((e) => e.worklogId === worklogId)
+        ? prev.map((e) => (e.worklogId === worklogId ? { ...e, ...patch } : e))
+        : prev,
+    );
+    setResumeEntries((prev) =>
+      prev.some((e) => e.worklogId === worklogId)
+        ? prev.map((e) => (e.worklogId === worklogId ? { ...e, ...patch } : e))
+        : prev,
     );
   }, []);
 
-  const handlePtoEntryDeleted = useCallback((worklogId: string): void => {
-    setPtoEntries((prev) => prev.filter((e) => e.worklogId !== worklogId));
+  const handleExternalEntryDeleted = useCallback((worklogId: string): void => {
+    setPtoEntries((prev) =>
+      prev.some((e) => e.worklogId === worklogId)
+        ? prev.filter((e) => e.worklogId !== worklogId)
+        : prev,
+    );
+    setResumeEntries((prev) =>
+      prev.some((e) => e.worklogId === worklogId)
+        ? prev.filter((e) => e.worklogId !== worklogId)
+        : prev,
+    );
   }, []);
 
   const handleConnect = (): void => {
@@ -119,7 +153,30 @@ export function App(): React.ReactElement {
   // only the RENDERED figure is gated on `connected` inside ChromeHeader.
   const todayTotal = useTodayTotal(sessionSeconds);
 
+  // Story 7.3, Task 2: resolved once here so the offset boolean below and
+  // the card's own render branch can never disagree about which state is
+  // current (`resume` is passed down as a prop rather than re-resolved
+  // inside `ResumeCard`).
+  const resume = useResumeTicket();
+
   const connected = authState.kind === 'connected';
+
+  // The −10 px baseline-break offset — one boolean, one place (D-7.3-3).
+  // 7.9 extends this expression with `&& !offlineBanner && !writeErrorBanner`
+  // (the mockup sets `resumeOffset: "0px"` in both the offline and error
+  // states). Nothing else changes for 7.9. This same boolean also handles
+  // AC5's collapse for free — when there is no resume ticket, the offset
+  // drops along with the card.
+  //
+  // Finding 5: covers `'loading'` as well as `'ready'` — not `'ready'`
+  // alone. The skeleton renders in the card's real layout shape and now
+  // reserves the same message-region height (ResumeCard.tsx), so it and the
+  // resolved card share one offset and one height; only `'none'` (AC5) still
+  // drops it. Without this the popup double-shifted: once when the skeleton
+  // mounted flush, a second time when it resolved to `'ready'` and the
+  // offset kicked in — worse now that D-7.3-10 lets `'loading'` last up to
+  // `COLD_START_SKELETON_BUDGET_MS` on a cold start.
+  const breaksHeaderBaseline = connected && resume.status !== 'none';
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
@@ -131,7 +188,11 @@ export function App(): React.ReactElement {
         isPending={todayTotal.isPending}
       />
 
-      <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-[14px] pb-[14px]">
+      <main
+        className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-[14px] pb-[14px] ${
+          breaksHeaderBaseline ? '-mt-[10px]' : ''
+        }`}
+      >
         {authState.kind === 'disconnected' && (
           <div className="pt-4 text-center">
             <h2 className="text-lg font-semibold text-neutral-900">
@@ -145,12 +206,17 @@ export function App(): React.ReactElement {
             </div>
           </div>
         )}
+        {connected && resume.status !== 'none' && (
+          <div className="mb-3">
+            <ResumeCard resume={resume} onLogged={handleResumeLogged} />
+          </div>
+        )}
         {connected && (
           <TodayView
             onTotalChange={handleTodayViewTotalChange}
-            externalEntries={ptoEntries}
-            onExternalEntryEdited={handlePtoEntryEdited}
-            onExternalEntryDeleted={handlePtoEntryDeleted}
+            externalEntries={externalEntries}
+            onExternalEntryEdited={handleExternalEntryEdited}
+            onExternalEntryDeleted={handleExternalEntryDeleted}
           />
         )}
       </main>

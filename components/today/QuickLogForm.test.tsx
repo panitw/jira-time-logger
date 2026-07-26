@@ -18,6 +18,11 @@ vi.mock('@/lib/storage/outbox', () => ({
   enqueue: (...args: unknown[]) => enqueueOutboxMock(...args),
 }));
 
+const setLastLoggedTicketMock = vi.fn((..._args: unknown[]) => Promise.resolve());
+vi.mock('@/lib/storage/last-logged', () => ({
+  setLastLoggedTicket: (...args: unknown[]) => setLastLoggedTicketMock(...args),
+}));
+
 vi.mock('@/lib/storage/settings', () => ({
   approvalCycleItem: { getValue: vi.fn(async () => 'calendar-month') },
   targetHoursItem: { getValue: vi.fn(async () => 8) },
@@ -249,6 +254,71 @@ describe('QuickLogForm', () => {
     );
     fireEvent.keyDown(screen.getByLabelText('Hours'), { key: 'Escape' });
     expect(onCancel).toHaveBeenCalled();
+  });
+
+  // ---- Story 7.3, Task 1: the resume card's data seam --------------------
+  it('stamps the last-logged record on a confirmed (ok) post', async () => {
+    renderWithProviders(
+      <QuickLogForm
+        ticketKey="PROJ-1"
+        ticketSummary="Fix bug"
+        onLogged={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    const input = screen.getByLabelText('Hours');
+    fireEvent.change(input, { target: { value: '2.5' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(setLastLoggedTicketMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          key: 'PROJ-1',
+          summary: 'Fix bug',
+          seconds: 9000,
+        }),
+      );
+    });
+  });
+
+  it('does NOT stamp the record when the post is queued (network failure)', async () => {
+    postWorklogMock.mockResolvedValueOnce({ kind: 'network', cause: 'offline' });
+    renderWithProviders(
+      <QuickLogForm
+        ticketKey="PROJ-1"
+        ticketSummary="Fix bug"
+        onLogged={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    const input = screen.getByLabelText('Hours');
+    fireEvent.change(input, { target: { value: '2.5' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(screen.getByText('Pending — will retry')).toBeTruthy();
+    });
+    expect(setLastLoggedTicketMock).not.toHaveBeenCalled();
+  });
+
+  it('does NOT stamp the record when the post is refused', async () => {
+    postWorklogMock.mockResolvedValueOnce({ kind: 'forbidden' });
+    renderWithProviders(
+      <QuickLogForm
+        ticketKey="PROJ-1"
+        ticketSummary="Fix bug"
+        onLogged={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    const input = screen.getByLabelText('Hours');
+    fireEvent.change(input, { target: { value: '2.5' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Couldn’t log time/)).toBeTruthy();
+    });
+    expect(setLastLoggedTicketMock).not.toHaveBeenCalled();
   });
 
   it('renders date selector with Today default', () => {
