@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import * as React from 'react';
@@ -115,6 +117,22 @@ beforeEach(() => {
 });
 
 describe('WeeklyGrid', () => {
+  // Story 7.2 Finding 2: `TicketPicker` is mocked out above, so no behavioral
+  // test in this file can observe whether WeeklyGrid's usage of it has
+  // (incorrectly) opted into the popup-only `unbounded` prop, which would
+  // silently re-introduce the scroll-region leak the finding caught. A
+  // source-level grep on the exact `<TicketPicker` call site closes that gap
+  // cheaply, without unmocking the picker's own heavy dependency tree.
+  it('does not opt the inline ticket picker into the popup-only `unbounded` variant', () => {
+    const source = readFileSync(
+      path.resolve(process.cwd(), 'components/week/WeeklyGrid.tsx'),
+      'utf-8',
+    );
+    const match = source.match(/<TicketPicker\b[^>]*\/>/);
+    expect(match).toBeTruthy();
+    expect(match![0]).not.toMatch(/\bunbounded\b/);
+  });
+
   it('renders a semantic table with Mon..Sun column headers', () => {
     renderGrid(<WeeklyGrid grid={gridWithOneRow()} />);
     const colHeaders = screen

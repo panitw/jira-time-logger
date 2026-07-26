@@ -1,30 +1,27 @@
-import { useEffect, useState } from 'react';
-
-import { ManagerView } from '@/components/manager/ManagerView';
+import { useCallback, useEffect, useState } from 'react';
+import { ChromeHeader } from '@/components/shell/ChromeHeader';
+import { PopupActionBar } from '@/components/shell/PopupActionBar';
+import type { EditPatch, LoggedEntry } from '@/components/today/LoggedToday';
 import { TodayView } from '@/components/today/TodayView';
-import { WeekView } from '@/components/week/WeekView';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { getCurrentCycleId } from '@/lib/cycle-range';
+import { useTodayTotal } from '@/hooks/useTodayTotal';
 import { log } from '@/lib/log';
-import { hasDirectReports } from '@/lib/manager-resolution';
-import { approvalCycleItem } from '@/lib/storage/settings';
-import { getAuth, hasValidAuth } from '@/lib/storage/tokens';
-import { getPopupView, setPopupView, type PopupView } from '@/lib/storage/view-state';
-import { currentWeekMonday } from '@/lib/week-of';
+import { targetHoursItem } from '@/lib/storage/settings';
+import { getAuth, hasValidAuth, type AuthBundle } from '@/lib/storage/tokens';
+
+/**
+ * Popup shell (Story 7.2): fixed 380x560 surface, chrome header on top,
+ * exactly one scroll region in the middle, fixed action bar at the bottom.
+ * The Radix `Tabs` primitive is gone — the popup renders today's content and
+ * nothing else (AC1). The manager reaches the matrix through the full page
+ * instead (AC5, AC7) — there is no manager affordance in the popup
+ * (EXPERIENCE.md lines 55-63, D-7.2-1 — settled, not relitigated here).
+ */
 
 const STRINGS = {
-  todayTab: 'Today',
-  weekTab: 'Week',
-  managerTab: 'Manager',
   disconnectedHeading: 'Connect to Jira',
-  disconnectedBody:
-    'Connect your Jira Cloud account to start logging time.',
+  disconnectedBody: 'Connect your Jira Cloud account to start logging time.',
   connectCta: 'Connect to Jira',
-  loading: 'Loading\u2026',
-  tabValueToday: 'today',
-  tabValueWeek: 'week',
-  tabValueManager: 'manager',
 };
 
 type AuthState =
@@ -32,14 +29,40 @@ type AuthState =
   | { kind: 'connected' }
   | { kind: 'disconnected' };
 
+/**
+ * First initial for the chrome header's avatar chip. Only the `api-token`
+ * auth kind carries an email in local storage; an `oauth` bundle carries no
+ * display name/email locally — resolving one would require a `myself`
+ * network call, which the header must never await (AC6). Render no initial
+ * for `oauth` rather than fetch on the popup's first-paint path.
+ */
+function userInitialFrom(bundle: AuthBundle | null): string | null {
+  if (!bundle || bundle.kind !== 'api-token') return null;
+  const local = bundle.email.split('@')[0];
+  return local ? local.charAt(0).toUpperCase() : null;
+}
+
 export function App(): React.ReactElement {
   const [authState, setAuthState] = useState<AuthState>({ kind: 'loading' });
-  const [view, setView] = useState<PopupView | null>(null);
-  // null = still resolving; the Manager tab is hidden while resolving and when
-  // the user has no reports (or the lookup errored — `hasDirectReports` fails
-  // closed to false). Never rendered disabled (UX-DR18).
-  const [managesReports, setManagesReports] = useState<boolean | null>(null);
-  const [approvalCycle, setApprovalCycle] = useState('calendar-month');
+  const [userInitial, setUserInitial] = useState<string | null>(null);
+  const [targetHours, setTargetHours] = useState(8);
+
+  // Two independent contributions to "seconds logged this popup session"
+  // (D-7.2-2): TodayView's own QuickLogForm-originated entries (lifted via
+  // `onTotalChange`), and the relocated action-bar PtoQuickAction's entries.
+  //
+  // Story 7.2 Finding 3: the PTO contribution is a full entries LIST owned
+  // here (`ptoEntries`), not a monotonic seconds accumulator — a monotonic
+  // counter can never be decremented, which silently dropped the in-popup
+  // edit/delete correction path a time-off entry had before this story
+  // relocated `PtoQuickAction` out of `TodayView`. The list is passed down to
+  // `TodayView` as `externalEntries` so it renders in "Logged today" with
+  // working edit/delete (routed back here), and `ptoSeconds` is derived from
+  // it so editing/deleting a PTO entry is reflected in the header for free.
+  const [todayViewSeconds, setTodayViewSeconds] = useState(0);
+  const [ptoEntries, setPtoEntries] = useState<LoggedEntry[]>([]);
+  const ptoSeconds = ptoEntries.reduce((sum, e) => sum + e.seconds, 0);
+  const sessionSeconds = todayViewSeconds + ptoSeconds;
 
   useEffect(() => {
     const ac = new AbortController();
@@ -48,9 +71,8 @@ export function App(): React.ReactElement {
         const bundle = await getAuth();
         if (ac.signal.aborted) return;
         const connected = hasValidAuth(bundle);
-        if (!ac.signal.aborted) {
-          setAuthState(connected ? { kind: 'connected' } : { kind: 'disconnected' });
-        }
+        setUserInitial(userInitialFrom(bundle));
+        setAuthState(connected ? { kind: 'connected' } : { kind: 'disconnected' });
       } catch {
         if (!ac.signal.aborted) {
           setAuthState({ kind: 'disconnected' });
@@ -61,73 +83,26 @@ export function App(): React.ReactElement {
   }, []);
 
   useEffect(() => {
-    const ac = new AbortController();
-    void (async () => {
-      try {
-        const saved = await getPopupView();
-        if (!ac.signal.aborted) {
-          setView(saved);
-        }
-      } catch {
-        if (!ac.signal.aborted) {
-          setView({ kind: 'today' });
-        }
-      }
-    })();
-    return () => ac.abort();
+    void targetHoursItem.getValue().then(setTargetHours);
   }, []);
 
-  // Resolve the cycle cadence + whether the user manages anyone. Non-blocking:
-  // the popup renders Today/Week immediately; the Manager tab only appears once
-  // this resolves true. `hasDirectReports` fails closed to false on any error.
-  useEffect(() => {
-    const ac = new AbortController();
-    void (async () => {
-      try {
-        const [cycle, manages] = await Promise.all([
-          approvalCycleItem.getValue(),
-          hasDirectReports(),
-        ]);
-        if (!ac.signal.aborted) {
-          setApprovalCycle(cycle);
-          setManagesReports(manages);
-        }
-      } catch {
-        if (!ac.signal.aborted) {
-          setManagesReports(false);
-        }
-      }
-    })();
-    return () => ac.abort();
+  const handleTodayViewTotalChange = useCallback((seconds: number): void => {
+    setTodayViewSeconds(seconds);
   }, []);
 
-  // Stale-state guard (AC 9): if a persisted `manager-matrix` view is restored
-  // but the user no longer manages anyone, fall back to Today and persist it.
-  // Runs only once reports resolve so it never fights the loading state.
-  useEffect(() => {
-    if (managesReports === false && view?.kind === 'manager-matrix') {
-      const fallback: PopupView = { kind: 'today' };
-      setView(fallback);
-      void setPopupView(fallback).catch(() => {
-        // View state is non-critical — worst case user sees default on next open
-      });
-    }
-  }, [managesReports, view]);
+  const handlePtoLogged = useCallback((entry: LoggedEntry): void => {
+    setPtoEntries((prev) => [...prev, entry]);
+  }, []);
 
-  const handleTabChange = (value: string): void => {
-    let newView: PopupView;
-    if (value === STRINGS.tabValueManager) {
-      newView = { kind: 'manager-matrix', cycle: getCurrentCycleId(approvalCycle) };
-    } else if (value === STRINGS.tabValueWeek) {
-      newView = { kind: 'week', weekOf: currentWeekMonday() };
-    } else {
-      newView = { kind: 'today' };
-    }
-    setView(newView);
-    void setPopupView(newView).catch(() => {
-      // View state is non-critical — worst case user sees default on next open
-    });
-  };
+  const handlePtoEntryEdited = useCallback((worklogId: string, patch: EditPatch): void => {
+    setPtoEntries((prev) =>
+      prev.map((e) => (e.worklogId === worklogId ? { ...e, ...patch } : e)),
+    );
+  }, []);
+
+  const handlePtoEntryDeleted = useCallback((worklogId: string): void => {
+    setPtoEntries((prev) => prev.filter((e) => e.worklogId !== worklogId));
+  }, []);
 
   const handleConnect = (): void => {
     chrome.runtime.openOptionsPage(() => {
@@ -139,75 +114,48 @@ export function App(): React.ReactElement {
     });
   };
 
-  if (authState.kind === 'loading' || view === null) {
-    return (
-      <div className="min-w-[360px] p-4">
-        <p className="text-sm text-neutral-500">{STRINGS.loading}</p>
-      </div>
-    );
-  }
+  // The today total query composes over the existing week-worklogs fetch
+  // regardless of auth state (it fails closed to isError, never throws) —
+  // only the RENDERED figure is gated on `connected` inside ChromeHeader.
+  const todayTotal = useTodayTotal(sessionSeconds);
 
-  if (authState.kind === 'disconnected') {
-    return (
-      <div className="min-w-[360px] p-4 text-center">
-        <h2 className="text-lg font-semibold text-neutral-900">
-          {STRINGS.disconnectedHeading}
-        </h2>
-        <p className="mt-2 text-sm text-neutral-500">
-          {STRINGS.disconnectedBody}
-        </p>
-        <div className="mt-4">
-          <Button variant="primary" onClick={handleConnect}>
-            {STRINGS.connectCta}
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  // The Manager trigger/content are only rendered once reports resolve true, so
-  // never select the Manager tab before then — otherwise a restored
-  // `manager-matrix` view would point Radix at a value with no rendered tab,
-  // blanking the popup body during the async resolution window (and briefly
-  // before the stale-state guard rewrites the view to Today).
-  const activeTab =
-    view.kind === 'manager-matrix' && managesReports === true
-      ? STRINGS.tabValueManager
-      : view.kind === 'week'
-        ? STRINGS.tabValueWeek
-        : STRINGS.tabValueToday;
+  const connected = authState.kind === 'connected';
 
   return (
-    <div className="min-w-[360px] p-4">
-      <Tabs value={activeTab} onValueChange={handleTabChange}>
-        <TabsList className="mb-4">
-          <TabsTrigger value={STRINGS.tabValueToday}>
-            {STRINGS.todayTab}
-          </TabsTrigger>
-          <TabsTrigger value={STRINGS.tabValueWeek}>
-            {STRINGS.weekTab}
-          </TabsTrigger>
-          {managesReports === true && (
-            <TabsTrigger value={STRINGS.tabValueManager}>
-              {STRINGS.managerTab}
-            </TabsTrigger>
-          )}
-        </TabsList>
-        <TabsContent value={STRINGS.tabValueToday} forceMount>
-          <TodayView />
-        </TabsContent>
-        <TabsContent value={STRINGS.tabValueWeek} forceMount>
-          <WeekView weekOf={view.kind === 'week' ? view.weekOf : currentWeekMonday()} />
-        </TabsContent>
-        {managesReports === true && (
-          <TabsContent value={STRINGS.tabValueManager}>
-            <ManagerView
-              cycle={view.kind === 'manager-matrix' ? view.cycle : getCurrentCycleId(approvalCycle)}
-              onSwitchToToday={() => handleTabChange(STRINGS.tabValueToday)}
-            />
-          </TabsContent>
+    <div className="flex h-full w-full flex-col overflow-hidden">
+      <ChromeHeader
+        connected={connected}
+        userInitial={userInitial}
+        seconds={todayTotal.seconds}
+        targetHours={targetHours}
+        isPending={todayTotal.isPending}
+      />
+
+      <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-[14px] pb-[14px]">
+        {authState.kind === 'disconnected' && (
+          <div className="pt-4 text-center">
+            <h2 className="text-lg font-semibold text-neutral-900">
+              {STRINGS.disconnectedHeading}
+            </h2>
+            <p className="mt-2 text-sm text-neutral-500">{STRINGS.disconnectedBody}</p>
+            <div className="mt-4">
+              <Button variant="primary" onClick={handleConnect}>
+                {STRINGS.connectCta}
+              </Button>
+            </div>
+          </div>
         )}
-      </Tabs>
+        {connected && (
+          <TodayView
+            onTotalChange={handleTodayViewTotalChange}
+            externalEntries={ptoEntries}
+            onExternalEntryEdited={handlePtoEntryEdited}
+            onExternalEntryDeleted={handlePtoEntryDeleted}
+          />
+        )}
+      </main>
+
+      {connected && <PopupActionBar onLogged={handlePtoLogged} />}
     </div>
   );
 }

@@ -42,6 +42,16 @@ type PickerMode = 'hierarchy' | 'search-jira';
 
 type TicketPickerProps = {
   onSelect: (ticketKey: string, ticketSummary: string) => void;
+  /** Story 7.2, Finding 2: `TicketPicker` has two consumers —
+   * `components/today/TodayView.tsx` (the popup) and
+   * `components/week/WeeklyGrid.tsx` (the week grid's inline "add subtask"
+   * picker). The popup owns a single outer scroll region (AC2) and must not
+   * nest a second one, but the week grid's picker keeps its own compact,
+   * self-scrolling 16rem clamp — that behaviour predates this story and is
+   * out of scope to change. Defaults to `false` (clamped) so `WeeklyGrid`'s
+   * existing usage is byte-for-byte unchanged; the popup passes `unbounded`
+   * explicitly. */
+  unbounded?: boolean;
 };
 
 function matchesFilter(
@@ -134,6 +144,7 @@ function isRowReachable(btn: HTMLButtonElement): boolean {
 
 export function TicketPicker({
   onSelect,
+  unbounded = false,
 }: TicketPickerProps): React.ReactElement {
   const {
     data: hierarchyTasks,
@@ -386,7 +397,7 @@ export function TicketPicker({
         // AC3 — the hand-rolled picker is the highest keyboard-semantics risk).
         role="tree"
         aria-label="Ticket picker"
-        className="mt-2 max-h-64 overflow-y-auto"
+        className={cn('mt-2', !unbounded && 'max-h-64 overflow-y-auto')}
       >
         {mode === 'hierarchy' && (
           <>

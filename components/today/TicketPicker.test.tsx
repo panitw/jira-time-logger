@@ -600,4 +600,26 @@ describe('TicketPicker', () => {
       expect(onSelect).toHaveBeenCalledWith('KNP-1', 'Admin');
     });
   });
+
+  // --- Story 7.2 Finding 2: the scroll clamp is scoped per-consumer, not ---
+  // --- removed from the shared component -----------------------------------
+  describe('the tree scroll clamp (Story 7.2 Finding 2)', () => {
+    it('defaults to clamped (max-h-64 overflow-y-auto) — this is WeeklyGrid.tsx\'s unchanged usage', () => {
+      mockHierarchyLoaded(sampleTasks);
+      const { container } = renderWithProviders(<TicketPicker onSelect={vi.fn()} />);
+      const tree = container.querySelector('[role="tree"]');
+      expect(tree?.className).toContain('max-h-64');
+      expect(tree?.className).toContain('overflow-y-auto');
+    });
+
+    it('`unbounded` removes the clamp — this is the popup\'s TodayView usage (AC2: no nested scroll region)', () => {
+      mockHierarchyLoaded(sampleTasks);
+      const { container } = renderWithProviders(
+        <TicketPicker onSelect={vi.fn()} unbounded />,
+      );
+      const tree = container.querySelector('[role="tree"]');
+      expect(tree?.className).not.toContain('max-h-64');
+      expect(tree?.className).not.toContain('overflow-y-auto');
+    });
+  });
 });

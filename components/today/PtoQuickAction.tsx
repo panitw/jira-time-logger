@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import type { LoggedEntry } from '@/components/today/LoggedToday';
 
 const STRINGS = {
-  trigger: 'Mark today as PTO',
+  trigger: 'Mark today as time off',
   fullDay: (h: number) => `Full day (${h}h)`,
   halfDay: (h: number) => `Half day (${formatHours(h)}h)`,
   fullDayAria: (h: number) => `Mark today as full-day PTO (${h}h)`,
@@ -26,7 +26,7 @@ const STRINGS = {
   postError: 'Couldn’t mark PTO — try again',
   pending: 'Pending — will retry',
   defaultSummary: 'PTO',
-  menuLabel: 'PTO options',
+  menuLabel: 'Time off options',
 };
 
 function formatHours(h: number): string {
@@ -185,15 +185,15 @@ export function PtoQuickAction({
   // While settings are still loading (`undefined`), render nothing rather than
   // flashing the disabled "not configured" state.
   if (ptoKey === undefined) {
-    return <div className="mt-2" aria-hidden="true" />;
+    return <div aria-hidden="true" />;
   }
 
   // ---- Disabled state (AC #7): PTO subtask not configured (null or empty) ----
   if (!ptoKey) {
     return (
-      <div className="mt-2">
+      <div className="relative inline-block">
         <Button
-          variant="primary"
+          variant="ghost"
           size="sm"
           disabled
           aria-disabled="true"
@@ -201,7 +201,13 @@ export function PtoQuickAction({
         >
           {STRINGS.trigger}
         </Button>
-        <p id="pto-disabled-help" className="mt-1 text-xs text-neutral-500">
+        {/* Absolutely positioned above the trigger — a bottom action bar has a
+         * fixed height (Story 7.2 AC4); this transient helper text must never
+         * grow it. */}
+        <p
+          id="pto-disabled-help"
+          className="absolute bottom-full left-0 mb-1 w-56 text-xs text-neutral-500"
+        >
           {STRINGS.notConfiguredPrefix}
           <button
             type="button"
@@ -219,10 +225,10 @@ export function PtoQuickAction({
   // ---- Enabled state ----
   const halfHours = targetHours / 2;
   return (
-    <div className="relative mt-2 inline-block">
+    <div className="relative inline-block">
       <Button
         ref={triggerRef}
-        variant="primary"
+        variant="ghost"
         size="sm"
         aria-haspopup="true"
         aria-expanded={open}
@@ -236,7 +242,7 @@ export function PtoQuickAction({
           ref={popoverRef}
           role="menu"
           aria-label={STRINGS.menuLabel}
-          className="absolute left-0 top-full z-10 mt-1 w-44 rounded-md border border-neutral-200 bg-white p-1 shadow-md"
+          className="absolute left-0 bottom-full z-10 mb-1 w-44 rounded-md border border-neutral-200 bg-white p-1 shadow-md"
         >
           <Button
             ref={firstActionRef}

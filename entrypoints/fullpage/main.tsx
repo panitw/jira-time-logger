@@ -5,6 +5,10 @@ import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import '@/styles/globals.css';
 import { App } from './App';
 
+// Mirrors entrypoints/popup/main.tsx's QueryClient options exactly (same
+// staleTime/retry/refetchOnWindowFocus). Duplicated rather than extracted —
+// lower risk than reaching into the popup's module for a shared shim
+// (Story 7.2 Task 5).
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -35,11 +39,8 @@ const queryClient = new QueryClient({
         return Math.min(1000 * 2 ** attemptIndex, 30_000);
       },
       refetchOnWindowFocus: false,
-      // Story 7.2 Finding 6: refetchOnReconnect defaults to true, which is a
-      // third, previously un-enumerated door to the today-total double-count
-      // hazard (hooks/useTodayTotal.ts) — a popup left open past staleTime
-      // that then sees a network reconnect would otherwise refetch
-      // ['week-worklogs'] and double-count the in-session delta.
+      // Mirrors the popup's refetchOnReconnect: false (Story 7.2 Finding 6) —
+      // kept in sync even though the full page does not read today-total.
       refetchOnReconnect: false,
     },
   },
@@ -47,7 +48,7 @@ const queryClient = new QueryClient({
 
 const rootEl = document.getElementById('root');
 if (!rootEl) {
-  throw new Error('Popup mount point (#root) missing in index.html');
+  throw new Error('Full-page mount point (#root) missing in index.html');
 }
 
 ReactDOM.createRoot(rootEl).render(

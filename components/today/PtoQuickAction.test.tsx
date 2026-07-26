@@ -64,7 +64,7 @@ describe('PtoQuickAction', () => {
   it('renders the trigger button', async () => {
     renderWithProviders(<PtoQuickAction onLogged={vi.fn()} />);
     await waitFor(() =>
-      expect(screen.getByText('Mark today as PTO')).toBeTruthy(),
+      expect(screen.getByText('Mark today as time off')).toBeTruthy(),
     );
   });
 
@@ -72,7 +72,7 @@ describe('PtoQuickAction', () => {
     ptoKeyGetValue.mockResolvedValue(null);
     renderWithProviders(<PtoQuickAction onLogged={vi.fn()} />);
     await waitFor(() => {
-      const btn = screen.getByText('Mark today as PTO').closest('button')!;
+      const btn = screen.getByText('Mark today as time off').closest('button')!;
       expect(btn.disabled).toBe(true);
     });
     expect(screen.getByText(/PTO subtask not configured/)).toBeTruthy();
@@ -83,7 +83,7 @@ describe('PtoQuickAction', () => {
 
   it('opens a popover with Full/Half buttons showing correct hours', async () => {
     renderWithProviders(<PtoQuickAction onLogged={vi.fn()} />);
-    const trigger = await screen.findByText('Mark today as PTO');
+    const trigger = await screen.findByText('Mark today as time off');
     fireEvent.click(trigger);
     await waitFor(() => {
       expect(screen.getByText('Full day (8h)')).toBeTruthy();
@@ -94,7 +94,7 @@ describe('PtoQuickAction', () => {
   it('Full day click posts target seconds and calls onLogged + broadcasts badge-update', async () => {
     const onLogged = vi.fn();
     renderWithProviders(<PtoQuickAction onLogged={onLogged} />);
-    fireEvent.click(await screen.findByText('Mark today as PTO'));
+    fireEvent.click(await screen.findByText('Mark today as time off'));
     fireEvent.click(await screen.findByText('Full day (8h)'));
 
     await waitFor(() => {
@@ -125,7 +125,7 @@ describe('PtoQuickAction', () => {
   it('Half day click posts half the target seconds', async () => {
     const onLogged = vi.fn();
     renderWithProviders(<PtoQuickAction onLogged={onLogged} />);
-    fireEvent.click(await screen.findByText('Mark today as PTO'));
+    fireEvent.click(await screen.findByText('Mark today as time off'));
     fireEvent.click(await screen.findByText('Half day (4h)'));
 
     await waitFor(() => {
@@ -149,7 +149,7 @@ describe('PtoQuickAction', () => {
     logFullDayPtoMock.mockResolvedValueOnce({ kind: 'forbidden' });
     const onLogged = vi.fn();
     renderWithProviders(<PtoQuickAction onLogged={onLogged} />);
-    fireEvent.click(await screen.findByText('Mark today as PTO'));
+    fireEvent.click(await screen.findByText('Mark today as time off'));
     fireEvent.click(await screen.findByText('Full day (8h)'));
 
     await waitFor(() => {
@@ -163,7 +163,7 @@ describe('PtoQuickAction', () => {
     logFullDayPtoMock.mockResolvedValueOnce({ kind: 'network', cause: 'offline' });
     const onLogged = vi.fn();
     renderWithProviders(<PtoQuickAction onLogged={onLogged} />);
-    fireEvent.click(await screen.findByText('Mark today as PTO'));
+    fireEvent.click(await screen.findByText('Mark today as time off'));
     fireEvent.click(await screen.findByText('Full day (8h)'));
 
     await waitFor(() => {
@@ -181,7 +181,7 @@ describe('PtoQuickAction', () => {
 
   it('Esc closes the popover', async () => {
     renderWithProviders(<PtoQuickAction onLogged={vi.fn()} />);
-    fireEvent.click(await screen.findByText('Mark today as PTO'));
+    fireEvent.click(await screen.findByText('Mark today as time off'));
     expect(await screen.findByText('Full day (8h)')).toBeTruthy();
     fireEvent.keyDown(document, { key: 'Escape' });
     await waitFor(() => {

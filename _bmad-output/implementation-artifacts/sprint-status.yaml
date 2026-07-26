@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-11 22:45:02
-last_updated: 2026-07-11 (Story 6-3 → in-progress — CRX packaging Part A automatable; Part B real-key + Teams publish PENDING HUMAN)
+last_updated: 2026-07-26 (Story 7-2 → done — all 9 review findings fixed, all gates green)
 project: jira-time-logger
 # 2026-06-21: Story 2-7 created (ready-for-dev) — completes Epic 2
 # 2026-06-21: Story 3-1 created (ready-for-dev); Epic 3 → in-progress
@@ -55,6 +55,16 @@ project: jira-time-logger
 # 2026-06-27: Story 6-1 created (ready-for-dev); Epic 6 → in-progress (first story of Epic 6)
 # 2026-06-27: Story 6-2 created (ready-for-dev) — Edge browser validation
 # 2026-07-11: Story 6-3 created (ready-for-dev) — CRX packaging script & signing key vault (Part A automatable; Part B real-key provisioning + Teams publish PENDING HUMAN)
+# 2026-07-25: Story 7-2 created (ready-for-dev) — popup shell, one job / one scroll region. Includes
+#             ORCHESTRATOR DECISION D-7.2-1: the full-page host shell (new WXT entrypoint, Week/Manager/
+#             Settings routing, mounting WeekView + ManagerView UNCHANGED) ships in 7-2 because removing
+#             the popup Tabs orphans them. This satisfies Story 7-7's first AC; 7-7 keeps the full-page
+#             chrome header, week grid, cell anatomy, totals row and gap dialog.
+# 2026-07-26: Story 7-2 → done. Code review found 0 blockers / 3 majors / 4 minors / 3 nits; all 9 findings
+#             FIXED (0 dismissed, 0 deferred) by the story finisher, including giving the double-count
+#             guard real test teeth (verified by injecting the reviewer's exact hazard, confirming RED,
+#             then reverting) and restoring the time-off in-popup edit/delete correction path the review
+#             caught as lost. Final gates: 83 files / 998 passed / 1 skipped, build green.
 project_key: NOKEY
 tracking_system: file-system
 story_location: "{project-root}/_bmad-output/implementation-artifacts"
@@ -125,7 +135,7 @@ development_status:
   # 7-1 landed during the /bmad-ux run itself (tokens + fonts in styles/globals.css and
   # public/fonts/). No story file exists for it — verified by compile + build + full test suite.
   7-1-design-token-foundation-bundled-fonts: done
-  7-2-popup-shell-one-job-one-scroll-region: backlog
+  7-2-popup-shell-one-job-one-scroll-region: done
   7-3-resume-card-the-first-move: backlog
   7-4-search-as-the-browse-mechanism: backlog
   7-5-logged-today-recently-worked-55-ticket-handoff: backlog
@@ -133,8 +143,8 @@ development_status:
   7-7-full-page-surface-week-review: backlog
   7-8-manager-matrix-silent-correctness-loud-exceptions: backlog
   7-9-popup-states-loading-offline-error-time-off-disconnected: backlog
-  # 7-10 and 7-11 are BLOCKED on design — neither surface was in the Claude Design
-  # handoff scope. Each needs a short /bmad-ux Update run before dev picks it up.
+  # 2026-07-25: UNBLOCKED. Claude Design round 2 delivered both surfaces; spines and
+  # ACs updated from imports/jira-time-logger-round2.dc.html. See reconcile-claude-design-round2.md.
   7-10-settings-on-the-full-page: backlog
   7-11-inline-jira-banner-reconciliation: backlog
   epic-7-retrospective: optional

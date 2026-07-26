@@ -1,217 +1,193 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockGetAuth = vi.fn();
 const mockHasValidAuth = vi.fn();
-const mockGetPopupView = vi.fn();
-const mockSetPopupView = vi.fn();
-const mockHasDirectReports = vi.fn();
-const mockApprovalCycleGet = vi.fn();
+const mockUseTodayTotal = vi.fn();
 
 vi.mock('@/lib/storage/tokens', () => ({
   getAuth: () => mockGetAuth(),
   hasValidAuth: (bundle: unknown) => mockHasValidAuth(bundle),
 }));
 
-vi.mock('@/lib/storage/view-state', () => ({
-  getPopupView: () => mockGetPopupView(),
-  setPopupView: (v: unknown) => mockSetPopupView(v),
-}));
-
-vi.mock('@/lib/manager-resolution', () => ({
-  hasDirectReports: () => mockHasDirectReports(),
-}));
-
 vi.mock('@/lib/storage/settings', () => ({
-  approvalCycleItem: { getValue: () => mockApprovalCycleGet() },
+  targetHoursItem: { getValue: async () => 8 },
+}));
+
+vi.mock('@/hooks/useTodayTotal', () => ({
+  useTodayTotal: (...args: unknown[]) => mockUseTodayTotal(...args),
 }));
 
 vi.mock('@/components/today/TodayView', () => ({
   TodayView: () => <div data-testid="today-view">Today Placeholder</div>,
 }));
 
-vi.mock('@/components/week/WeekView', () => ({
-  WeekView: ({ weekOf }: { weekOf: string }) => (
-    <div data-testid="week-view">Week of {weekOf}</div>
-  ),
+// PopupActionBar is real (proves the App → action bar → open-full-page
+// wiring end to end) — its own PtoQuickAction internals need the same
+// storage/network boundary mocks as PopupActionBar.test.tsx.
+vi.mock('@/lib/pto', () => ({
+  logFullDayPto: vi.fn(),
+  logHalfDayPto: vi.fn(),
+}));
+vi.mock('@/lib/messages', () => ({ sendMessage: vi.fn() }));
+vi.mock('@/lib/storage/outbox', () => ({ enqueue: vi.fn(async () => ({})) }));
+vi.mock('@/components/today/PtoQuickAction', () => ({
+  PtoQuickAction: () => <div data-testid="pto-quick-action" />,
 }));
 
-vi.mock('@/components/manager/ManagerView', () => ({
-  ManagerView: ({ cycle }: { cycle: string }) => (
-    <div data-testid="manager-view">Manager cycle {cycle}</div>
-  ),
+vi.mock('@/lib/log', () => ({
+  log: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
 }));
 
-import { App } from './App';
+const { App } = await import('./App');
 
-function stubConnected() {
-  mockGetAuth.mockResolvedValue({ kind: 'oauth', access_token: 't' });
-  mockHasValidAuth.mockReturnValue(true);
-  mockGetPopupView.mockResolvedValue({ kind: 'today' });
-  mockSetPopupView.mockResolvedValue(undefined);
+function renderApp() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <App />
+    </QueryClientProvider>,
+  );
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockGetAuth.mockResolvedValue(null);
   mockHasValidAuth.mockReturnValue(false);
-  mockGetPopupView.mockResolvedValue({ kind: 'today' });
-  mockSetPopupView.mockResolvedValue(undefined);
-  mockHasDirectReports.mockResolvedValue(false);
-  mockApprovalCycleGet.mockResolvedValue('calendar-month');
+  mockUseTodayTotal.mockReturnValue({ seconds: 0, isPending: false, isError: false });
+  // @ts-expect-error minimal chrome stub
+  globalThis.chrome = { runtime: { openOptionsPage: vi.fn(), getURL: vi.fn((path: string) => `chrome-extension://abc/${path}`) }, tabs: { create: vi.fn() } };
 });
 
+function stubConnected() {
+  mockGetAuth.mockResolvedValue({ kind: 'oauth', access_token: 't' });
+  mockHasValidAuth.mockReturnValue(true);
+}
+
 describe('App', () => {
-  it('renders disconnected fallback when not connected', async () => {
-    render(<App />);
-    await waitFor(() => {
-      expect(
-        screen.getByText(
-          'Connect your Jira Cloud account to start logging time.',
-        ),
-      ).toBeTruthy();
+  // ---- AC1: Tabs removed, only today's content renders ------------------
+  it('renders no tab list / TabsTrigger anywhere, and WeekView/ManagerView are never rendered', async () => {
+    stubConnected();
+    const { container } = renderApp();
+    await waitFor(() => expect(screen.getByTestId('today-view')).toBeTruthy());
+    expect(container.querySelector('[role="tablist"]')).toBeNull();
+    expect(screen.queryByTestId('week-view')).toBeNull();
+    expect(screen.queryByTestId('manager-view')).toBeNull();
+    expect(screen.queryByText('Week')).toBeNull();
+    expect(screen.queryByText('Manager')).toBeNull();
+  });
+
+  // Story 7.2 Finding 8 (nit): jsdom has no layout engine, so nothing in a
+  // rendered-DOM test can observe the popup's fixed 380x560 dimensions — they
+  // live purely in `styles/globals.css`. A source-level pin at least catches
+  // a silent removal or edit of the scoped rule (the structural
+  // one-scroll-region guarantee above is the part real DOM assertions CAN
+  // cover).
+  it('AC2: the 380x560 popup surface rule exists in styles/globals.css', () => {
+    const css = readFileSync(
+      path.resolve(process.cwd(), 'styles/globals.css'),
+      'utf-8',
+    );
+    const match = css.match(/body\[data-surface=["']popup["']\]\s*{([^}]*)}/);
+    expect(match).toBeTruthy();
+    const body = match![1]!;
+    expect(body).toMatch(/width:\s*380px/);
+    expect(body).toMatch(/height:\s*560px/);
+  });
+
+  // ---- AC2: fixed surface, exactly one scroll region ---------------------
+  it('the root is a column flex with exactly one overflow-y-auto scroll region', async () => {
+    stubConnected();
+    const { container } = renderApp();
+    await waitFor(() => expect(screen.getByTestId('today-view')).toBeTruthy());
+    const root = container.firstElementChild as HTMLElement;
+    expect(root.className).toContain('flex');
+    expect(root.className).toContain('flex-col');
+    expect(root.className).toContain('overflow-hidden');
+
+    // Story 7.2 Finding 7 (nit): broadened past the exact `overflow-y-auto`
+    // class so a nested region introduced as `overflow-auto`,
+    // `overflow-scroll`, or `overflow-y-scroll` would also be caught — the
+    // AC's wording ("no nested scroll region exists anywhere") is broader
+    // than the one class name the shell happens to use today.
+    const scrollRegions = container.querySelectorAll(
+      '[class*="overflow-y-auto"],[class*="overflow-auto"],[class*="overflow-scroll"],[class*="overflow-y-scroll"]',
+    );
+    expect(scrollRegions.length).toBe(1);
+  });
+
+  // ---- AC3: chrome header composition ------------------------------------
+  it('the chrome header renders the date and a role="status" region', async () => {
+    stubConnected();
+    mockUseTodayTotal.mockReturnValue({ seconds: 9000, isPending: false, isError: false });
+    const { container } = renderApp();
+    await waitFor(() => expect(screen.getByTestId('today-view')).toBeTruthy());
+    expect(container.querySelector('header')).toBeTruthy();
+    expect(container.querySelector('[role="status"]')).toBeTruthy();
+  });
+
+  // ---- AC4: action bar ----------------------------------------------------
+  it('renders both action-bar actions when connected; "Open week" opens the full page in a new tab', async () => {
+    stubConnected();
+    renderApp();
+    await waitFor(() => expect(screen.getByTestId('today-view')).toBeTruthy());
+    expect(screen.getByTestId('pto-quick-action')).toBeTruthy();
+    const openWeek = screen.getByRole('button', { name: 'Open week review in a new tab' });
+    fireEvent.click(openWeek);
+    expect(chrome.tabs.create).toHaveBeenCalledWith({
+      url: 'chrome-extension://abc/fullpage.html?section=week',
     });
   });
 
-  it('renders a connect button in disconnected state', async () => {
-    render(<App />);
+  it('does NOT render the action bar in the disconnected state', async () => {
+    renderApp();
     await waitFor(() => {
-      const buttons = screen.getAllByText('Connect to Jira');
-      expect(buttons.length).toBeGreaterThanOrEqual(2);
+      expect(screen.getByRole('heading', { name: 'Connect to Jira' })).toBeTruthy();
+    });
+    expect(screen.queryByTestId('pto-quick-action')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open week review in a new tab' })).toBeNull();
+  });
+
+  // ---- AC5: no orphaned manager affordance -------------------------------
+  it('no element with an accessible name matching /manager|matrix/i exists', async () => {
+    stubConnected();
+    renderApp();
+    await waitFor(() => expect(screen.getByTestId('today-view')).toBeTruthy());
+    expect(screen.queryByRole('button', { name: /manager|matrix/i })).toBeNull();
+    expect(screen.queryByText(/manager|matrix/i)).toBeNull();
+  });
+
+  // ---- AC6: chrome paints before data resolves ---------------------------
+  it('the date renders on the first render pass, before the auth/total promises settle', () => {
+    // getAuth() never resolves within this test — proves the header does not
+    // await it before its first paint.
+    mockGetAuth.mockReturnValue(new Promise(() => {}));
+    const { container } = renderApp();
+    // Synchronous assertion — no `await`/`waitFor`.
+    expect(container.querySelector('header')).toBeTruthy();
+    const dateText = new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(new Date());
+    expect(container.textContent).toContain(dateText);
+  });
+
+  it('renders the disconnected fallback when not connected', async () => {
+    renderApp();
+    await waitFor(() => {
+      expect(
+        screen.getByText('Connect your Jira Cloud account to start logging time.'),
+      ).toBeTruthy();
     });
   });
 
   it('renders Today view when connected', async () => {
     stubConnected();
-    render(<App />);
+    renderApp();
     await waitFor(() => {
       expect(screen.getByTestId('today-view')).toBeTruthy();
-    });
-  });
-
-  it('renders tab bar when connected', async () => {
-    stubConnected();
-    render(<App />);
-    await waitFor(() => {
-      expect(screen.getByText('Today')).toBeTruthy();
-      expect(screen.getByText('Week')).toBeTruthy();
-    });
-  });
-
-  it('restores week view from storage', async () => {
-    stubConnected();
-    mockGetPopupView.mockResolvedValue({
-      kind: 'week',
-      weekOf: '2026-06-16',
-    });
-    render(<App />);
-    await waitFor(() => {
-      expect(screen.getByTestId('week-view')).toBeTruthy();
-    });
-  });
-
-  describe('Manager tab (Story 5.2)', () => {
-    it('renders the Manager tab when the user has direct reports', async () => {
-      stubConnected();
-      mockHasDirectReports.mockResolvedValue(true);
-      render(<App />);
-      await waitFor(() => {
-        expect(screen.getByText('Manager')).toBeTruthy();
-      });
-    });
-
-    it('does NOT render the Manager tab when the user has no reports', async () => {
-      stubConnected();
-      mockHasDirectReports.mockResolvedValue(false);
-      render(<App />);
-      await waitFor(() => {
-        expect(screen.getByText('Today')).toBeTruthy();
-      });
-      expect(screen.queryByText('Manager')).toBeNull();
-    });
-
-    it('does NOT render the Manager tab when the reports check errors', async () => {
-      stubConnected();
-      mockHasDirectReports.mockRejectedValue(new Error('directory down'));
-      render(<App />);
-      await waitFor(() => {
-        expect(screen.getByText('Today')).toBeTruthy();
-      });
-      expect(screen.queryByText('Manager')).toBeNull();
-    });
-
-    it('selecting the Manager tab persists a manager-matrix view (real getCurrentCycleId)', async () => {
-      stubConnected();
-      mockHasDirectReports.mockResolvedValue(true);
-      mockApprovalCycleGet.mockResolvedValue('calendar-month');
-      render(<App />);
-      await waitFor(() => {
-        expect(screen.getByText('Manager')).toBeTruthy();
-      });
-      // Drive the controlled Tabs onValueChange directly (Radix Trigger's
-      // pointerdown-based selection isn't reliably simulable in jsdom without a
-      // PointerEvent polyfill; the handler wiring is what AC 7 specifies).
-      const trigger = screen.getByText('Manager');
-      fireEvent.keyDown(trigger, { key: 'Enter' });
-      fireEvent.click(trigger);
-      fireEvent.pointerDown(trigger, { button: 0 });
-      await waitFor(() => {
-        const persisted = mockSetPopupView.mock.calls
-          .map((c) => c[0] as { kind: string; cycle?: string })
-          .find((v) => v.kind === 'manager-matrix');
-        expect(persisted).toBeDefined();
-        // calendar-month → cycle id is the current `yyyy-MM` (real getCurrentCycleId).
-        expect(persisted?.cycle).toMatch(/^\d{4}-\d{2}$/);
-      });
-    });
-
-    it('renders ManagerView with the persisted cycle when restoring a manager-matrix view', async () => {
-      stubConnected();
-      mockHasDirectReports.mockResolvedValue(true);
-      mockGetPopupView.mockResolvedValue({ kind: 'manager-matrix', cycle: '2026-06' });
-      render(<App />);
-      await waitFor(() => {
-        expect(screen.getByTestId('manager-view')).toBeTruthy();
-      });
-      expect(screen.getByText('Manager cycle 2026-06')).toBeTruthy();
-      // It did NOT fall back to Today (reports present).
-      expect(mockSetPopupView).not.toHaveBeenCalledWith({ kind: 'today' });
-    });
-
-    it('shows Today (not a blank panel) while a restored manager-matrix view is still resolving reports', async () => {
-      stubConnected();
-      mockGetPopupView.mockResolvedValue({ kind: 'manager-matrix', cycle: '2026-06' });
-      // Keep hasDirectReports pending so `managesReports` stays null (resolving).
-      let resolveReports: (v: boolean) => void = () => {};
-      mockHasDirectReports.mockReturnValue(
-        new Promise<boolean>((resolve) => {
-          resolveReports = resolve;
-        }),
-      );
-      render(<App />);
-      // During the resolution window the Manager tab/content are not rendered,
-      // so the popup must fall back to the Today panel rather than blanking out.
-      await waitFor(() => {
-        expect(screen.getByTestId('today-view')).toBeTruthy();
-      });
-      expect(screen.queryByTestId('manager-view')).toBeNull();
-      expect(screen.queryByText('Manager')).toBeNull();
-      // Resolve to avoid an act() warning from the still-pending effect.
-      resolveReports(true);
-    });
-
-    it('falls back to Today and persists it when a persisted manager-matrix view has no reports', async () => {
-      stubConnected();
-      mockGetPopupView.mockResolvedValue({ kind: 'manager-matrix', cycle: '2026-06' });
-      mockHasDirectReports.mockResolvedValue(false);
-      render(<App />);
-      await waitFor(() => {
-        expect(screen.getByTestId('today-view')).toBeTruthy();
-      });
-      await waitFor(() => {
-        expect(mockSetPopupView).toHaveBeenCalledWith({ kind: 'today' });
-      });
-      expect(screen.queryByText('Manager')).toBeNull();
     });
   });
 });

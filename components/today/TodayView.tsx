@@ -1,16 +1,12 @@
 import { useState, useCallback, useEffect } from 'react';
-import { format } from 'date-fns';
-import { TicketPicker } from '@/components/today/TicketPicker';
-import { QuickLogForm } from '@/components/today/QuickLogForm';
 import { LoggedToday, type LoggedEntry, type EditPatch } from '@/components/today/LoggedToday';
-import { PtoQuickAction } from '@/components/today/PtoQuickAction';
-import { secondsToHoursDisplay } from '@/lib/hours';
-import { targetHoursItem, catchAllProjectKeyItem } from '@/lib/storage/settings';
-import { outboxDrainedItem } from '@/lib/storage/outbox';
+import { QuickLogForm } from '@/components/today/QuickLogForm';
+import { TicketPicker } from '@/components/today/TicketPicker';
 import { log } from '@/lib/log';
+import { outboxDrainedItem } from '@/lib/storage/outbox';
+import { catchAllProjectKeyItem } from '@/lib/storage/settings';
 
 const STRINGS = {
-  heading: 'Today',
   pickLabel: 'Pick a ticket to log',
   catchAllNotConfiguredPrefix:
     'Catch-all not configured. Configure in ',
@@ -23,17 +19,35 @@ const STRINGS = {
 
 const TOAST_DISMISS_MS = 4000;
 
-export function TodayView(): React.ReactElement {
-  const today = format(new Date(), 'EEE, MMM d');
+type TodayViewProps = {
+  /** Lifts the session's logged-seconds total up to the popup shell so the
+   * chrome header can add it to the server-fetched today total (Story 7.2,
+   * D-7.2-2). Optional so the component stays independently testable. */
+  onTotalChange?: (seconds: number) => void;
+  /** Story 7.2 Finding 3: entries logged by a producer OUTSIDE `TodayView`
+   * (currently only the action bar's relocated `PtoQuickAction`) that should
+   * still render in "Logged today" with working edit/delete. `TodayView`
+   * merges these into its own `loggedEntries` for display only — it never
+   * owns their lifecycle. Optional so the component stays independently
+   * testable with none supplied. */
+  externalEntries?: LoggedEntry[];
+  /** Routes an edit of an `externalEntries` row back to its owner (the shell)
+   * instead of `TodayView`'s own reducer. */
+  onExternalEntryEdited?: (worklogId: string, patch: EditPatch) => void;
+  /** Routes a delete of an `externalEntries` row back to its owner. */
+  onExternalEntryDeleted?: (worklogId: string) => void;
+};
+
+export function TodayView({
+  onTotalChange,
+  externalEntries,
+  onExternalEntryEdited,
+  onExternalEntryDeleted,
+}: TodayViewProps): React.ReactElement {
   const [selectedTicket, setSelectedTicket] = useState<{ key: string; summary: string } | null>(null);
   const [loggedEntries, setLoggedEntries] = useState<LoggedEntry[]>([]);
-  const [targetHours, setTargetHours] = useState(8);
   const [catchAllProjectKey, setCatchAllProjectKey] = useState<string | null>(null);
   const [syncedCount, setSyncedCount] = useState(0);
-
-  useEffect(() => {
-    void targetHoursItem.getValue().then(setTargetHours);
-  }, []);
 
   useEffect(() => {
     void catchAllProjectKeyItem.getValue().then(setCatchAllProjectKey);
@@ -96,11 +110,54 @@ export function TodayView(): React.ReactElement {
     setLoggedEntries((prev) => prev.filter((e) => e.worklogId !== worklogId));
   }, []);
 
+  // Story 7.2 Finding 3: a worklog row rendered in "Logged today" may belong
+  // to `TodayView`'s own reducer (ticket-logged entries) OR to an external
+  // producer (the action bar's PtoQuickAction, via `externalEntries`). Route
+  // edit/delete to whichever one actually owns it, so BOTH keep a working
+  // in-popup correction path instead of only the ticket-logged half.
+  const handleAnyEdited = useCallback(
+    (worklogId: string, patch: EditPatch): void => {
+      if (loggedEntries.some((e) => e.worklogId === worklogId)) {
+        handleEdited(worklogId, patch);
+      } else {
+        onExternalEntryEdited?.(worklogId, patch);
+      }
+    },
+    [loggedEntries, handleEdited, onExternalEntryEdited],
+  );
+
+  const handleAnyDeleted = useCallback(
+    (worklogId: string): void => {
+      if (loggedEntries.some((e) => e.worklogId === worklogId)) {
+        handleDeleted(worklogId);
+      } else {
+        onExternalEntryDeleted?.(worklogId);
+      }
+    },
+    [loggedEntries, handleDeleted, onExternalEntryDeleted],
+  );
+
+  // Entries rendered in "Logged today" — this component's own ticket-logged
+  // entries plus any externally-owned ones (e.g. time-off). The session
+  // total reported via `onTotalChange` below stays scoped to THIS
+  // component's own entries only — the shell adds the external contribution
+  // (`ptoSeconds`) separately, so merging here for display must not also
+  // fold external seconds into `onTotalChange` (that would double-report it
+  // on top of the shell's own tracking of the same entries).
+  const allEntries = externalEntries?.length
+    ? [...loggedEntries, ...externalEntries]
+    : loggedEntries;
+
   const totalSeconds = loggedEntries.reduce((sum, e) => sum + e.seconds, 0);
-  const totalDisplay = secondsToHoursDisplay(totalSeconds);
+
+  // Lift the session total up to the popup shell (Story 7.2, D-7.2-2) — the
+  // chrome header adds this on top of the server-fetched today total.
+  useEffect(() => {
+    onTotalChange?.(totalSeconds);
+  }, [totalSeconds, onTotalChange]);
 
   return (
-    <div className="motion-safe:animate-fade-in">
+    <div>
       {syncedCount > 0 && (
         <div
           role="status"
@@ -118,14 +175,6 @@ export function TodayView(): React.ReactElement {
           </button>
         </div>
       )}
-      <h2 className="text-lg font-semibold text-neutral-900">
-        {STRINGS.heading}
-      </h2>
-      <p className="mt-1 text-sm text-neutral-500">
-        {today} &middot; {totalDisplay} / {targetHours}h
-      </p>
-
-      <PtoQuickAction onLogged={handleLogged} />
 
       {catchAllUnconfigured && (
         <p className="mt-2 text-center text-sm text-neutral-500">
@@ -143,9 +192,9 @@ export function TodayView(): React.ReactElement {
 
       <div className="mt-3">
         <LoggedToday
-          entries={loggedEntries}
-          onEdited={handleEdited}
-          onDeleted={handleDeleted}
+          entries={allEntries}
+          onEdited={handleAnyEdited}
+          onDeleted={handleAnyDeleted}
         />
       </div>
 
@@ -162,7 +211,7 @@ export function TodayView(): React.ReactElement {
             <p className="text-xs font-medium text-neutral-500 mb-1">
               {STRINGS.pickLabel}
             </p>
-            <TicketPicker onSelect={handleSelect} />
+            <TicketPicker onSelect={handleSelect} unbounded />
           </>
         )}
       </div>

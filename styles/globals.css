@@ -49,6 +49,55 @@
 
 @theme {
   /* ---------------------------------------------------------------------
+   * Spacing scale (Story 7.2 / D-7.2-3 — amendment to Story 7.1).
+   * 7.1 shipped zero `--spacing*` tokens, so Tailwind v4's default
+   * `--spacing: 0.25rem` resolved against `html { font-size: 13.5px }` made
+   * every spacing utility 0.84x too small (`p-4` = 13.5px where DESIGN.md
+   * says 16px). Declaring the token here derives the whole scale as
+   * `calc(var(--spacing) * n)` — 1=4px … 8=32px, an exact DESIGN.md match —
+   * and permanently decouples spacing from the root font-size.
+   * ------------------------------------------------------------------- */
+  --spacing: 4px;
+
+  /* ---------------------------------------------------------------------
+   * Type scale (Story 7.2 / D-7.2-3 — amendment to Story 7.1). 7.1 shipped
+   * the font families only; DESIGN.md's `typography:` size/weight/leading/
+   * tracking scale was never emitted as tokens. Sizes/weights only — the
+   * family still comes from `font-chrome` / `font-data`.
+   * ------------------------------------------------------------------- */
+  --text-display: 26px;
+  --text-display--line-height: 1.15;
+  --text-display--font-weight: 600;
+  --text-display-sm: 22px;
+  --text-display-sm--line-height: 1.15;
+  --text-display-sm--font-weight: 600;
+  --text-heading: 16px;
+  --text-heading--line-height: 1.5;
+  --text-heading--font-weight: 500;
+  --text-subheading: 13.5px;
+  --text-subheading--line-height: 1.4;
+  --text-subheading--font-weight: 600;
+  --text-label: 12px;
+  --text-label--line-height: 1.5;
+  --text-label--font-weight: 500;
+  --text-label--letter-spacing: 0.01em;
+  --text-eyebrow: 11px;
+  --text-eyebrow--line-height: 1.4;
+  --text-eyebrow--font-weight: 500;
+  --text-eyebrow--letter-spacing: 0.1em;
+  --text-body: 13.5px;
+  --text-body--line-height: 1.6;
+  --text-body--font-weight: 400;
+  --text-body-sm: 12.5px;
+  --text-body-sm--line-height: 1.5;
+  --text-body-sm--font-weight: 400;
+  --text-caption: 11.5px;
+  --text-caption--line-height: 1.45;
+  --text-caption--font-weight: 400;
+  --text-num: 13px;
+  --text-num--font-weight: 500;
+
+  /* ---------------------------------------------------------------------
    * KKP brand — Legacy Purple is the ONLY brand colour.
    * No sub-brand accents (Better / Edge / Wealth) in core UI.
    * ------------------------------------------------------------------- */
@@ -193,6 +242,16 @@ html {
   color: var(--color-foreground);
   background: var(--color-background);
   -webkit-font-smoothing: antialiased;
+}
+
+/* Popup surface: fixed 380x560, exactly one scroll region (Story 7.2 AC2).
+ * Scoped by attribute so the options page and the new full page are
+ * untouched — do NOT size `html` or bare `body` globally. */
+body[data-surface="popup"] {
+  width: 380px;
+  height: 560px;
+  margin: 0;
+  overflow: hidden;
 }
 
 /* Honor prefers-reduced-motion: collapse animations ≥100ms. */
