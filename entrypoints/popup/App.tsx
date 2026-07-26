@@ -70,18 +70,33 @@ export function App(): React.ReactElement {
   const [ptoEntries, setPtoEntries] = useState<LoggedEntry[]>([]);
   const [resumeEntries, setResumeEntries] = useState<LoggedEntry[]>([]);
   const [searchEntries, setSearchEntries] = useState<LoggedEntry[]>([]);
-  const ptoSeconds = ptoEntries.reduce((sum, e) => sum + e.seconds, 0);
-  const resumeSeconds = resumeEntries.reduce((sum, e) => sum + e.seconds, 0);
-  const searchSeconds = searchEntries.reduce((sum, e) => sum + e.seconds, 0);
+  // Story 7.5, D-7.5-18: the single worklog id currently pending deletion
+  // inside `LoggedToday` (there is never more than one) — excluded from
+  // whichever of these three sums actually owns it, so the chrome header
+  // drops the figure the instant the row hides and restores it on undo.
+  // `todayViewSeconds` needs no separate filter here: it is `TodayView`'s
+  // OWN total, already computed net of a pending deletion that belongs to
+  // ITS OWN `loggedEntries` (see `TodayView.tsx`).
+  const [pendingDeletionId, setPendingDeletionId] = useState<string | null>(null);
+  const ptoSeconds = ptoEntries
+    .filter((e) => e.worklogId !== pendingDeletionId)
+    .reduce((sum, e) => sum + e.seconds, 0);
+  const resumeSeconds = resumeEntries
+    .filter((e) => e.worklogId !== pendingDeletionId)
+    .reduce((sum, e) => sum + e.seconds, 0);
+  const searchSeconds = searchEntries
+    .filter((e) => e.worklogId !== pendingDeletionId)
+    .reduce((sum, e) => sum + e.seconds, 0);
   const sessionSeconds = todayViewSeconds + ptoSeconds + resumeSeconds + searchSeconds;
   const externalEntries = [...ptoEntries, ...resumeEntries, ...searchEntries];
 
   // Story 7.4: whether a search query is active — the RAW (non-debounced)
   // query, per D-7.4-18 — drives the `hidden`-attribute wrapper around
-  // `TodayView` below. `searchPanelRef` is the seam Story 7.5's "N more
-  // assigned tickets · Search to find them →" row will call (D-7.4-26); the
-  // document-level `/` listener lives inside `SearchPanel` itself and uses
-  // the exact same ref internally, so there is exactly one focus path.
+  // `TodayView` below. `searchPanelRef` is the seam Story 7.5's "Recently
+  // worked" handoff row ("More assigned tickets · Search to find them →",
+  // D-7.5-12 — no count) calls via `handleRequestSearchFocus` (D-7.4-26);
+  // the document-level `/` listener lives inside `SearchPanel` itself and
+  // uses the exact same ref internally, so there is exactly one focus path.
   const [searchActive, setSearchActive] = useState(false);
   const searchPanelRef = useRef<SearchPanelHandle>(null);
 
@@ -125,6 +140,17 @@ export function App(): React.ReactElement {
 
   const handleSearchActiveChange = useCallback((active: boolean): void => {
     setSearchActive(active);
+  }, []);
+
+  const handlePendingDeletionChange = useCallback((worklogId: string | null): void => {
+    setPendingDeletionId(worklogId);
+  }, []);
+
+  // Story 7.5, D-7.5-22: the "Recently worked" handoff row's only focus path
+  // — the exact seam `SearchPanel` itself uses for `/`, published for this
+  // story by Story 7.4 (D-7.4-26). No second focus path is invented.
+  const handleRequestSearchFocus = useCallback((): void => {
+    searchPanelRef.current?.focus();
   }, []);
 
   // Story 7.3, Task 5 (extended by 7.4, Task 7): `externalEntries` now merges
@@ -272,6 +298,8 @@ export function App(): React.ReactElement {
               externalEntries={externalEntries}
               onExternalEntryEdited={handleExternalEntryEdited}
               onExternalEntryDeleted={handleExternalEntryDeleted}
+              onPendingDeletionChange={handlePendingDeletionChange}
+              onRequestSearchFocus={handleRequestSearchFocus}
             />
           </div>
         )}

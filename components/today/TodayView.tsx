@@ -1,13 +1,24 @@
 import { useState, useCallback, useEffect } from 'react';
 import { LoggedToday, type LoggedEntry, type EditPatch } from '@/components/today/LoggedToday';
 import { QuickLogForm } from '@/components/today/QuickLogForm';
-import { TicketPicker } from '@/components/today/TicketPicker';
+import { RecentlyWorked } from '@/components/today/RecentlyWorked';
+import { useRecentlyWorked } from '@/hooks/useRecentlyWorked';
 import { log } from '@/lib/log';
 import { outboxDrainedItem } from '@/lib/storage/outbox';
 import { catchAllProjectKeyItem } from '@/lib/storage/settings';
 
+/**
+ * Story 7.5: the popup's 55-ticket browse tree (`TicketPicker`) is gone from
+ * this view. "Recently worked" (fed by the already-fetched week-worklogs
+ * query, D-7.5-16 — zero extra network) replaces it, and its `+` opens the
+ * SAME `QuickLogForm`/`handleSelect` flow `TicketPicker` used to feed
+ * (D-7.5-11) — never the resume card (D-7.3-9 stays absolute).
+ *
+ * `TicketPicker.tsx` itself is untouched — `components/week/WeeklyGrid.tsx`
+ * still uses it (D-7.5-23).
+ */
+
 const STRINGS = {
-  pickLabel: 'Pick a ticket to log',
   catchAllNotConfiguredPrefix:
     'Catch-all not configured. Configure in ',
   settings: 'Settings',
@@ -36,6 +47,15 @@ type TodayViewProps = {
   onExternalEntryEdited?: (worklogId: string, patch: EditPatch) => void;
   /** Routes a delete of an `externalEntries` row back to its owner. */
   onExternalEntryDeleted?: (worklogId: string) => void;
+  /** Story 7.5, D-7.5-18: the single pending-deletion id changed (or cleared)
+   * inside `LoggedToday` — forwarded up so the shell can exclude it from
+   * ITS OWN seconds derivation for `ptoEntries`/`resumeEntries`/
+   * `searchEntries` (whichever list actually owns the pending entry). */
+  onPendingDeletionChange?: (worklogId: string | null) => void;
+  /** Story 7.5, D-7.5-22: the "Recently worked" handoff row's "Search to find
+   * them →" affordance — calls the `SearchPanelHandle` seam Story 7.4
+   * published for exactly this (D-7.4-26), via `App.tsx`. */
+  onRequestSearchFocus?: () => void;
 };
 
 export function TodayView({
@@ -43,11 +63,16 @@ export function TodayView({
   externalEntries,
   onExternalEntryEdited,
   onExternalEntryDeleted,
+  onPendingDeletionChange,
+  onRequestSearchFocus,
 }: TodayViewProps): React.ReactElement {
   const [selectedTicket, setSelectedTicket] = useState<{ key: string; summary: string } | null>(null);
   const [loggedEntries, setLoggedEntries] = useState<LoggedEntry[]>([]);
+  const [pendingDeletionId, setPendingDeletionId] = useState<string | null>(null);
   const [catchAllProjectKey, setCatchAllProjectKey] = useState<string | null>(null);
   const [syncedCount, setSyncedCount] = useState(0);
+
+  const recentlyWorked = useRecentlyWorked();
 
   useEffect(() => {
     void catchAllProjectKeyItem.getValue().then(setCatchAllProjectKey);
@@ -76,6 +101,10 @@ export function TodayView({
     chrome.runtime.openOptionsPage();
   }, []);
 
+  // Story 7.5, D-7.5-11: the single entry point for BOTH the (now-removed)
+  // TicketPicker and the "Recently worked" `+` — opens `QuickLogForm`
+  // pre-targeted at the given ticket. Has no channel to the resume card at
+  // all (D-7.3-9 stays absolute, by construction).
   const handleSelect = useCallback((ticketKey: string, ticketSummary: string): void => {
     log.info('today.ticket.picked', { key: ticketKey });
     setSelectedTicket({ key: ticketKey, summary: ticketSummary });
@@ -137,6 +166,14 @@ export function TodayView({
     [loggedEntries, handleDeleted, onExternalEntryDeleted],
   );
 
+  const handlePendingDeletionChange = useCallback(
+    (worklogId: string | null): void => {
+      setPendingDeletionId(worklogId);
+      onPendingDeletionChange?.(worklogId);
+    },
+    [onPendingDeletionChange],
+  );
+
   // Entries rendered in "Logged today" — this component's own ticket-logged
   // entries plus any externally-owned ones (e.g. time-off). The session
   // total reported via `onTotalChange` below stays scoped to THIS
@@ -148,7 +185,14 @@ export function TodayView({
     ? [...loggedEntries, ...externalEntries]
     : loggedEntries;
 
-  const totalSeconds = loggedEntries.reduce((sum, e) => sum + e.seconds, 0);
+  // Story 7.5, D-7.5-18: a pending deletion is excluded from the total the
+  // instant the row hides, and returns the instant undo cancels it — but
+  // ONLY when the pending entry belongs to THIS component's own
+  // `loggedEntries` (an externally-owned pending entry is excluded from ITS
+  // OWNER's own sum instead, via `onPendingDeletionChange` above).
+  const totalSeconds = loggedEntries
+    .filter((e) => e.worklogId !== pendingDeletionId)
+    .reduce((sum, e) => sum + e.seconds, 0);
 
   // Lift the session total up to the popup shell (Story 7.2, D-7.2-2) — the
   // chrome header adds this on top of the server-fetched today total.
@@ -195,26 +239,26 @@ export function TodayView({
           entries={allEntries}
           onEdited={handleAnyEdited}
           onDeleted={handleAnyDeleted}
+          onPendingDeletionChange={handlePendingDeletionChange}
         />
       </div>
 
-      <div className="mt-1">
-        {selectedTicket ? (
+      {selectedTicket ? (
+        <div className="mt-1">
           <QuickLogForm
             ticketKey={selectedTicket.key}
             ticketSummary={selectedTicket.summary}
             onLogged={handleLogged}
             onCancel={handleCancel}
           />
-        ) : (
-          <>
-            <p className="text-xs font-medium text-neutral-500 mb-1">
-              {STRINGS.pickLabel}
-            </p>
-            <TicketPicker onSelect={handleSelect} unbounded />
-          </>
-        )}
-      </div>
+        </div>
+      ) : (
+        <RecentlyWorked
+          items={recentlyWorked}
+          onSelectTicket={handleSelect}
+          onRequestSearchFocus={onRequestSearchFocus}
+        />
+      )}
     </div>
   );
 }

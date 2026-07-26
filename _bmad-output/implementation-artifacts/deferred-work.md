@@ -113,3 +113,7 @@
 ## Deferred from: code review of story-6.1 (2026-06-27)
 
 - TicketPicker `tree` role is structurally valid but keyboard-incomplete: no Left/Right arrow collapse-expand and no `aria-level`/`aria-setsize`/`aria-posinset` on treeitems. Not a regression — the listbox→tree remodel preserved the existing roving Up/Down navigation and Enter-to-select. Full WAI-ARIA tree keyboard semantics are an accessibility enhancement beyond Story 6.1's gate scope. [components/today/TicketPicker.tsx]
+
+## Deferred from: code review of story-7.4 (2026-07-26)
+
+- Truncation line off-by-one: when a search returns *exactly* `MAX_RESULTS` matches, the "showing the first N" line renders even though nothing was actually truncated. Fails in the safe direction (over-warns rather than silently hiding results, so D-7.4-14's "never a silent cap" rule still holds). A correct fix means over-fetching `MAX_RESULTS + 1` and slicing — a wire-contract change judged not worth reopening the story for. **No story owns this**; pick it up in 7.5 or a dedicated follow-up if it becomes user-visible. [hooks/useTicketSearch.ts, components/today/SearchPanel.tsx]

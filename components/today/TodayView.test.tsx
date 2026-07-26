@@ -1,24 +1,22 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { UNDO_WINDOW_MS } from '@/components/today/LoggedToday';
 import { scan, criticalOrSerious } from '@/lib/test/axe';
 
-vi.mock('@/hooks/useHierarchyTickets', () => ({
-  useHierarchyTickets: vi.fn(),
-}));
+/**
+ * Story 7.5: `TicketPicker` (and the 55-ticket browse tree it rendered) is
+ * gone from this view — replaced by `RecentlyWorked`, fed by
+ * `useRecentlyWorked`. This file's `useHierarchyTickets`/`pinned-tickets`/
+ * `ticket-search`/`create-subtask`/`catch-all` mocks from Story 7.2–7.4 are
+ * gone with it: none of those modules are reachable from `TodayView` any
+ * more (see `components/today/TicketPicker.tsx`, still used only by
+ * `WeeklyGrid`, and Task 9's byte-identical proof in the story).
+ */
 
-vi.mock('@/lib/storage/pinned-tickets', async () => ({
-  getPinnedTickets: vi.fn(async () => []),
-  addPinnedTicket: vi.fn(async () => {}),
-  removePinnedTicket: vi.fn(async () => {}),
-}));
-
-vi.mock('@/lib/ticket-search', () => ({
-  searchTickets: vi.fn(async () => ({ kind: 'ok', value: [] })),
-}));
-
-vi.mock('@/lib/create-subtask', () => ({
-  createSubtask: vi.fn(async () => ({ kind: 'ok', value: { id: '1', key: 'PROJ-999', summary: 'New sub' } })),
+const mockUseRecentlyWorked = vi.fn();
+vi.mock('@/hooks/useRecentlyWorked', () => ({
+  useRecentlyWorked: () => mockUseRecentlyWorked(),
 }));
 
 const postWorklogMock = vi.fn();
@@ -28,11 +26,6 @@ vi.mock('@/lib/jira-client', () => ({
   postWorklog: (...args: unknown[]) => postWorklogMock(...args),
   updateWorklog: (...args: unknown[]) => updateWorklogMock(...args),
   deleteWorklog: (...args: unknown[]) => deleteWorklogMock(...args),
-}));
-
-const fetchCatchAllSubtasksMock = vi.fn();
-vi.mock('@/lib/catch-all', () => ({
-  fetchCatchAllSubtasks: (...args: unknown[]) => fetchCatchAllSubtasksMock(...args),
 }));
 
 const sendMessageMock = vi.fn();
@@ -71,20 +64,18 @@ vi.mock('@/lib/log', () => ({
   log: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
 }));
 
-// Story 7.3, Task 1: `QuickLogForm` (rendered for real by this file) now
-// stamps the resume card's data seam on a confirmed post. `@wxt-dev/
-// storage`'s `defineItem` fires an unawaited background read the instant a
-// module calls it, so the real `lib/storage/last-logged` must be mocked
-// here too — not just where a test explicitly asserts on the write.
+// `QuickLogForm` (rendered for real by this file, reached via
+// "Recently worked"'s "+", D-7.5-11) stamps the resume card's data seam on a
+// confirmed post. `@wxt-dev/storage`'s `defineItem` fires an unawaited
+// background read the instant a module calls it, so the real
+// `lib/storage/last-logged` must be mocked here too — not just where a test
+// explicitly asserts on the write (Story 7.3, Task 1).
 vi.mock('@/lib/storage/last-logged', () => ({
   getLastLoggedTicket: vi.fn(async () => null),
   setLastLoggedTicket: vi.fn(async () => {}),
 }));
 
-const { useHierarchyTickets } = await import('@/hooks/useHierarchyTickets');
 const { TodayView } = await import('./TodayView');
-
-const mockUseHierarchyTickets = vi.mocked(useHierarchyTickets);
 
 function renderWithProviders(ui: React.ReactElement) {
   const queryClient = new QueryClient({
@@ -95,20 +86,10 @@ function renderWithProviders(ui: React.ReactElement) {
   );
 }
 
-const ONE_TASK_ONE_SUBTASK = [
-  {
-    key: 'PROJ-1',
-    summary: 'Alpha task',
-    assigneeDisplayName: 'Test User',
-    source: 'self' as const,
-    subtasks: [
-      { key: 'PROJ-2', summary: 'Fix button', assigneeDisplayName: 'Test User' },
-    ],
-  },
-];
+const ONE_RECENT = [{ key: 'PROJ-2', summary: 'Fix button', startedAt: new Date().toISOString() }];
 
-async function logHours(hours: string): Promise<void> {
-  fireEvent.click(screen.getByLabelText('Pick PROJ-2: Fix button'));
+async function logHoursViaRecentlyWorked(hours: string): Promise<void> {
+  fireEvent.click(screen.getByLabelText('Log time to PROJ-2'));
   await waitFor(() => expect(screen.getByLabelText('Hours')).toBeTruthy());
   fireEvent.change(screen.getByLabelText('Hours'), { target: { value: hours } });
   fireEvent.click(screen.getByText('Log'));
@@ -119,7 +100,7 @@ describe('TodayView', () => {
     vi.clearAllMocks();
     outboxDrained = 0;
     catchAllProjectKeyGetValue.mockResolvedValue('KNP');
-    fetchCatchAllSubtasksMock.mockResolvedValue({ kind: 'ok', value: [] });
+    mockUseRecentlyWorked.mockReturnValue([]);
     postWorklogMock.mockResolvedValue({
       kind: 'ok',
       value: { id: 'wl-1', timeSpentSeconds: 9000 },
@@ -133,152 +114,53 @@ describe('TodayView', () => {
     globalThis.chrome = { runtime: { openOptionsPage: vi.fn() } };
   });
 
-  it('renders the search input', () => {
-    mockUseHierarchyTickets.mockReturnValue({
-      data: [],
-      isLoading: false,
-      isError: false,
-      refetch: vi.fn(),
-    } as never);
+  // ---- AC1: the tree is gone; RecentlyWorked replaces it -----------------
 
+  it('does not render a ticket-picker tree, a search-or-pick input, or a "Recently used" heading', () => {
     renderWithProviders(<TodayView />);
-    expect(screen.getByPlaceholderText(/Search or pick/)).toBeTruthy();
+    expect(screen.queryByPlaceholderText(/Search or pick/)).toBeNull();
+    expect(screen.queryByText('Recently used')).toBeNull();
+    expect(screen.queryByRole('tree')).toBeNull();
   });
 
-  it('renders hierarchy tasks in the picker', () => {
-    mockUseHierarchyTickets.mockReturnValue({
-      data: [
-        {
-          key: 'PROJ-123',
-          summary: 'Settings page',
-          assigneeDisplayName: 'Test User',
-          source: 'self',
-          subtasks: [
-            { key: 'PROJ-124', summary: 'Fix button', assigneeDisplayName: 'Test User' },
-          ],
-        },
-      ],
-      isLoading: false,
-      isError: false,
-      refetch: vi.fn(),
-    } as never);
-
+  it('renders no "Recently worked" section when useRecentlyWorked returns zero items (D-7.5-13)', () => {
+    mockUseRecentlyWorked.mockReturnValue([]);
     renderWithProviders(<TodayView />);
-    expect(screen.getByText('PROJ-123')).toBeTruthy();
-    expect(screen.getByText('Settings page')).toBeTruthy();
+    expect(screen.queryByText('Recently worked')).toBeNull();
   });
 
-  it('shows skeleton when loading', () => {
-    mockUseHierarchyTickets.mockReturnValue({
-      data: undefined,
-      isLoading: true,
-      isError: false,
-      refetch: vi.fn(),
-    } as never);
-
-    const { container } = renderWithProviders(<TodayView />);
-    // Reduced-motion gated (Story 6.1 AC6).
-    expect(container.querySelector('.motion-safe\\:animate-pulse')).toBeTruthy();
+  it('renders the "Recently worked" rows useRecentlyWorked returns', () => {
+    mockUseRecentlyWorked.mockReturnValue(ONE_RECENT);
+    renderWithProviders(<TodayView />);
+    expect(screen.getByText('Recently worked')).toBeTruthy();
+    expect(screen.getByText('PROJ-2')).toBeTruthy();
+    expect(screen.getByText('Fix button')).toBeTruthy();
   });
 
-  it('shows error state with retry button', () => {
-    mockUseHierarchyTickets.mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      isError: true,
-      refetch: vi.fn(),
-    } as never);
+  // ---- D-7.5-11: the `+` opens QuickLogForm, pre-targeted ----------------
 
-    renderWithProviders(<TodayView />);
-    expect(screen.getByText(/Couldn.t load suggestions/)).toBeTruthy();
-    expect(screen.getByText('Retry')).toBeTruthy();
-  });
-
-  it('shows "Search Jira" affordance at bottom', () => {
-    mockUseHierarchyTickets.mockReturnValue({
-      data: [],
-      isLoading: false,
-      isError: false,
-      refetch: vi.fn(),
-    } as never);
-
-    renderWithProviders(<TodayView />);
-    expect(screen.getByText('+ Search Jira for a ticket…')).toBeTruthy();
-  });
-
-  it('filters tasks when typing in search', async () => {
-    mockUseHierarchyTickets.mockReturnValue({
-      data: [
-        {
-          key: 'PROJ-1',
-          summary: 'Alpha task',
-          assigneeDisplayName: null,
-          source: 'self',
-          subtasks: [],
-        },
-        {
-          key: 'PROJ-2',
-          summary: 'Beta task',
-          assigneeDisplayName: null,
-          source: 'self',
-          subtasks: [],
-        },
-      ],
-      isLoading: false,
-      isError: false,
-      refetch: vi.fn(),
-    } as never);
-
+  it('swaps "Recently worked" for QuickLogForm, pre-targeted at that ticket, when its "+" is clicked', async () => {
+    mockUseRecentlyWorked.mockReturnValue(ONE_RECENT);
     renderWithProviders(<TodayView />);
 
-    const input = screen.getByPlaceholderText(/Search or pick/);
-    fireEvent.change(input, { target: { value: 'Alpha' } });
+    fireEvent.click(screen.getByLabelText('Log time to PROJ-2'));
 
-    await waitFor(
-      () => {
-        expect(screen.getByText('PROJ-1')).toBeTruthy();
-      },
-      { timeout: 300 },
-    );
-  });
-
-  it('swaps picker for QuickLogForm when a sub-task is selected', async () => {
-    mockUseHierarchyTickets.mockReturnValue({
-      data: ONE_TASK_ONE_SUBTASK,
-      isLoading: false,
-      isError: false,
-      refetch: vi.fn(),
-    } as never);
-
-    renderWithProviders(<TodayView />);
-
-    // Click the sub-task leaf
-    fireEvent.click(screen.getByLabelText('Pick PROJ-2: Fix button'));
-
-    // QuickLogForm should render with the ticket key
     await waitFor(() => {
       expect(screen.getByText('PROJ-2')).toBeTruthy();
       expect(screen.getByLabelText('Hours')).toBeTruthy();
     });
+    // The RecentlyWorked section itself is gone while the form is open —
+    // it is a swap (D-7.5-22's `selectedTicket` branch), not an overlay.
+    expect(screen.queryByText('Recently worked')).toBeNull();
   });
 
-  // --- Story 7.2: onTotalChange lifts the session total to the popup shell -
-
-  it('reports the summed seconds via onTotalChange after logging a ticket', async () => {
-    mockUseHierarchyTickets.mockReturnValue({
-      data: ONE_TASK_ONE_SUBTASK,
-      isLoading: false,
-      isError: false,
-      refetch: vi.fn(),
-    } as never);
-
+  it('reports the summed seconds via onTotalChange after logging via a Recently-worked row', async () => {
+    mockUseRecentlyWorked.mockReturnValue(ONE_RECENT);
     const onTotalChange = vi.fn();
     renderWithProviders(<TodayView onTotalChange={onTotalChange} />);
 
-    // Reported once on mount with 0.
     await waitFor(() => expect(onTotalChange).toHaveBeenCalledWith(0));
-
-    await logHours('2h');
+    await logHoursViaRecentlyWorked('2h');
 
     await waitFor(() => expect(onTotalChange).toHaveBeenCalledWith(7200), {
       timeout: 1000,
@@ -286,24 +168,16 @@ describe('TodayView', () => {
   });
 
   it('editing a logged entry re-reports the recomputed total via onTotalChange', async () => {
-    mockUseHierarchyTickets.mockReturnValue({
-      data: ONE_TASK_ONE_SUBTASK,
-      isLoading: false,
-      isError: false,
-      refetch: vi.fn(),
-    } as never);
-
+    mockUseRecentlyWorked.mockReturnValue(ONE_RECENT);
     const onTotalChange = vi.fn();
     renderWithProviders(<TodayView onTotalChange={onTotalChange} />);
 
-    await logHours('8h');
+    await logHoursViaRecentlyWorked('8h');
     await waitFor(() => expect(onTotalChange).toHaveBeenCalledWith(28800), {
       timeout: 1000,
     });
 
-    // Open the row menu and edit the entry down to 4h.
-    fireEvent.click(screen.getByLabelText('Worklog actions for PROJ-2, 8h'));
-    fireEvent.click(screen.getByText('Edit'));
+    fireEvent.click(screen.getByLabelText('Edit PROJ-2, 8h'));
     fireEvent.change(screen.getByLabelText('Hours'), { target: { value: '4h' } });
     fireEvent.click(screen.getByText('Save'));
 
@@ -317,42 +191,61 @@ describe('TodayView', () => {
     await waitFor(() => expect(onTotalChange).toHaveBeenCalledWith(14400));
   });
 
-  it('deleting a logged entry re-reports the total via onTotalChange', async () => {
-    mockUseHierarchyTickets.mockReturnValue({
-      data: ONE_TASK_ONE_SUBTASK,
-      isLoading: false,
-      isError: false,
-      refetch: vi.fn(),
-    } as never);
-
+  it('deleting a logged entry re-reports the total via onTotalChange once the undo window commits', async () => {
+    mockUseRecentlyWorked.mockReturnValue(ONE_RECENT);
     const onTotalChange = vi.fn();
     renderWithProviders(<TodayView onTotalChange={onTotalChange} />);
 
-    await logHours('8h');
+    await logHoursViaRecentlyWorked('8h');
     await waitFor(() => expect(onTotalChange).toHaveBeenCalledWith(28800), {
       timeout: 1000,
     });
 
-    fireEvent.click(screen.getByLabelText('Worklog actions for PROJ-2, 8h'));
-    fireEvent.click(screen.getByText('Delete'));
-    fireEvent.click(screen.getByText('Delete'));
+    // Fake timers only around the undo window itself — mixing them with
+    // RTL's `waitFor` (which polls on its own timer) is unreliable, so every
+    // assertion in this block is synchronous, per the project's established
+    // `act(async () => { await vi.advanceTimersByTimeAsync(...) })` pattern
+    // (see `hooks/useTicketSearch.test.ts`).
+    vi.useFakeTimers();
+    try {
+      // The row hides (and the total drops) IMMEDIATELY on delete-request —
+      // well before the undo window commits.
+      //
+      // Review Finding 3 (Major): `toHaveBeenCalledWith(0)` is satisfied by
+      // ANY historical call with that argument, including the call made at
+      // MOUNT (before anything was logged) — so this assertion passed even
+      // with the `pendingDeletionId` filter completely removed from
+      // `totalSeconds` below. `toHaveBeenLastCalledWith` pins the value of
+      // the MOST RECENT call, which is what "drops immediately on
+      // delete-request" actually claims.
+      fireEvent.click(screen.getByLabelText('Delete PROJ-2, 8h'));
+      expect(onTotalChange).toHaveBeenLastCalledWith(0);
+      expect(deleteWorklogMock).not.toHaveBeenCalled();
 
-    await waitFor(() => {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(UNDO_WINDOW_MS);
+      });
       expect(deleteWorklogMock).toHaveBeenCalledWith('PROJ-2', 'wl-1');
-    });
-    await waitFor(() => expect(onTotalChange).toHaveBeenCalledWith(0));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('does not throw when onTotalChange is omitted (stays independently testable)', async () => {
-    mockUseHierarchyTickets.mockReturnValue({
-      data: ONE_TASK_ONE_SUBTASK,
-      isLoading: false,
-      isError: false,
-      refetch: vi.fn(),
-    } as never);
-
+    mockUseRecentlyWorked.mockReturnValue(ONE_RECENT);
     renderWithProviders(<TodayView />);
-    await expect(logHours('1h')).resolves.not.toThrow();
+    await expect(logHoursViaRecentlyWorked('1h')).resolves.not.toThrow();
+  });
+
+  // ---- D-7.5-22: the handoff row calls onRequestSearchFocus ---------------
+
+  it('the "Recently worked" handoff row calls onRequestSearchFocus', () => {
+    mockUseRecentlyWorked.mockReturnValue(ONE_RECENT);
+    const onRequestSearchFocus = vi.fn();
+    renderWithProviders(<TodayView onRequestSearchFocus={onRequestSearchFocus} />);
+
+    fireEvent.click(screen.getByText('More assigned tickets · Search to find them →'));
+    expect(onRequestSearchFocus).toHaveBeenCalledTimes(1);
   });
 
   // --- Story 7.2 Finding 3: externally-owned entries (the action bar's -----
@@ -369,26 +262,13 @@ describe('TodayView', () => {
 
   describe('externalEntries (Story 7.2, Finding 3)', () => {
     it('renders an externally-owned entry in "Logged today" alongside its own entries', () => {
-      mockUseHierarchyTickets.mockReturnValue({
-        data: [],
-        isLoading: false,
-        isError: false,
-        refetch: vi.fn(),
-      } as never);
-
       renderWithProviders(<TodayView externalEntries={[PTO_ENTRY]} />);
 
       expect(screen.getByText('PTO-1')).toBeTruthy();
-      expect(screen.getByLabelText('Worklog actions for PTO-1, 8h')).toBeTruthy();
+      expect(screen.getByLabelText('Delete PTO-1, 8h')).toBeTruthy();
     });
 
     it('routes an edit of an externally-owned entry to onExternalEntryEdited, not its own reducer', async () => {
-      mockUseHierarchyTickets.mockReturnValue({
-        data: [],
-        isLoading: false,
-        isError: false,
-        refetch: vi.fn(),
-      } as never);
       const onExternalEntryEdited = vi.fn();
 
       renderWithProviders(
@@ -398,8 +278,7 @@ describe('TodayView', () => {
         />,
       );
 
-      fireEvent.click(screen.getByLabelText('Worklog actions for PTO-1, 8h'));
-      fireEvent.click(screen.getByText('Edit'));
+      fireEvent.click(screen.getByLabelText('Edit PTO-1, 8h'));
       fireEvent.change(screen.getByLabelText('Hours'), { target: { value: '4h' } });
       fireEvent.click(screen.getByText('Save'));
 
@@ -418,13 +297,7 @@ describe('TodayView', () => {
       );
     });
 
-    it('routes a delete of an externally-owned entry to onExternalEntryDeleted, not its own reducer', async () => {
-      mockUseHierarchyTickets.mockReturnValue({
-        data: [],
-        isLoading: false,
-        isError: false,
-        refetch: vi.fn(),
-      } as never);
+    it('routes a delete of an externally-owned entry to onExternalEntryDeleted, not its own reducer, once committed', async () => {
       const onExternalEntryDeleted = vi.fn();
 
       renderWithProviders(
@@ -434,23 +307,23 @@ describe('TodayView', () => {
         />,
       );
 
-      fireEvent.click(screen.getByLabelText('Worklog actions for PTO-1, 8h'));
-      fireEvent.click(screen.getByText('Delete'));
-      fireEvent.click(screen.getByText('Delete'));
+      vi.useFakeTimers();
+      try {
+        fireEvent.click(screen.getByLabelText('Delete PTO-1, 8h'));
+        expect(onExternalEntryDeleted).not.toHaveBeenCalled();
 
-      await waitFor(() => {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(UNDO_WINDOW_MS);
+        });
         expect(deleteWorklogMock).toHaveBeenCalledWith('PTO-1', 'pto-wl-1');
-      });
-      await waitFor(() => expect(onExternalEntryDeleted).toHaveBeenCalledWith('pto-wl-1'));
+        expect(onExternalEntryDeleted).toHaveBeenCalledWith('pto-wl-1');
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('reports onTotalChange scoped to its own entries only — the external contribution is not folded in (avoids double-reporting what the shell already tracks separately)', async () => {
-      mockUseHierarchyTickets.mockReturnValue({
-        data: ONE_TASK_ONE_SUBTASK,
-        isLoading: false,
-        isError: false,
-        refetch: vi.fn(),
-      } as never);
+      mockUseRecentlyWorked.mockReturnValue(ONE_RECENT);
       const onTotalChange = vi.fn();
 
       renderWithProviders(
@@ -461,7 +334,7 @@ describe('TodayView', () => {
       // external (PTO) entry is present and rendered.
       await waitFor(() => expect(onTotalChange).toHaveBeenCalledWith(0));
 
-      await logHours('2h');
+      await logHoursViaRecentlyWorked('2h');
 
       // Reports only its own 2h (7200s) — never 7200 + PTO_ENTRY.seconds.
       await waitFor(() => expect(onTotalChange).toHaveBeenCalledWith(7200), {
@@ -471,14 +344,34 @@ describe('TodayView', () => {
     });
   });
 
+  // ---- D-7.5-18: pending-deletion forwarding -------------------------------
+
+  it('forwards the pending-deletion id up via onPendingDeletionChange for both own and external entries', async () => {
+    const onPendingDeletionChange = vi.fn();
+    renderWithProviders(
+      <TodayView
+        externalEntries={[PTO_ENTRY]}
+        onPendingDeletionChange={onPendingDeletionChange}
+      />,
+    );
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByLabelText('Delete PTO-1, 8h'));
+      expect(onPendingDeletionChange).toHaveBeenCalledWith('pto-wl-1');
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(UNDO_WINDOW_MS);
+      });
+      expect(deleteWorklogMock).toHaveBeenCalled();
+      expect(onPendingDeletionChange).toHaveBeenLastCalledWith(null);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('shows the catch-all-unconfigured placeholder when the project key is blank', async () => {
     catchAllProjectKeyGetValue.mockResolvedValue('');
-    mockUseHierarchyTickets.mockReturnValue({
-      data: [],
-      isLoading: false,
-      isError: false,
-      refetch: vi.fn(),
-    } as never);
 
     renderWithProviders(<TodayView />);
     expect(await screen.findByText(/Catch-all not configured/)).toBeTruthy();
@@ -489,14 +382,11 @@ describe('TodayView', () => {
 
   describe('a11y scan (Story 6.1 AC1)', () => {
     it('the Today view has zero Critical/Serious violations', async () => {
-      mockUseHierarchyTickets.mockReturnValue({
-        data: [],
-        isLoading: false,
-        isError: false,
-        refetch: vi.fn(),
-      } as never);
-      const { container } = renderWithProviders(<TodayView />);
-      await screen.findByPlaceholderText(/Search or pick/);
+      mockUseRecentlyWorked.mockReturnValue(ONE_RECENT);
+      const { container } = renderWithProviders(
+        <TodayView externalEntries={[PTO_ENTRY]} />,
+      );
+      await screen.findByText('Recently worked');
       const results = await scan(container);
       expect(criticalOrSerious(results.violations)).toEqual([]);
     });

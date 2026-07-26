@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
@@ -23,13 +23,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  * `PtoQuickAction` is stubbed out because Finding 1 is about the ticket-log
  * path, not the PTO path (Finding 3 covers PTO separately).
  *
- * The mock for `fetchCurrentUserWeekWorklogsByIssue` returns the pre-log
- * server total on its first call and the POST-log total (as a real backend
- * would report once the write landed) on any subsequent call. Logging an
- * entry through the real UI does not, today, cause a second call — if a
- * future change adds `invalidateQueries(['week-worklogs', …])` anywhere
- * reachable from `TodayView.handleLogged`, a second fetch WOULD fire, the
- * mock WOULD return the inflated total, and the assertion below goes red.
+ * Story 7.5: `TicketPicker` is gone from the popup, so the "log a NEW
+ * ticket" flows below go through `SearchPanel` (the browse mechanism now),
+ * and the "log the resume ticket via a second surface" flows go through
+ * `RecentlyWorked`'s `+` (D-7.5-11) instead of the old picker → QuickLogForm
+ * chain. `useHierarchyTickets`/`pinned-tickets`/`ticket-search`/
+ * `create-subtask`/`catch-all` mocks are gone with it — none of those
+ * modules are reachable from the real `TodayView` any more (see the story's
+ * Task 9 and the dedicated NFR1 test at the bottom of this file).
  */
 
 vi.mock('@/lib/storage/tokens', () => ({
@@ -41,9 +42,10 @@ vi.mock('@/lib/storage/settings', () => ({
   targetHoursItem: { getValue: vi.fn(async () => 8) },
   catchAllProjectKeyItem: { getValue: vi.fn(async () => 'KNP') },
   approvalCycleItem: { getValue: vi.fn(async () => 'calendar-month') },
-  // Story 7.3: `useResumeTicket` reads this to exclude the PTO subtask from
-  // its week-worklog enrichment (D-7.3-12). `null` = not configured, so
-  // nothing is excluded in this file's fixtures.
+  // Story 7.3: `useResumeTicket` (and, since 7.5, `useRecentlyWorked`) read
+  // this to exclude the PTO subtask from week-worklog enrichment
+  // (D-7.3-12). `null` = not configured, so nothing is excluded in this
+  // file's fixtures.
   ptoSubtaskKeyItem: { getValue: vi.fn(async () => null) },
 }));
 
@@ -51,7 +53,7 @@ vi.mock('@/lib/storage/settings', () => ({
 // `null` by default so `useResumeTicket` falls through to its free
 // week-scan enrichment (the same `PROJ-9` worklog `useTodayTotal` already
 // consumes) — the resume card genuinely mounts in this file's real
-// composition root, which is exactly what the new guard test below needs.
+// composition root, which is exactly what the guard tests below need.
 const getLastLoggedTicketMock = vi.fn(async () => null as unknown);
 const setLastLoggedTicketMock = vi.fn((..._args: unknown[]) => Promise.resolve());
 vi.mock('@/lib/storage/last-logged', () => ({
@@ -63,53 +65,13 @@ vi.mock('@/components/today/PtoQuickAction', () => ({
   PtoQuickAction: () => <div data-testid="pto-quick-action" />,
 }));
 
-vi.mock('@/hooks/useHierarchyTickets', () => ({
-  useHierarchyTickets: () => ({
-    data: [
-      {
-        key: 'PROJ-1',
-        summary: 'Alpha task',
-        assigneeDisplayName: 'Test User',
-        source: 'self',
-        subtasks: [
-          { key: 'PROJ-2', summary: 'Fix button', assigneeDisplayName: 'Test User' },
-        ],
-      },
-    ],
-    isLoading: false,
-    isError: false,
-    refetch: vi.fn(),
-  }),
-}));
-
-vi.mock('@/lib/storage/pinned-tickets', () => ({
-  getPinnedTickets: vi.fn(async () => []),
-  addPinnedTicket: vi.fn(async () => {}),
-  removePinnedTicket: vi.fn(async () => {}),
-}));
-
-vi.mock('@/lib/ticket-search', () => ({
-  searchTickets: vi.fn(async () => ({ kind: 'ok', value: [] })),
-}));
-
-// Story 7.4: `SearchPanel` renders for real in this file too (nothing here
-// mocks it away), so its results hook gets the same controllable-mock
-// treatment used in `App.test.tsx` — these tests drive the WRITE path only,
-// never a real debounced Jira search or `useCurrentUser` network call.
+// Story 7.4: `SearchPanel` renders for real in this file (nothing here mocks
+// it away), so its results hook gets the same controllable-mock treatment
+// used in `App.test.tsx` — these tests drive the WRITE path only, never a
+// real debounced Jira search or `useCurrentUser` network call.
 const mockUseTicketSearch = vi.fn();
 vi.mock('@/hooks/useTicketSearch', () => ({
   useTicketSearch: (query: string) => mockUseTicketSearch(query),
-}));
-
-vi.mock('@/lib/create-subtask', () => ({
-  createSubtask: vi.fn(async () => ({
-    kind: 'ok',
-    value: { id: '1', key: 'PROJ-999', summary: 'New sub' },
-  })),
-}));
-
-vi.mock('@/lib/catch-all', () => ({
-  fetchCatchAllSubtasks: vi.fn(async () => ({ kind: 'ok', value: [] })),
 }));
 
 vi.mock('@/lib/messages', () => ({
@@ -139,11 +101,12 @@ vi.mock('@/lib/log', () => ({
 
 const fetchByIssueMock = vi.fn();
 const postWorklogMock = vi.fn();
+const deleteWorklogMock = vi.fn();
 vi.mock('@/lib/jira-client', () => ({
   fetchCurrentUserWeekWorklogsByIssue: (...args: unknown[]) => fetchByIssueMock(...args),
   postWorklog: (...args: unknown[]) => postWorklogMock(...args),
   updateWorklog: vi.fn(),
-  deleteWorklog: vi.fn(),
+  deleteWorklog: (...args: unknown[]) => deleteWorklogMock(...args),
 }));
 
 const { App } = await import('./App');
@@ -219,14 +182,15 @@ describe('App — session total double-count guard (Story 7.2, Finding 1)', () =
     globalThis.chrome = { runtime: { openOptionsPage: vi.fn() }, tabs: { create: vi.fn() } };
   });
 
-  it('logging an entry does not double-count — the header shows server + session exactly once', async () => {
+  it('logging an entry via "Recently worked" does not double-count — the header shows server + session exactly once', async () => {
     const { container } = renderApp();
 
     // Initial server-only total: 3600s = 1.0h.
     await waitFor(() => expect(figureText(container)).toMatch(/^1\.0/));
 
-    // Real TicketPicker → QuickLogForm flow (mirrors TodayView.test.tsx).
-    fireEvent.click(screen.getByLabelText('Pick PROJ-2: Fix button'));
+    // Story 7.5: PROJ-9 (the only issue this week) surfaces in "Recently
+    // worked" — its "+" opens QuickLogForm, pre-targeted (D-7.5-11).
+    fireEvent.click(await screen.findByLabelText('Log time to PROJ-9'));
     await waitFor(() => expect(screen.getByLabelText('Hours')).toBeTruthy());
     fireEvent.change(screen.getByLabelText('Hours'), { target: { value: '2h' } });
     fireEvent.click(screen.getByText('Log'));
@@ -246,10 +210,10 @@ describe('App — session total double-count guard (Story 7.2, Finding 1)', () =
 
   // ---- Story 7.3: the resume card composes over the SAME week-worklogs
   // query (D-7.3-2) — a log made through the card must be exactly as
-  // additive as one made through TicketPicker/QuickLogForm, and must not
-  // add a second fetch. `getLastLoggedTicketMock` resolves `null` (its file-
-  // level default), so `useResumeTicket` resolves the resume ticket from
-  // the free week-scan alone: `PROJ-9`, the same issue `useTodayTotal`
+  // additive as one made through `RecentlyWorked`/`SearchPanel`, and must
+  // not add a second fetch. `getLastLoggedTicketMock` resolves `null` (its
+  // file-level default), so `useResumeTicket` resolves the resume ticket
+  // from the free week-scan alone: `PROJ-9`, the same issue `useTodayTotal`
   // already sums into the initial 1.0h.
   it('a resume-card log does not double-count either — the header stays additive and the week query is fetched exactly once', async () => {
     postWorklogMock.mockResolvedValue({
@@ -420,23 +384,42 @@ describe('App — session total double-count guard (Story 7.2, Finding 1)', () =
   // test drives the REAL `TodayView` (nothing in this file mocks it away)
   // so it can actually observe that hazard, and is proven to go RED against
   // a conditional-render implementation (see the Dev Agent Record).
+  //
+  // Story 7.5 Task 9: re-run via the SEARCH path (the browse mechanism
+  // TicketPicker's removal leaves in place) rather than the old picker.
   it('D-7.4-18: typing a query and pressing Esc leaves a logged entry AND the chrome total untouched', async () => {
+    mockUseTicketSearch.mockReturnValue({
+      kind: 'results',
+      items: [
+        {
+          issue: {
+            id: '50',
+            key: 'GAPI-330',
+            fields: {
+              summary: 'Payment gateway rollout',
+              issuetype: { id: '1', name: 'Story', subtask: false },
+            },
+          },
+          assignment: 'unknown',
+        },
+      ],
+      truncated: false,
+    });
+
     const { container } = renderApp();
     await waitFor(() => expect(figureText(container)).toMatch(/^1\.0/));
 
-    fireEvent.click(screen.getByLabelText('Pick PROJ-2: Fix button'));
-    await waitFor(() => expect(screen.getByLabelText('Hours')).toBeTruthy());
-    fireEvent.change(screen.getByLabelText('Hours'), { target: { value: '2h' } });
-    fireEvent.click(screen.getByText('Log'));
+    const searchInput = screen.getByRole('combobox');
+    fireEvent.change(searchInput, { target: { value: 'payment' } });
+    const hoursInput = await screen.findByLabelText('Hours for GAPI-330');
+    fireEvent.change(hoursInput, { target: { value: '2h' } });
+    fireEvent.keyDown(hoursInput, { key: 'Enter' });
 
     await waitFor(() => expect(figureText(container)).toMatch(/^3\.0/), { timeout: 1000 });
-    // The action button's aria-label is unique to the LOGGED ROW (unlike the
-    // bare "PROJ-2" text, which also appears in the still-mounted picker
-    // tree below).
-    const loggedRowLabel = /Worklog actions for PROJ-2/;
+    // The action button's aria-label is unique to the LOGGED ROW.
+    const loggedRowLabel = /Edit GAPI-330/;
     expect(screen.getByLabelText(loggedRowLabel)).toBeVisible();
 
-    const searchInput = screen.getByRole('combobox');
     fireEvent.change(searchInput, { target: { value: 'a' } });
 
     // While a search is active, the logged row is present in the DOM (state
@@ -450,5 +433,262 @@ describe('App — session total double-count guard (Story 7.2, Finding 1)', () =
     expect((searchInput as HTMLInputElement).value).toBe('');
     expect(screen.getByLabelText(loggedRowLabel)).toBeVisible();
     expect(figureText(container)).toMatch(/^3\.0/);
+  });
+});
+
+// ---- Story 7.5, D-7.5-11: the resume card is untouched by a DIFFERENT ----
+// Recently-worked row's "+" (owner ruling — required test) -----------------
+describe('App — "Recently worked" + never touches the resume card (Story 7.5, D-7.5-11)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseTicketSearch.mockReturnValue({ kind: 'idle' });
+    // @ts-expect-error minimal chrome stub
+    globalThis.chrome = { runtime: { openOptionsPage: vi.fn() }, tabs: { create: vi.fn() } };
+  });
+
+  const TWO_TICKET_WORKLOGS = [
+    {
+      key: 'PROJ-9',
+      summary: 'Existing',
+      worklogs: [{ id: 'wl-existing', timeSpentSeconds: 3600, started: todayIsoAt(9) }],
+    },
+    {
+      key: 'PROJ-10',
+      summary: 'A second ticket',
+      worklogs: [{ id: 'wl-existing-2', timeSpentSeconds: 1800, started: todayIsoAt(7) }],
+    },
+  ];
+
+  it("clicking a DIFFERENT row's + leaves the resume card's subtask, pre-fill, and write target unchanged", async () => {
+    fetchByIssueMock.mockResolvedValue({ kind: 'ok', value: TWO_TICKET_WORKLOGS });
+    postWorklogMock.mockResolvedValue({
+      kind: 'ok',
+      value: { id: 'wl-quicklog-1', timeSpentSeconds: 7200 },
+    });
+
+    renderApp();
+
+    // The resume card auto-resolves PROJ-9 — the freshest worklog.
+    const resumeInput = (await screen.findByLabelText(
+      'Hours for PROJ-9',
+    )) as HTMLInputElement;
+    const preFillBefore = resumeInput.value;
+
+    // PROJ-10 is a DIFFERENT ticket, also surfaced by "Recently worked".
+    fireEvent.click(await screen.findByLabelText('Log time to PROJ-10'));
+    const quickLogHours = await screen.findByLabelText('Hours');
+    fireEvent.change(quickLogHours, { target: { value: '2h' } });
+    fireEvent.click(screen.getByText('Log'));
+
+    await waitFor(() =>
+      expect(postWorklogMock).toHaveBeenCalledWith('PROJ-10', {
+        timeSpentSeconds: 7200,
+        started: expect.any(String),
+      }),
+    );
+
+    // The resume card: still mounted, still PROJ-9, still the SAME pre-fill —
+    // D-7.3-9 stays absolute; the `+` never reached up and retargeted it.
+    const resumeInputAfter = screen.getByLabelText('Hours for PROJ-9') as HTMLInputElement;
+    expect(resumeInputAfter.value).toBe(preFillBefore);
+    expect(setLastLoggedTicketMock).toHaveBeenCalledWith(
+      expect.objectContaining({ key: 'PROJ-10' }),
+    );
+    expect(setLastLoggedTicketMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ key: 'PROJ-9', seconds: 7200 }),
+    );
+  });
+});
+
+// ---- Review Finding 2 (Major), D-7.5-18: the shell's pendingDeletionId ----
+// filter, given real teeth on the RENDERED chrome figure -------------------
+//
+// The reviewer proved that stripping `.filter((e) => e.worklogId !==
+// pendingDeletionId)` from ALL THREE of `App.tsx`'s shell sums (`ptoSeconds`
+// / `resumeSeconds` / `searchSeconds`) left the full 92-file suite green —
+// nothing anywhere exercised the chrome header figure while an
+// EXTERNALLY-owned entry (i.e. one NOT in `TodayView`'s own `loggedEntries`)
+// was pending deletion. `LoggedToday.test.tsx` and `TodayView.test.tsx` only
+// ever delete `TodayView`'s OWN entries, which is a different code path
+// (`TodayView`'s `totalSeconds`, not `App.tsx`'s `searchSeconds` /
+// `ptoSeconds` / `resumeSeconds`). This test deletes a SEARCH-driven entry
+// (owned by `App.tsx`'s `searchEntries`, routed via
+// `TodayView.handleAnyDeleted` → `onExternalEntryDeleted`) and asserts the
+// RENDERED figure, not the `onPendingDeletionChange` callback — a callback
+// firing correctly proves nothing about whether the shell's OWN sum
+// actually used it.
+describe('App — the shell seconds filter drops the figure immediately on delete and restores on Undo (Review Finding 2)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fetchByIssueMock.mockReset();
+    fetchByIssueMock.mockResolvedValue({ kind: 'ok', value: PRE_LOG_WORKLOGS });
+    postWorklogMock.mockResolvedValue({
+      kind: 'ok',
+      value: { id: 'wl-search-2', timeSpentSeconds: 5400 },
+    });
+    mockUseTicketSearch.mockReturnValue({
+      kind: 'results',
+      items: [
+        {
+          issue: {
+            id: '50',
+            key: 'GAPI-330',
+            fields: {
+              summary: 'Payment gateway rollout',
+              issuetype: { id: '1', name: 'Story', subtask: false },
+            },
+          },
+          assignment: 'unknown',
+        },
+      ],
+      truncated: false,
+    });
+    // @ts-expect-error minimal chrome stub
+    globalThis.chrome = { runtime: { openOptionsPage: vi.fn() }, tabs: { create: vi.fn() } };
+  });
+
+  it('deleting a SHELL-owned (search-logged) entry drops the header figure immediately and Undo restores it', async () => {
+    const { container } = renderApp();
+    await waitFor(() => expect(figureText(container)).toMatch(/^1\.0/));
+
+    // Log 1.5h against GAPI-330 via search — a `searchEntries`-owned row,
+    // NOT one of `TodayView`'s own `loggedEntries`.
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'payment' } });
+    const hoursInput = await screen.findByLabelText('Hours for GAPI-330');
+    fireEvent.change(hoursInput, { target: { value: '1.5h' } });
+    fireEvent.keyDown(hoursInput, { key: 'Enter' });
+
+    await waitFor(() => expect(figureText(container)).toMatch(/^2\.5/), { timeout: 1000 });
+
+    // Delete it. This routes LoggedToday → TodayView.handleAnyDeleted (not
+    // owned by loggedEntries) → App.tsx's onExternalEntryDeleted family via
+    // onPendingDeletionChange, which THIS test asserts actually reaches
+    // `searchSeconds`'s own filter — not just the callback.
+    fireEvent.click(await screen.findByLabelText('Delete GAPI-330, 1.5h'));
+
+    // The figure must drop back to the server-only 1.0h IMMEDIATELY — well
+    // before the undo window commits anything to Jira.
+    expect(figureText(container)).toMatch(/^1\.0/);
+    expect(deleteWorklogMock).not.toHaveBeenCalled();
+
+    // Undo restores it just as immediately.
+    fireEvent.click(screen.getByText('Undo'));
+    expect(figureText(container)).toMatch(/^2\.5/);
+  });
+});
+
+// ---- Review Finding 6 (Nit), D-7.5-20: `⌘Z` genuinely reaches the resume ---
+// card's hour input and the search field — corrected from the story's own
+// (wrong) claim that this was "structurally impossible". `LoggedToday`'s
+// `⌘Z` listener is `document.addEventListener`, not component-scoped, so it
+// DOES observe keystrokes from these two inputs; `isTextEntryElement` is
+// what makes it fall through to native undo instead of cancelling the
+// pending deletion. `LoggedToday.test.tsx` cannot exercise this itself (it
+// never mounts `ResumeCard`/`SearchPanel`) — only the real composition root
+// here can.
+describe('App — ⌘Z falls through to native undo from the resume card and search field too (Review Finding 6)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fetchByIssueMock.mockReset();
+    fetchByIssueMock.mockResolvedValue({ kind: 'ok', value: PRE_LOG_WORKLOGS });
+    postWorklogMock.mockResolvedValue({
+      kind: 'ok',
+      value: { id: 'wl-search-3', timeSpentSeconds: 5400 },
+    });
+    mockUseTicketSearch.mockReturnValue({
+      kind: 'results',
+      items: [
+        {
+          issue: {
+            id: '50',
+            key: 'GAPI-330',
+            fields: {
+              summary: 'Payment gateway rollout',
+              issuetype: { id: '1', name: 'Story', subtask: false },
+            },
+          },
+          assignment: 'unknown',
+        },
+      ],
+      truncated: false,
+    });
+    // @ts-expect-error minimal chrome stub
+    globalThis.chrome = { runtime: { openOptionsPage: vi.fn() }, tabs: { create: vi.fn() } };
+  });
+
+  async function logAndStartPendingDelete(container: HTMLElement): Promise<void> {
+    await waitFor(() => expect(figureText(container)).toMatch(/^1\.0/));
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'payment' } });
+    const hoursInput = await screen.findByLabelText('Hours for GAPI-330');
+    fireEvent.change(hoursInput, { target: { value: '1.5h' } });
+    fireEvent.keyDown(hoursInput, { key: 'Enter' });
+    await waitFor(() => expect(figureText(container)).toMatch(/^2\.5/), { timeout: 1000 });
+    fireEvent.click(await screen.findByLabelText('Delete GAPI-330, 1.5h'));
+    expect(screen.getByText('Undo')).toBeTruthy();
+  }
+
+  it('⌘Z pressed inside the resume card\'s hour input does not cancel a pending deletion elsewhere', async () => {
+    const { container } = renderApp();
+    await logAndStartPendingDelete(container);
+
+    const resumeInput = await screen.findByLabelText('Hours for PROJ-9');
+    // Plain `.focus()` (unlike `fireEvent`) isn't auto-wrapped by RTL, and
+    // moving focus away from the search field can trigger its own blur
+    // state update.
+    act(() => {
+      resumeInput.focus();
+    });
+    fireEvent.keyDown(resumeInput, { key: 'z', metaKey: true });
+
+    // Undo is still offered — the keystroke fell through to native text
+    // undo in the resume card's own input, exactly as `isTextEntryElement`
+    // intends, and did NOT reach `cancelPendingDeletion`.
+    expect(screen.getByText('Undo')).toBeTruthy();
+    expect(screen.queryByLabelText('Delete GAPI-330, 1.5h')).toBeNull();
+  });
+
+  it('⌘Z pressed inside the search field does not cancel a pending deletion elsewhere', async () => {
+    const { container } = renderApp();
+    await logAndStartPendingDelete(container);
+
+    const searchInput = screen.getByRole('combobox');
+    act(() => {
+      (searchInput as HTMLInputElement).focus();
+    });
+    fireEvent.keyDown(searchInput, { key: 'z', metaKey: true });
+
+    expect(screen.getByText('Undo')).toBeTruthy();
+    expect(screen.queryByLabelText('Delete GAPI-330, 1.5h')).toBeNull();
+  });
+});
+
+// ---- Story 7.5, D-7.5-17: the measured NFR1 win ----------------------------
+describe('App — removing TicketPicker takes fetchHierarchy off the first-paint path (Story 7.5, D-7.5-17)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fetchByIssueMock.mockResolvedValue({ kind: 'ok', value: PRE_LOG_WORKLOGS });
+    mockUseTicketSearch.mockReturnValue({ kind: 'idle' });
+    // @ts-expect-error minimal chrome stub
+    globalThis.chrome = { runtime: { openOptionsPage: vi.fn() }, tabs: { create: vi.fn() } };
+  });
+
+  it('never calls fetchHierarchy on a connected, real-composition-root popup render', async () => {
+    // `lib/hierarchy.ts` is NOT mocked in this file — if `fetchHierarchy`
+    // (via the now-deleted popup `TicketPicker` → `useHierarchyTickets`
+    // chain) were still reachable, it would call the ALSO-unmocked
+    // `jiraGet`, which this file's `@/lib/jira-client` mock does not even
+    // export — an immediate TypeError. A direct spy is the explicit
+    // measurement the story asks for, rather than relying on that crash.
+    const hierarchy = await import('@/lib/hierarchy');
+    const fetchHierarchySpy = vi.spyOn(hierarchy, 'fetchHierarchy');
+
+    const { container } = renderApp();
+    await waitFor(() => expect(figureText(container)).toMatch(/^1\.0/));
+    // "Recently worked" mounts fully (it is the section that replaced the
+    // tree) — give any lazy/deferred hierarchy mount a beat to fire, if one
+    // still existed.
+    await screen.findByText('Recently worked');
+
+    expect(fetchHierarchySpy).not.toHaveBeenCalled();
   });
 });

@@ -1196,3 +1196,561 @@ FIX/DISMISS/DEFER rationale per finding. In summary:
 - **Finding 10 (Nit).** The ranking comparator guards against a `NaN` result when both compared issues lack
   `updated`; the truncation off-by-one (exactly `MAX_RESULTS` matches) was reviewed and left as documented,
   conservative-direction behaviour rather than fixed — see the story file's Finding Resolutions for why.
+
+---
+
+## Story 7.5 — Logged Today, Recently Worked, and the 55-Ticket Handoff
+
+*Story file `7-5-logged-today-recently-worked-55-ticket-handoff.md`, `ready-for-dev`, baseline commit
+`2d1c30f`. The creator recorded its own `D-7.5-1 … D-7.5-10` in the story file; per D-7.3-11 those are
+folded into this log when the story finishes. The entries below are numbered from `D-7.5-11` so they
+cannot collide.*
+
+### D-7.5-11 — The "Recently worked" `+` opens QuickLogForm; it does NOT seed the resume card
+**Owner decision** (asked — it pitted an authoritative spec line against an owner ruling on the money
+path).
+
+**Verdict.** Each "Recently worked" row's `+` opens the existing `QuickLogForm` pre-targeted at that
+ticket. It does **not** reach up and repoint the resume card. **D-7.3-9 therefore stays absolute**: once
+the resume card renders `ready`, nothing — automatic or user-initiated — changes its subtask, pre-fill or
+write target for that popup session.
+
+**Situation.** `EXPERIENCE.md:140` specifies "Four rows, ranked by recency of the user's own worklogs,
+each with a `+` that **seeds the resume card**." Seeding means the `+` mutates the card at the top of the
+popup to point at the clicked ticket. D-7.3-9 forbids exactly that mutation, because a live retarget is
+what let hours typed for one subtask post to another under a different parent epic.
+
+There is a real distinction the first framing of this question missed, and it deserves recording because
+it is what made the decision non-obvious: D-7.3-9 was written against an **automatic, silent** swap — the
+background week query retargeting the card mid-typing. A `+` click is **user-initiated**. Honouring the
+spec would therefore not have reopened the original hazard so much as narrowed the invariant to "identity
+never changes *except by explicit user action*".
+
+**In simple terms.** The popup is open. The resume card shows **MBS-135** and you have typed `1.5` into
+it. You click `+` on the **MBS-142** row.
+
+- *Under the chosen option:* a QuickLogForm opens for MBS-142. You type `2`, press Enter, and 2h posts to
+  MBS-142. The resume card never moves — still MBS-135, still holding your `1.5`.
+- *Under the spec's option:* the card itself becomes MBS-142 and its input resets to MBS-142's own
+  last-used value. Your `1.5` is discarded, because it meant "1.5 hours on MBS-135" and cannot be
+  carried to a different ticket without recreating the original bug.
+
+**Options considered.** (a) *`+` opens QuickLogForm* — chosen. (b) *Seed the card, discarding the typed
+value* — faithful to `EXPERIENCE.md` and keeps a single input area; rejected because it makes D-7.3-9
+conditional, and a conditional invariant is one every future story touching the card must remember to
+honour. (c) *Seed the card and keep the typed value* — rejected outright: this is D-7.3-9's exact failure
+mode with a click in front of it. (d) *Drop the `+` entirely* — safe, but removes the one-click log path
+the design intends and turns "Recently worked" into a bookmark list.
+
+**Why this wins.** It keeps the invariant absolute and therefore cheap to reason about — there is no
+"except when" clause for a future story to get wrong. It also keeps `QuickLogForm` and `handleSelect`
+alive: removing `TicketPicker` from the popup would otherwise strand them as dead code, and the `+` gives
+them their new home. The accepted cost is two input areas briefly on screen at once, and a deviation from
+an authoritative spec line.
+
+**Consequences.** `QuickLogForm` is retained in the popup and must accept a pre-targeted ticket. The
+resume card's D-7.3-9 latch is **not** relaxed — no new escape hatch, no "user-initiated" exception. A
+test must assert that clicking a row's `+` leaves the resume card's subtask, pre-fill and write target
+unchanged. *Action for the EXPERIENCE.md owner:* line 140 should be amended, alongside the still-open
+`/70` → `/85` chrome-eyebrow fix (Story 7.2) and the result-row redraw (D-7.4-12).
+
+**How we'd know it was wrong.** Users repeatedly logging via the `+` and then being surprised the card
+still shows the old ticket — that would mean the two surfaces read as one and the spec's instinct was
+right.
+
+### D-7.5-12 — The handoff row drops the count
+**Owner decision.**
+
+**Verdict.** The final "Recently worked" row reads **"More assigned tickets · Search to find them →"**,
+with **no number**. The AC's literal "N more assigned tickets" wording is not implemented, and no query
+is added to obtain N.
+
+**Situation.** Rendering "51 more" requires knowing the total assigned count. The only existing source is
+`useHierarchyTickets` → `fetchHierarchy`, which has two disqualifying problems. First, it runs **up to
+three sequential Jira searches**, and those currently sit on the popup's first-paint path *only* because
+`TodayView` renders `TicketPicker` — the component this story deletes. Keeping the count would spend an
+NFR1 win the story otherwise banks for free. Second, and worse, `fetchHierarchy` **merges the user's
+tickets with their manager's and skip-level's**, so its length is not the user's assigned count at all.
+
+**In simple terms.** For an individual contributor the merged number happens to look about right. For
+anyone with reports it does not: a manager with 55 of their own tickets could see "196 more assigned
+tickets", counting their reports' work as their own. The row would state a specific, confident, wrong
+number — worse than stating none, because a wrong number invites the reader to act on it.
+
+**Options considered.** (a) *Drop N* — chosen. (b) *A dedicated count-only query* (`assignee =
+currentUser()` with `maxResults=0`, returning just Jira's `total`), lazily mounted after first paint and
+never awaited — correct and NFR1-safe, but costs one more Jira call per popup open and makes the number
+appear a beat after the row. (c) *Reuse the hierarchy walk's length* — rejected on both counts above.
+
+**Why this wins.** The row's job is the **handoff to search**, and the handoff works identically without
+the number. Free, correct, and it keeps the full performance win. The accepted cost: the user loses a
+sense of *how much* more is out there.
+
+**Consequences.** No new query is added for this row. The three `fetchHierarchy` searches must genuinely
+leave the popup's first-paint path when `TicketPicker` is removed — a story task should verify this rather
+than assume it. Option (b) remains the cheap upgrade if the missing number is ever felt.
+
+**How we'd know it was wrong.** Users treating the handoff row as decoration and never clicking it, which
+would suggest the count was what made it read as a real destination.
+
+### D-7.5-13 — "Recently worked" shows UP TO four rows, never padded
+**Orchestrator decision** (routine — a forced consequence with only one honest answer; recorded because
+it deviates from the AC's literal wording).
+
+**Verdict.** The section renders **at most** four rows. When the recency source yields fewer, it renders
+fewer. It is never padded with placeholders to reach four, and it reserves no empty space.
+
+**Situation.** The AC says "exactly four rows". The recency source is the current-week worklog query
+(`['week-worklogs', weekOf]`, already fetched — zero extra network), so on a Monday morning there may be
+zero, one or two tickets worked this week. "Exactly four" is simply not satisfiable from it. The only way
+to guarantee four would be to widen the lookup beyond the current week — the precise cost the owner
+rejected in **D-7.3-5**, and worse here, because `fetchCurrentUserWeekWorklogsByIssue` is already N+1 (one
+`/worklog` GET per issue), so the fan-out grows with history.
+
+**Why this wins.** Padding to a fixed four would contradict Story 7.3's AC5, which forbids reserved dead
+space, and would show rows that mean nothing. The accepted cost is a section whose height varies.
+
+**Consequences.** Zero recent tickets renders **no** "Recently worked" section at all — not an empty
+card — and the handoff row's behaviour in that case must be specified rather than left to fall out of the
+code. Tests must cover 0, 1 and 4+ available tickets.
+
+### D-7.5-14 — The undo window is 5000 ms
+**Orchestrator decision** (routine — a judgement call with no derivable answer, logged so it is not
+mistaken for a derived constant).
+
+**Verdict.** `UNDO_WINDOW_MS = 5000`, as a named exported constant.
+
+The nearest in-repo precedent is `TOAST_DISMISS_MS = 4000`; undo is given slightly longer because it
+guards a **destructive, irreversible** action (a Jira worklog DELETE mints a new `worklogId` if re-posted,
+so it cannot be undone after the fact) rather than merely dismissing a message. The story's design already
+makes the delete **deferred, not optimistic** — the row hides immediately, the DELETE fires only when the
+window expires, and undo cancels a timer with zero Jira traffic — so a longer window costs nothing but a
+slightly later write.
+
+**Consequences.** Named constant, not an inline literal, pinned by a fake-timer test. If the popup closes
+inside the window the pending delete is enqueued to the Story 2.7 outbox on teardown rather than racing a
+`fetch`. A worklog pending deletion must be filtered out of the **seconds derivation** as well as the
+list, or the chrome header's logged figure will disagree with what is on screen.
+
+---
+
+## Story 7.5 fold-in — creator-investigated decisions promoted to canonical (D-7.5-15…25)
+
+**Folded in by the bmad-story-finisher**, following the D-7.3-11 pattern: Story 7.5's own file carried
+`### D-7.5-1` through `### D-7.5-10` (plus `D-7.5-5a`) as the creator's local numbering, written into the
+story's "Resolved questions" section *before* this log's `D-7.5-11…14` (owner/orchestrator rulings) came
+into existence during review. The two numbering schemes collided (a local "5" and "5a" both pre-dating the
+canonical "11"), so — exactly as D-7.3-11 required for its own predecessor's defect — every local ID below
+is renumbered here, continuing this log's own sequence immediately after `D-7.5-14`:
+
+| Story-local ID | Canonical ID |
+|---|---|
+| D-7.5-1 | **D-7.5-15** |
+| D-7.5-2 | **D-7.5-16** |
+| D-7.5-3 | **D-7.5-17** |
+| D-7.5-4 | **D-7.5-18** |
+| D-7.5-5 | **D-7.5-19** |
+| D-7.5-5a | **D-7.5-20** |
+| D-7.5-6 | **D-7.5-21** |
+| D-7.5-7 | **D-7.5-22** |
+| D-7.5-8 | **D-7.5-23** |
+| D-7.5-9 | **D-7.5-24** |
+| D-7.5-10 | **D-7.5-25** |
+
+Every citation of the story-local IDs across the story file (everywhere **except** the reviewer's own
+verbatim "## Review Findings" section, which is a frozen historical record naming the numbers as they
+stood at review time — see D-7.3-11's own precedent) and across all touched source files has been
+repointed to the canonical ID on this list. The content below is reproduced verbatim from the story file's
+"Resolved questions" section, with only the heading numbers changed.
+
+### D-7.5-15 — `lib/storage/pinned-tickets.ts`: KEEP, unchanged, and do not repurpose it
+
+**The orchestrator's premise was that this store "may lose its only popup writer". It does — but it
+does not lose its only writer, and that changes the answer.**
+
+**What the audit actually found** (`grep` across all `*.ts` / `*.tsx`, excluding `node_modules`):
+
+| | Production call sites |
+|---|---|
+| `addPinnedTicket` (write) | **`TicketPicker.tsx:265`** — and nowhere else |
+| `getPinnedTickets` (read) | **`TicketPicker.tsx:177`** — and nowhere else |
+| `removePinnedTicket` | **none.** Only `lib/storage/pinned-tickets.test.ts` calls it |
+
+So the store is **entirely internal to `TicketPicker`**: one component both writes and reads it, and
+nothing else in the product touches it. And `TicketPicker` has two consumers, only one of which this
+story removes. After 7.5, `WeeklyGrid → TicketPicker` still writes it and still reads it.
+
+**Verdict: KEEP the module exactly as it is. Do not delete it, do not repurpose it, do not write to it
+from any new 7.5 code.**
+
+Three reasons:
+
+1. **It is not orphaned.** Writer and reader both survive on the week surface. There is no dangling
+   store and no stale-data hazard, because the only reader is the same component as the only writer.
+2. **It is semantically wrong for "Recently worked".** `PinnedTicket` is `{ key, summary, pinnedAt }`.
+   `pinnedAt` is *when you picked the ticket out of a search*, not when you logged against it, and
+   there is **no duration at all**. AC1 requires ranking "by recency of the user's **own worklogs**".
+   D-7.3-2 investigated and rejected this exact store for this exact reason: *"Its only writer records
+   tickets arriving from search, and it stores no duration. It means 'recently reached', not 'recently
+   logged'."* That finding still holds and 7.5 does not overturn it.
+3. **Writing to it from 7.5 would be a fourth shared-seam leak.** `TicketPicker` renders its contents
+   under a "Recently used" heading on the **week grid**. If new popup code started calling
+   `addPinnedTicket`, the week grid's picker would silently start showing tickets the user reached
+   through the popup — a change to a surface this story is not scoped to touch, invisible to
+   `WeeklyGrid.test.tsx` because it mocks `TicketPicker` away. That is precisely the failure mode of
+   7.2 Finding 2 and D-7.4-15.
+
+**Consequence to state plainly (a real, minor behaviour change):** after 7.5 the popup no longer
+contributes to `local:pinnedTickets`, so the week grid's "Recently used" list grows only from week-grid
+usage. A popup-only user accumulates nothing there. Nobody sees a bug; the week list is just shorter for
+some users. Accepted, recorded, no action.
+
+**Follow-up for someone else, not this story:** `removePinnedTicket` has no production caller and is
+dead code covered only by its own unit test. Deleting it means editing a module `TicketPicker` imports
+from, on a story with this blast radius — **not worth it here.** Note it in `deferred-work.md`.
+
+### D-7.5-16 — "Recently worked" reads the already-fetched week query; it costs ZERO extra network. But "exactly four" is not always satisfiable — **ESCALATION**
+
+**The recency source is settled and it is free.**
+
+`hooks/useWeekWorklogs.ts` runs `useQuery({ queryKey: ['week-worklogs', weekOf] })` and returns
+`WeekIssueWorklogs[]`, which is exactly:
+
+```ts
+type WeekIssueWorklogs = { key: string; summary: string; worklogs: JiraWorklog[] };
+```
+
+Each worklog carries `started` and `timeSpentSeconds`. That is **precisely** the shape "Recently
+worked" needs: per-issue key and summary, plus a per-worklog timestamp to rank by. And the query is
+**already subscribed to twice** on the popup's first paint — by `useTodayTotal` (D-7.2-2) and by
+`useResumeTicket` (D-7.3-2) — under the *identical* query key. Composing over it a third time costs
+**zero additional network requests**. This is the same "free enrichment" pattern D-7.3-2 established.
+
+So: a new `hooks/useRecentlyWorked.ts` that
+- reads `useWeekWorklogs(currentWeekMonday())`,
+- groups by issue, takes each issue's **newest** `started`,
+- sorts descending, takes the top 4,
+- **excludes the configured time-off subtask** (`ptoSubtaskKeyItem`) for consistency with **D-7.3-12** —
+  time off is a settled state that "stops asking"; it should not appear in a list whose whole purpose is
+  "here is what to log more time against". `useResumeTicket.ts:49-72` already does exactly this filter;
+  mirror it.
+- **Does not filter the catch-all project** — same rule as D-7.3-12: Admin/Meetings work under the
+  catch-all is legitimately resumable.
+
+**The escalation: AC1 says "exactly four rows", and the free source cannot always produce four.**
+
+The week query's range is `currentCycleRange('weekly')` — the current **Monday–Sunday only**. So the
+number of distinct issues available is however many the user has logged against *this week*. On a Monday
+morning that is frequently **zero**. Mid-week it is often one or two. "Exactly four" is only reliably
+satisfiable from Wednesday onward for a user who spreads work across tickets.
+
+This is the **same boundary D-7.3-5 already ruled on**, for the resume card, on NFR1 grounds — and the
+owner's ruling there was explicit that widening it costs *"a search call plus N per-issue GETs sitting on
+the first-paint path"*, which NFR1's 400 ms budget cannot absorb. Note also that
+`fetchCurrentUserWeekWorklogsByIssue` is **already** an N+1 fan-out (1 × `myself`, 1 × search, then one
+`/worklog` GET **per issue**) — widening its window widens the fan-out too, so the cost grows with the
+user's history rather than being a flat one-request add.
+
+**Options:**
+
+- **(a) Render *up to* four rows — RECOMMENDED.** Show what genuinely exists, ranked by recency; hide
+  the whole section when there are zero. Zero cost, honest, and degrades to the state the popup is
+  already designed for (the resume card and search are both still there). Deviates from AC1's literal
+  "exactly four".
+- **(b) Widen the recency window** to reach back beyond the current week so four rows are usually
+  available. **This is a genuine new cost on the first-paint path**: at minimum one additional JQL
+  search plus one `/worklog` GET per returned issue, on every cold popup open, to serve a cosmetic row
+  count. This is the option D-7.3-5 explicitly rejected. If the owner takes it, note D-7.3-2's remark
+  that a wider source *"could later serve the resume card too"* — so the cost would at least buy two
+  things, and 7.3's accepted cold-start blind spot would close.
+- **(c) Pad the list** from `pinnedTickets` or the hierarchy tree to reach four. Rejected on sight: it
+  mixes "recently logged" with "recently reached" under one heading that claims worklog recency, which
+  is a lie in the UI.
+
+**Recommendation: (a).** Build the hook so that widening later is a change to *one* function's input
+range and nothing else, so (b) stays cheap to adopt.
+
+**7.5 carries no obligation to 7.3 either way.** D-7.3-5 states this explicitly: *"Story 7.5 carries
+**no** obligation from this decision."* If (a) is taken, the resume card's cold-start blind spot simply
+remains as accepted.
+
+### D-7.5-17 — Where "N" in "N more assigned tickets" comes from — **ESCALATION**
+
+**The finding that matters: removing `TicketPicker` from the popup takes up to THREE Jira searches OFF
+the first-paint path. Re-adding a count gives some of that back.**
+
+`TicketPicker.tsx:154` calls `useHierarchyTickets()`, which calls `lib/hierarchy.ts#fetchHierarchy()`.
+That function issues **up to three sequential searches** (`hierarchy.ts:107`, `:130`, `:146`):
+
+```
+assignee = currentUser() AND statusCategory != Done AND updated >= -28d     (always)
+assignee = "<managerAccountId>"   … AND issuetype != Sub-task               (if configured)
+assignee = "<skipLevelAccountId>" … AND issuetype != Sub-task               (if configured)
+```
+
+each at `maxResults=100`. Because `TodayView` renders `TicketPicker` unconditionally on mount, **all of
+that is on the popup's first-paint path today**. Deleting the picker from the popup is therefore a
+meaningful NFR1 win, entirely for free.
+
+**`fetchHierarchy`'s result cannot give you "N assigned" anyway.** It returns a *merged* task map
+containing the user's tickets **plus their manager's plus their skip-level's** (`hierarchy.ts:118-159`),
+with subtasks nested under parents. `hierarchyTasks.length` is not the assigned-ticket count — it
+overcounts by everything your manager owns. Extracting a true "assigned to me" count from it means
+re-deriving from the self-sourced subset, which is exactly the structure this story is deleting.
+
+**Options:**
+
+- **(a) Render the row without `N` — RECOMMENDED as the zero-cost default.** e.g. *"More assigned
+  tickets"* + *"Search to find them →"*. Costs nothing, adds no request, and preserves AC2's actual
+  substance — the row is a **handoff to search, not a show-all**. The number is decoration; the handoff
+  is the requirement.
+- **(b) A dedicated count-only query.** One request:
+  `rest/api/3/search/jql?jql=assignee = currentUser() AND statusCategory != Done&maxResults=0`, reading
+  only the response's `total`. `maxResults=0` returns the count with no issue payload, so this is far
+  cheaper than `fetchHierarchy` — **one** request, no per-issue fan-out. Requires a small Zod schema
+  carrying `total` (no existing schema projects it), which bends D-7.4-21's "reuse, never add a schema"
+  rule — though that rule was specifically about the *hierarchy* schema. **If this is chosen it must be
+  mounted so it is never awaited by first paint** (the D-7.4-21 precedent: `useCurrentUser` is mounted
+  inside a lazily-rendered child for exactly this reason). Render the row immediately without the
+  number and fill `N` in when it resolves; never block, never show a spinner in the row.
+- **(c) Reuse `useHierarchyTickets`.** Rejected: 3 requests, and it does not answer the question asked.
+
+**Recommendation: (a), unless the owner wants the literal AC copy honoured, in which case (b) with the
+lazy-mount discipline.** Do not guess — this is the one place in the story where a wrong choice quietly
+re-adds network cost to the hot path the story just cleaned up.
+
+Whichever is chosen: the query key must be namespaced away from `['week-worklogs', …]`,
+`['hierarchy-tickets']`, `['catch-all', …]`, `['ticket-search', …]` and `['current-user']` (D-7.4-22),
+and it must **never** invalidate `['week-worklogs', …]`.
+
+**Note the mockup's count pill** (round-2, line ~739) reads `55 assigned` beside the "Recently worked"
+heading, and the final row reads `51 more assigned tickets` — i.e. total minus the four shown. If (a) is
+taken, **both** the pill and the row lose their number; do not keep the pill and drop the row's number,
+or the UI shows a total with no relationship to anything.
+
+### D-7.5-18 — Delete is DEFERRED, not optimistic-then-compensated. This is the money-path decision of the story
+
+**The constraint that settles it: a Jira worklog DELETE is irreversible.** There is no restore endpoint.
+Once `deleteWorklog(issueKey, worklogId)` (`lib/jira-client.ts:437`) succeeds, that `worklogId` is gone
+permanently.
+
+**Options:**
+
+- **(A) Deferred delete — CHOSEN.** On click the row disappears from the list **immediately** (satisfying
+  "removed immediately") and an undo affordance appears. **The Jira DELETE is not sent until the undo
+  window expires.** Undo cancels a timer; nothing was ever written; zero Jira traffic; perfectly
+  reversible because nothing happened.
+- **(B) Optimistic delete + compensating re-post.** Delete now, undo re-POSTs. **Rejected**, and it must
+  stay rejected: the restored worklog gets a **new `worklogId`** and a new `created` timestamp, so it is
+  not the same record — anything holding the old id (the outbox, an open edit) now points at a ghost.
+  `postWorklog`'s body takes `comment` as a **plain string** while the stored entry's comment round-trips
+  through ADF (`textToAdf`), so the restore is **lossy**. And it puts *two* writes on the money path where
+  the user asked for zero, with a failure mode — undo itself fails — that leaves the user with neither the
+  original nor the restoration, having been shown an "undo" that lied.
+
+**The hard part of (A), stated honestly: the popup can close before the window expires.** A Chromium
+extension popup is torn down on close and every timer dies with it. Naively, the user watches the row
+vanish, closes the popup, and **the worklog is still in Jira** — the UI told them it was deleted and it
+was not. That is a silent data-integrity lie and it is worse than any confirm dialog.
+
+**The fix uses a seam this repo already has.** Story 2.7's durable outbox (`lib/storage/outbox.ts`)
+exists precisely for "a write that must survive the popup". On teardown, **do not** race an async `fetch`
+— an in-flight request started during `pagehide` is not guaranteed to complete. Instead **enqueue the
+pending delete to the outbox** (`kind: 'delete'`), which is a `storage` write, and let the service
+worker's `outbox-retry` alarm drain it independently of the popup. `LoggedToday.tsx:106-129`'s
+`enqueueFailedWorklogMutation` already constructs exactly this entry shape
+(`rest/api/3/issue/{key}/worklog/{worklogId}`, `kind: 'delete'`) — reuse it rather than hand-rolling
+the endpoint string.
+
+**Required specifics:**
+
+- **Undo window: a named exported constant, not an inline literal** — following the
+  `COLD_START_SKELETON_BUDGET_MS` precedent (D-7.3-10). Suggested `UNDO_WINDOW_MS = 5000`; the nearest
+  in-repo precedent is `TOAST_DISMISS_MS = 4000` (`TodayView.tsx:20`). **Flag the exact value for the
+  owner** — 5 s is a judgement call, not a derived number. Pin it with a fake-timer test.
+- **Do not mutate the owner list during the window.** The row's entry may belong to `TodayView`'s own
+  `loggedEntries` **or** to one of the shell's three lists (`ptoEntries` / `resumeEntries` /
+  `searchEntries`, routed via `handleAnyDeleted` → `onExternalEntryDeleted`). Removing it and putting it
+  back means guessing which list owned it. **Instead: keep the entry in its list and mark it
+  pending-deletion, filtering it out of the render.** Undo is then a pure local flag flip with no list
+  surgery, and the existing ownership routing is only invoked **once**, at commit. This is materially
+  safer and keeps `App.tsx`'s handlers untouched.
+- **The chrome header total must drop immediately** when the row is hidden, and come back on undo —
+  otherwise the figure disagrees with the visible list. Because seconds are derived from the entry lists
+  (`App.tsx:73-76`, `TodayView.tsx:151`), the pending-deletion filter must be applied to the **same**
+  derivation, not only to the rendered rows. This is the easiest thing in the story to get half-right;
+  test it explicitly.
+- **A refused delete surfaces after the row is already gone.** With a deferred delete the failure lands
+  when there is no row to attach the existing chip to. Required behaviour: **re-insert the row** (it is
+  still in Jira — that is the honest state) and render the existing persistent error chip on it. Red is
+  correct here and only here: this is *"a write Jira actually refused"*, the one case the standing Epic 7
+  rule reserves red for.
+- **Transient failures keep today's behaviour**: `network` / `rate-limited` → enqueue to the outbox +
+  "Pending — will retry" chip (`LoggedToday.tsx:375-383`). Do not re-invent this path.
+- **Only one pending delete at a time.** If a second delete starts while one is pending, **commit the
+  first immediately**, then start the new window. Queuing multiple undos multiplies the states and the
+  AC asks for one affordance.
+- The undo affordance must satisfy the standing a11y rule: a **visible text label** ("Undo"), not an
+  icon alone, announced via a `role="status" aria-live="polite"` region so a screen-reader user learns
+  the row went away and that undo is available.
+
+### D-7.5-19 — EXPERIENCE.md's "`+` that seeds the resume card" collides head-on with D-7.3-9 — **ESCALATION**
+
+`EXPERIENCE.md` line 140 specifies the Recently-worked rows as: *"Four rows, ranked by recency of the
+user's own worklogs, **each with a `+` that seeds the resume card**."* The round-2 mockup draws exactly
+that — a bare 24 px `+` at the right of each row.
+
+**D-7.3-9 forbids it in as many words:** *"nothing may change the resume card's subtask, pre-fill or
+write target while it is on screen."* That was an **owner decision** on the money path, taken after a
+reviewer reproduced hours landing on the wrong subtask, and it explicitly binds later stories: *"Story
+7.9's banners and any future re-render source inherit this invariant."*
+
+A `+` that seeds the resume card is a *user-initiated* retarget rather than an async one, which is less
+dangerous — but it still moves the card's write target while the card is on screen, which is the literal
+thing the invariant prohibits, and the card may already hold a typed value.
+
+**Options:**
+
+- **(a′) The `+` opens the existing `QuickLogForm` for that ticket — RECOMMENDED.** `TodayView` already
+  owns `handleSelect` → `selectedTicket` → `<QuickLogForm>` (lines 79-87, 202-208); that is precisely
+  the flow `TicketPicker` fed, and deleting the picker otherwise leaves it **unreachable dead code**. So
+  this both satisfies the affordance and keeps a shipped, tested path alive. The user enters an explicit
+  amount — no guessed hours on the money path — and the resume card is never touched. Note that
+  `QuickLogForm` writes `local:lastLoggedTicket`, which changes the resume ticket for the **next**
+  session only; `useResumeTicket` reads storage once on mount (`useResumeTicket.ts:124-135`), so nothing
+  moves under the live card. **D-7.3-9 is not violated.**
+- **(b) Seed the resume card, as `EXPERIENCE.md` literally says.** Requires the owner to amend D-7.3-9.
+  Do not do this on a creator's judgement.
+- **(c) Drop the `+`; rows are inert and the section is display-only.** Cheapest, but it removes the only
+  reason to click a row, and leaves `QuickLogForm` dead.
+
+**Recommendation: (a′).** It is the only option that satisfies the spec's intent, respects an owner
+ruling on the money path, and avoids orphaning shipped code. **Flagged for the orchestrator to rule on
+before development starts.**
+
+### D-7.5-20 — `⌘/Ctrl+Z` capture: the polarity is the OPPOSITE of 7.4's `/`
+
+This is the same class of problem as D-7.4-17's `/` collision, but the correct answer inverts.
+
+**The collision surface.** While an undo affordance is present the popup may contain: the resume card's
+hour input (7.3), `SearchPanel`'s query field **and** its header hour input (7.4), and — if another row
+is being edited — `LoggedToday`'s edit-mode hours / comment / date inputs (2.6).
+
+**Why the `/` solution does not transfer.** D-7.4-17 could narrow its exclusion to *"text inputs where `/`
+is a legitimate character"*, because `/` is meaningless in an hours field. **`⌘Z` is meaningful in every
+one of those inputs** — they all carry a native edit history. So the opt-in attribute pattern
+(`data-slash-passthrough="true"`) inverts:
+
+- **Default: let the event through.** If `document.activeElement` is a text-entry element —
+  `<input>` of a text-ish type (`text`, `date`, `search`), `<textarea>`, or `contenteditable` — do
+  **nothing**. The browser performs the native text undo the user meant.
+- **Capture only otherwise** — focus on `document.body`, a button, or the row itself. Then
+  `preventDefault()` and trigger the undo.
+- **Bind the listener only while a pending delete exists.** No affordance, no listener. It cannot shadow
+  anything the rest of the time, and this is also what makes the AC's *"while the affordance is
+  present"* literally true rather than approximately true.
+- Match on `(e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !e.shiftKey` — `⇧⌘Z` is redo and
+  must fall through untouched.
+
+**Do not refactor `SearchPanel`'s existing predicate.** `SearchPanel.tsx:196` has its own inline
+text-entry check for the `/` handler. Extract a shared helper (e.g. `lib/dom/text-entry.ts`) and use it
+in the **new** code only; leave `SearchPanel.tsx`'s inline check **byte-identical**. The duplication is
+deliberate: touching 7.4's slash handler is a shared-seam edit on a surface this story has no business
+changing, and this epic's entire injury history is shared-seam edits. Record the duplication in a code
+comment citing this decision so a future reader does not "tidy" it.
+
+**Focus after delete.** The delete button that was just clicked is removed with its row, so focus would
+otherwise fall to `document.body`. Move focus deliberately to the undo affordance — which also makes
+`⌘Z` capture work on the first press (body/button focus → captured) and makes the affordance reachable
+for keyboard and screen-reader users without hunting.
+
+### D-7.5-21 — The fixed-height two-line row, concretely
+
+From `DESIGN.md` line 461: *"**List row.** Two-line: Kanit key + optional pill on line one, Noto summary
+ellipsised on line two, with a right-aligned action (`+` for add, hours + edit/delete for logged
+entries). **Fixed height so lists scan.** Separating key from summary onto its own line is what lets an
+80-character summary truncate without shoving the key around."* And `DESIGN.md` line 145:
+`list-row: padding: '9px 11px'; divider: '1px solid {colors.border-faint}'; hover: '{colors.background}'`.
+
+Recipe (both lists):
+
+- **Row:** `flex items-center gap-[10px] px-[11px] py-[9px]`, explicit fixed height, divider
+  `border-b border-border-faint`, hover `hover:bg-background`.
+- **Text column:** `flex min-w-0 flex-1 flex-col gap-px`. **`min-w-0` is load-bearing** — without it the
+  flex child refuses to shrink below its content width and `text-ellipsis` never engages, which is
+  exactly the AC6 failure mode. This is the single most likely way to ship AC6 broken while it "looks
+  fine" with short summaries.
+  - **Line 1:** ticket key, Kanit, `font-medium text-primary`, plus `tabular` (keys contain digits), and
+    on Recently-worked rows an optional recency note ("2h ago") as a sibling span.
+  - **Line 2:** summary, `truncate` (`overflow-hidden text-ellipsis whitespace-nowrap`), `text-muted`.
+- **Right side:** Logged-today → hours (`tabular`, Kanit, `text-foreground`) then the two 24 px buttons
+  (`h-6 w-6`, `shrink-0`). Recently-worked → the single 24 px action per D-7.5-19.
+- **Card:** `rounded-lg border border-border bg-surface overflow-hidden` with the `data-card` shadow.
+- **Section heading:** eyebrow-styled label + `count-pill` (`bg-primary-soft text-primary rounded-full
+  px-[7px] py-px`, Kanit, `tabular`) + a hairline rule filling the remainder, per the mockup.
+- **Focus rings** via `focus-visible:` on the buttons and `focus-within:` on the row — **never static**
+  (D-7.3-15).
+- **Zero new colour values.** Everything above resolves to tokens already in `styles/globals.css`.
+- **No monospace anywhere** — this story actively removes the two existing `font-mono` usages.
+
+### D-7.5-22 — Composition: `RecentlyWorked` lives inside `TodayView`, inside 7.4's `hidden` wrapper
+
+- **`RecentlyWorked` renders inside `TodayView`**, below `LoggedToday`, matching `EXPERIENCE.md`'s IA
+  order (Logged today → Recently worked). `TodayView` already owns `handleSelect`/`QuickLogForm`, which
+  D-7.5-19's recommended option needs.
+- **Therefore it is automatically inside `App.tsx:269`'s `<div hidden={searchActive}>`** — which is
+  required, because 7.4's AC3 says search **replaces** *both* lists. **If you instead mount
+  `RecentlyWorked` as a sibling in `App.tsx`, it will stay visible during a search and silently break a
+  shipped Story 7.4 acceptance criterion.** A test must assert both lists are gone when a query is
+  active.
+- **Do NOT lift `loggedEntries` into the shell.** D-7.4-18's note says 7.5 *may* — it should not. The
+  `hidden`-attribute wrapper already neutralises the unmount hazard, it is tested, and lifting is a
+  large diff across four lists for no behavioural gain. Keep the blast radius small.
+- **`App.tsx`'s only change** is threading `onRequestSearchFocus={() => searchPanelRef.current?.focus()}`
+  into `TodayView`. **`breaksHeaderBaseline` (line 211) is not touched** — Story 7.9 still appends one
+  condition to one line.
+
+### D-7.5-23 — `TicketPicker`'s `unbounded` prop stays, vestigial
+
+After this story no caller passes `unbounded` (the popup was its only opt-in; `WeeklyGrid` relies on the
+`false` default). **Leave the prop, its default, its JSDoc and its tests exactly as they are.** Removing
+it is an edit to a component whose other consumer this story must prove untouched — all cost, no gain.
+Note it in `deferred-work.md` as post-Epic-7 cleanup.
+
+### D-7.5-24 — The catch-all group leaves the popup; say so
+
+`TicketPicker` was the popup's only route to catch-all subtasks (`['catch-all', key]`,
+`lib/catch-all.ts`) for Admin/Meetings work. After 7.5 they are reachable from the popup only via
+**search** — which D-7.4-13 widened to `text ~` with no recency and no `statusCategory` filter, so they
+genuinely are reachable — and time off keeps its dedicated action-bar button.
+
+Consequently `TodayView`'s catch-all-unconfigured notice (`TodayView.tsx:179-191`,
+*"Catch-all not configured. Configure in Settings to log Admin/Meetings/PTO."*) now points at a
+capability the popup no longer surfaces directly. **Recommendation: leave the notice** — the setting
+still matters for time off — but do not extend it. Flagged so a reviewer does not read its survival as
+an oversight.
+
+### D-7.5-25 — Do NOT adopt 7.4's deferred truncation off-by-one
+
+`deferred-work.md` carries an open item from 7.4: the *"showing the first N"* line renders when a search
+returns **exactly** `MAX_RESULTS`, even though nothing was truncated. The prompt permits adopting it into
+7.5 "if it fits naturally".
+
+**It does not fit, and it is deliberately not adopted.** It lives in `hooks/useTicketSearch.ts:178` and
+`components/today/SearchPanel.tsx:657` — the **search** surface, which this story does not otherwise
+touch. A correct fix is a wire-contract change (over-fetch `MAX_RESULTS + 1`, then slice). Reaching into
+the search seam from a story scoped to the lists is exactly the shape of D-7.4-15's regression, and the
+defect fails in the **safe** direction (it over-warns; it never hides results silently, so D-7.4-14's
+"never a silent cap" rule still holds). It stays in `deferred-work.md` for a dedicated follow-up.
+
+
+**Finisher's addendum to D-7.5-18 (delete is deferred, not optimistic).** The story's code review found
+that the developer's implementation of this decision had a gap: the undo-window timer cleared the
+pending-deletion state *before* dispatching the async `deleteWorklog` mutation, so the row (and the
+chrome header's seconds total) visibly reappeared for the whole Jira round-trip, and a second click could
+issue a duplicate DELETE (Review Finding 1, Blocker). A related gap let the Undo affordance remain
+functional after the teardown flush had already handed the delete to the durable outbox (Review Finding
+4, Minor). Both were fixed by the finisher — the row and the Undo affordance now stay hidden/inert for
+the entire in-flight period, not just the undo window itself. D-7.5-18's own verdict (deferred delete,
+outbox teardown flush) is unchanged; only the implementation's premature state-clearing was corrected.
+See the story file's "Finding Resolutions" section for the full detail.
