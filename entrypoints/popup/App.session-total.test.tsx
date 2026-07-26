@@ -92,6 +92,15 @@ vi.mock('@/lib/ticket-search', () => ({
   searchTickets: vi.fn(async () => ({ kind: 'ok', value: [] })),
 }));
 
+// Story 7.4: `SearchPanel` renders for real in this file too (nothing here
+// mocks it away), so its results hook gets the same controllable-mock
+// treatment used in `App.test.tsx` — these tests drive the WRITE path only,
+// never a real debounced Jira search or `useCurrentUser` network call.
+const mockUseTicketSearch = vi.fn();
+vi.mock('@/hooks/useTicketSearch', () => ({
+  useTicketSearch: (query: string) => mockUseTicketSearch(query),
+}));
+
 vi.mock('@/lib/create-subtask', () => ({
   createSubtask: vi.fn(async () => ({
     kind: 'ok',
@@ -205,6 +214,7 @@ describe('App — session total double-count guard (Story 7.2, Finding 1)', () =
       kind: 'ok',
       value: { id: 'wl-2', timeSpentSeconds: 7200 },
     });
+    mockUseTicketSearch.mockReturnValue({ kind: 'idle' });
     // @ts-expect-error minimal chrome stub
     globalThis.chrome = { runtime: { openOptionsPage: vi.fn() }, tabs: { create: vi.fn() } };
   });
@@ -276,5 +286,169 @@ describe('App — session total double-count guard (Story 7.2, Finding 1)', () =
     expect(setLastLoggedTicketMock).toHaveBeenCalledWith(
       expect.objectContaining({ key: 'PROJ-9', seconds: 5400 }),
     );
+  });
+
+  // ---- Story 7.4: `searchEntries` is the FOURTH session list, additive the
+  // exact same way the PTO/resume lists already are — a log made through
+  // `SearchPanel` must not add a second week-query fetch either.
+  it('a search-driven log does not double-count either — the header stays additive and the week query is fetched exactly once', async () => {
+    mockUseTicketSearch.mockReturnValue({
+      kind: 'results',
+      items: [
+        {
+          issue: {
+            id: '50',
+            key: 'GAPI-330',
+            fields: {
+              summary: 'Payment gateway rollout',
+              issuetype: { id: '1', name: 'Story', subtask: false },
+            },
+          },
+          assignment: 'unknown',
+        },
+      ],
+      truncated: false,
+    });
+    postWorklogMock.mockResolvedValue({
+      kind: 'ok',
+      value: { id: 'wl-search-1', timeSpentSeconds: 5400 },
+    });
+
+    const { container } = renderApp();
+    await waitFor(() => expect(figureText(container)).toMatch(/^1\.0/));
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'payment' } });
+    const hoursInput = await screen.findByLabelText('Hours for GAPI-330');
+    fireEvent.change(hoursInput, { target: { value: '1.5' } });
+    fireEvent.keyDown(hoursInput, { key: 'Enter' });
+
+    await waitFor(() =>
+      expect(postWorklogMock).toHaveBeenCalledWith('GAPI-330', {
+        timeSpentSeconds: 5400,
+        started: expect.any(String),
+      }),
+    );
+
+    // 3600 (server) + 5400 (session) = 9000s = 2.5h — not double-counted by
+    // a phantom refetch.
+    await waitFor(() => expect(figureText(container)).toMatch(/^2\.5/), { timeout: 1000 });
+    expect(fetchByIssueMock).toHaveBeenCalledTimes(1);
+    expect(setLastLoggedTicketMock).toHaveBeenCalledWith(
+      expect.objectContaining({ key: 'GAPI-330', seconds: 5400 }),
+    );
+  });
+
+  // ---- Finding 5 (Minor), resolved: this test does NOT pin D-7.3-9's
+  // identity-latch invariant, and no longer claims to. The reviewer's
+  // mutation N3 (removing `ResumeCard`'s `!latchedTicketRef.current` guard,
+  // i.e. re-latching on every render) proved this test stays GREEN under a
+  // fully neutered latch — only Story 7.3's own `ResumeCard.test.tsx` goes
+  // red. The reason is structural, not a test-writing mistake: in THIS
+  // file (and in production) a search-driven log never causes
+  // `useResumeTicket`'s underlying `['week-worklogs', …]` query to
+  // re-resolve — that non-invalidation is exactly what the sibling
+  // double-count test above this one already pins — so `resume`'s identity
+  // never changes after mount here, and the latch (present or removed)
+  // never gets an opportunity to fire twice. Giving this specific test real
+  // teeth for the latch itself would require forcing a second, unrelated
+  // week-query resolution mid-test purely to exercise it — precisely what
+  // `ResumeCard.test.tsx`'s own "freezes the write target once the card is
+  // ready" test (RED-proven in Story 7.3) already does, directly and more
+  // cheaply, by re-rendering the component with a changed `resume` prop.
+  // That test is the real pin for D-7.3-9; this one instead pins something
+  // it CAN actually observe end-to-end: that a search-driven write lands at
+  // the search ticket's key in the shared `last-logged` store, never at the
+  // resume card's key, and that no incidental re-render of the composition
+  // root disturbs the already-mounted card's displayed values.
+  it('a search-driven log writes to the shared last-logged store under the SEARCH ticket, never the resume card\'s, and does not incidentally disturb the on-screen card', async () => {
+    mockUseTicketSearch.mockReturnValue({
+      kind: 'results',
+      items: [
+        {
+          issue: {
+            id: '50',
+            key: 'GAPI-330',
+            fields: {
+              summary: 'Payment gateway rollout',
+              issuetype: { id: '1', name: 'Story', subtask: false },
+            },
+          },
+          assignment: 'unknown',
+        },
+      ],
+      truncated: false,
+    });
+    postWorklogMock.mockResolvedValue({
+      kind: 'ok',
+      value: { id: 'wl-search-2', timeSpentSeconds: 3600 },
+    });
+
+    renderApp();
+    // The resume card auto-resolved PROJ-9 (its pre-fill: 1.5h, from the
+    // PRE_LOG_WORKLOGS fixture's 3600s worklog).
+    const resumeInput = (await screen.findByLabelText(
+      'Hours for PROJ-9',
+    )) as HTMLInputElement;
+    const preFillBefore = resumeInput.value;
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'payment' } });
+    const searchHoursInput = await screen.findByLabelText('Hours for GAPI-330');
+    fireEvent.keyDown(searchHoursInput, { key: 'Enter' });
+
+    await waitFor(() =>
+      expect(setLastLoggedTicketMock).toHaveBeenCalledWith(
+        expect.objectContaining({ key: 'GAPI-330' }),
+      ),
+    );
+    // The storage write landed for the SEARCH ticket, never for PROJ-9.
+    expect(setLastLoggedTicketMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ key: 'PROJ-9' }),
+    );
+    // The resume card itself: still PROJ-9, still the original pre-fill —
+    // completely unaware anything was written to the same storage record.
+    expect(screen.getByLabelText('Hours for PROJ-9')).toBeTruthy();
+    expect(screen.queryByLabelText('Hours for GAPI-330')).toBeNull(); // search cleared on success
+    expect((screen.getByLabelText('Hours for PROJ-9') as HTMLInputElement).value).toBe(
+      preFillBefore,
+    );
+  });
+
+  // ---- D-7.4-18 teeth (the finding a reviewer will hunt for): a conditional
+  // render of `TodayView` here would UNMOUNT it on the first keystroke,
+  // wiping `loggedEntries` and re-firing `onTotalChange(0)` on remount —
+  // search would silently corrupt the chrome header's running total. This
+  // test drives the REAL `TodayView` (nothing in this file mocks it away)
+  // so it can actually observe that hazard, and is proven to go RED against
+  // a conditional-render implementation (see the Dev Agent Record).
+  it('D-7.4-18: typing a query and pressing Esc leaves a logged entry AND the chrome total untouched', async () => {
+    const { container } = renderApp();
+    await waitFor(() => expect(figureText(container)).toMatch(/^1\.0/));
+
+    fireEvent.click(screen.getByLabelText('Pick PROJ-2: Fix button'));
+    await waitFor(() => expect(screen.getByLabelText('Hours')).toBeTruthy());
+    fireEvent.change(screen.getByLabelText('Hours'), { target: { value: '2h' } });
+    fireEvent.click(screen.getByText('Log'));
+
+    await waitFor(() => expect(figureText(container)).toMatch(/^3\.0/), { timeout: 1000 });
+    // The action button's aria-label is unique to the LOGGED ROW (unlike the
+    // bare "PROJ-2" text, which also appears in the still-mounted picker
+    // tree below).
+    const loggedRowLabel = /Worklog actions for PROJ-2/;
+    expect(screen.getByLabelText(loggedRowLabel)).toBeVisible();
+
+    const searchInput = screen.getByRole('combobox');
+    fireEvent.change(searchInput, { target: { value: 'a' } });
+
+    // While a search is active, the logged row is present in the DOM (state
+    // preserved) but no longer VISIBLE — it is inside the `hidden` wrapper.
+    expect(screen.getByLabelText(loggedRowLabel)).not.toBeVisible();
+    // The total must not have been wiped by an unmount/remount cycle.
+    expect(figureText(container)).toMatch(/^3\.0/);
+
+    fireEvent.keyDown(searchInput, { key: 'Escape' });
+
+    expect((searchInput as HTMLInputElement).value).toBe('');
+    expect(screen.getByLabelText(loggedRowLabel)).toBeVisible();
+    expect(figureText(container)).toMatch(/^3\.0/);
   });
 });

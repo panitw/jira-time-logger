@@ -182,6 +182,20 @@ export const JiraHierarchyIssueSchema = JiraIssueSchema.extend({
         displayName: z.string(),
       })
       .optional(),
+    /**
+     * Story 7.4 (D-7.4-13, owner decision): `lib/ticket-search.ts` dropped its
+     * `statusCategory != Done` / `updated >= -28d` JQL clauses so "any ticket"
+     * is literally reachable. The forced mitigation is RANKING, not
+     * filtering — open tickets before done ones, recently-updated before
+     * stale — so `hooks/useTicketSearch.ts` needs these two fields to rank
+     * with. Both optional/tolerant, same as every other field here.
+     */
+    status: z
+      .object({
+        statusCategory: z.object({ key: z.string() }).optional(),
+      })
+      .optional(),
+    updated: z.string().optional(),
   }),
 });
 

@@ -282,6 +282,46 @@ describe('ResumeCard', () => {
     expect(setLastLoggedTicketMock).not.toHaveBeenCalled();
   });
 
+  // ---- D-7.4-17 (Story 7.4, Task 8): the `/` collision, both directions ------
+  it('the hour input carries data-slash-passthrough="true" (D-7.4-17)', () => {
+    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} />);
+    const input = screen.getByLabelText('Hours for PROJ-1');
+    expect(input.getAttribute('data-slash-passthrough')).toBe('true');
+  });
+
+  // The reverse steal: a cold-open card can still be 'loading' when the user
+  // presses `/` and starts typing into search. Without the guard, the card
+  // resolving to 'ready' fires its focus latch and yanks focus straight back
+  // out of search — this test is proven RED against the pre-Task-8 code (the
+  // guard line removed) and green with it in place.
+  it('does not steal focus back from search when the card resolves to "ready" after focus was already claimed elsewhere (D-7.4-17 reverse focus-steal)', () => {
+    const { rerender } = renderWithProviders(
+      <ResumeCard resume={{ status: 'loading' }} onLogged={vi.fn()} />,
+    );
+
+    // Simulate the search field (or any other surface) claiming focus while
+    // the card is still loading.
+    const searchField = document.createElement('input');
+    document.body.appendChild(searchField);
+    searchField.focus();
+    expect(document.activeElement).toBe(searchField);
+
+    // The card now resolves to 'ready' — its focus latch effect fires.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    rerender(
+      <QueryClientProvider client={client}>
+        <ResumeCard resume={READY} onLogged={vi.fn()} />
+      </QueryClientProvider>,
+    );
+
+    // Focus must stay in search — NOT get yanked back into the now-ready
+    // card's hour input.
+    expect(document.activeElement).toBe(searchField);
+    expect(document.activeElement).not.toBe(screen.getByLabelText('Hours for PROJ-1'));
+
+    document.body.removeChild(searchField);
+  });
+
   // ---- Focus latch ----------------------------------------------------------
   it('a re-render after focus has moved away does not steal it back', () => {
     const { rerender } = renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} />);

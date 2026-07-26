@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChromeHeader } from '@/components/shell/ChromeHeader';
 import { PopupActionBar } from '@/components/shell/PopupActionBar';
 import type { EditPatch, LoggedEntry } from '@/components/today/LoggedToday';
 import { ResumeCard } from '@/components/today/ResumeCard';
+import { SearchPanel, type SearchPanelHandle } from '@/components/today/SearchPanel';
 import { TodayView } from '@/components/today/TodayView';
 import { Button } from '@/components/ui/button';
 import { useResumeTicket } from '@/hooks/useResumeTicket';
@@ -63,14 +64,26 @@ export function App(): React.ReactElement {
   // working edit/delete (routed back here), and `ptoSeconds` is derived from
   // it so editing/deleting a PTO entry is reflected in the header for free.
   // Story 7.3 copies the same LIST pattern for `resumeEntries` — never a
-  // counter, for the identical reason.
+  // counter, for the identical reason. Story 7.4 adds a FOURTH list,
+  // `searchEntries`, for worklogs posted from `SearchPanel` — same reasoning.
   const [todayViewSeconds, setTodayViewSeconds] = useState(0);
   const [ptoEntries, setPtoEntries] = useState<LoggedEntry[]>([]);
   const [resumeEntries, setResumeEntries] = useState<LoggedEntry[]>([]);
+  const [searchEntries, setSearchEntries] = useState<LoggedEntry[]>([]);
   const ptoSeconds = ptoEntries.reduce((sum, e) => sum + e.seconds, 0);
   const resumeSeconds = resumeEntries.reduce((sum, e) => sum + e.seconds, 0);
-  const sessionSeconds = todayViewSeconds + ptoSeconds + resumeSeconds;
-  const externalEntries = [...ptoEntries, ...resumeEntries];
+  const searchSeconds = searchEntries.reduce((sum, e) => sum + e.seconds, 0);
+  const sessionSeconds = todayViewSeconds + ptoSeconds + resumeSeconds + searchSeconds;
+  const externalEntries = [...ptoEntries, ...resumeEntries, ...searchEntries];
+
+  // Story 7.4: whether a search query is active — the RAW (non-debounced)
+  // query, per D-7.4-18 — drives the `hidden`-attribute wrapper around
+  // `TodayView` below. `searchPanelRef` is the seam Story 7.5's "N more
+  // assigned tickets · Search to find them →" row will call (D-7.4-26); the
+  // document-level `/` listener lives inside `SearchPanel` itself and uses
+  // the exact same ref internally, so there is exactly one focus path.
+  const [searchActive, setSearchActive] = useState(false);
+  const searchPanelRef = useRef<SearchPanelHandle>(null);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -106,10 +119,19 @@ export function App(): React.ReactElement {
     setResumeEntries((prev) => [...prev, entry]);
   }, []);
 
-  // Story 7.3, Task 5: `externalEntries` now merges TWO externally-owned
-  // lists (`ptoEntries`, `resumeEntries`). Route an edit/delete to whichever
-  // list actually owns the `worklogId` — mirrors `TodayView.handleAnyEdited`
-  // / `handleAnyDeleted`'s own ownership check. Returning the SAME array
+  const handleSearchLogged = useCallback((entry: LoggedEntry): void => {
+    setSearchEntries((prev) => [...prev, entry]);
+  }, []);
+
+  const handleSearchActiveChange = useCallback((active: boolean): void => {
+    setSearchActive(active);
+  }, []);
+
+  // Story 7.3, Task 5 (extended by 7.4, Task 7): `externalEntries` now merges
+  // THREE externally-owned lists (`ptoEntries`, `resumeEntries`,
+  // `searchEntries`). Route an edit/delete to whichever list actually owns
+  // the `worklogId` — mirrors `TodayView.handleAnyEdited` /
+  // `handleAnyDeleted`'s own ownership check. Returning the SAME array
   // reference when a list does not own the id lets React bail out of that
   // list's re-render (no-op `setState`).
   const handleExternalEntryEdited = useCallback((worklogId: string, patch: EditPatch): void => {
@@ -123,6 +145,11 @@ export function App(): React.ReactElement {
         ? prev.map((e) => (e.worklogId === worklogId ? { ...e, ...patch } : e))
         : prev,
     );
+    setSearchEntries((prev) =>
+      prev.some((e) => e.worklogId === worklogId)
+        ? prev.map((e) => (e.worklogId === worklogId ? { ...e, ...patch } : e))
+        : prev,
+    );
   }, []);
 
   const handleExternalEntryDeleted = useCallback((worklogId: string): void => {
@@ -132,6 +159,11 @@ export function App(): React.ReactElement {
         : prev,
     );
     setResumeEntries((prev) =>
+      prev.some((e) => e.worklogId === worklogId)
+        ? prev.filter((e) => e.worklogId !== worklogId)
+        : prev,
+    );
+    setSearchEntries((prev) =>
       prev.some((e) => e.worklogId === worklogId)
         ? prev.filter((e) => e.worklogId !== worklogId)
         : prev,
@@ -212,12 +244,36 @@ export function App(): React.ReactElement {
           </div>
         )}
         {connected && (
-          <TodayView
-            onTotalChange={handleTodayViewTotalChange}
-            externalEntries={externalEntries}
-            onExternalEntryEdited={handleExternalEntryEdited}
-            onExternalEntryDeleted={handleExternalEntryDeleted}
+          // AC7 / D-7.4-23: when the resume card is present, this renders
+          // BELOW it (the block above). When `resume.status === 'none'`,
+          // the block above renders nothing, so this becomes the FIRST
+          // child of the scroll region and takes the autofocus the hour
+          // input would otherwise have had — no special-casing needed here,
+          // it falls out of the two blocks' fixed order.
+          <SearchPanel
+            ref={searchPanelRef}
+            autoFocus={resume.status === 'none'}
+            onLogged={handleSearchLogged}
+            onActiveChange={handleSearchActiveChange}
           />
+        )}
+        {connected && (
+          // D-7.4-18: `hidden` (the HTML ATTRIBUTE, not a Tailwind class —
+          // jsdom honours the attribute but not the class, which is what
+          // makes this AC machine-checkable) keeps `TodayView` MOUNTED while
+          // a search is active, so its own `loggedEntries` state and the
+          // running total it lifts via `onTotalChange` both survive a
+          // search unharmed. A conditional render here would unmount it and
+          // silently wipe the session's logged entries out of the chrome
+          // header's total — see the story's D-7.4-18 for the exact hazard.
+          <div hidden={searchActive}>
+            <TodayView
+              onTotalChange={handleTodayViewTotalChange}
+              externalEntries={externalEntries}
+              onExternalEntryEdited={handleExternalEntryEdited}
+              onExternalEntryDeleted={handleExternalEntryDeleted}
+            />
+          </div>
         )}
       </main>
 

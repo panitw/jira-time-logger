@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { scan, criticalOrSerious } from '@/lib/test/axe';
 
@@ -22,6 +22,13 @@ vi.mock('@/hooks/useTodayTotal', () => ({
 const mockUseResumeTicket = vi.fn();
 vi.mock('@/hooks/useResumeTicket', () => ({
   useResumeTicket: () => mockUseResumeTicket(),
+}));
+
+// Story 7.4: `SearchPanel` renders for real here too — controllable mock for
+// its results hook, same seam `App.test.tsx` uses.
+const mockUseTicketSearch = vi.fn();
+vi.mock('@/hooks/useTicketSearch', () => ({
+  useTicketSearch: (query: string) => mockUseTicketSearch(query),
 }));
 
 // Story 7.2 Finding 9 (nit): TodayView and PtoQuickAction are stubbed to bare
@@ -76,6 +83,7 @@ function renderApp() {
 beforeEach(() => {
   vi.clearAllMocks();
   mockUseResumeTicket.mockReturnValue({ status: 'none' });
+  mockUseTicketSearch.mockReturnValue({ kind: 'idle' });
   // @ts-expect-error minimal chrome stub
   globalThis.chrome = { runtime: { openOptionsPage: vi.fn(), getURL: vi.fn((path: string) => `chrome-extension://abc/${path}`) }, tabs: { create: vi.fn() } };
 });
@@ -119,6 +127,67 @@ describe('Popup shell a11y (Story 7.2 AC8)', () => {
     });
     const { container } = renderApp();
     await waitFor(() => expect(screen.getByTestId('today-view')).toBeTruthy());
+    const results = await scan(container);
+    expect(criticalOrSerious(results.violations)).toEqual([]);
+  });
+
+  // ---- Story 7.4, Task 9: extend the gate to both new SearchPanel states ---
+  it('popup with search promoted to primary (no resume history) has zero Critical/Serious axe violations', async () => {
+    mockGetAuth.mockResolvedValue({ kind: 'oauth', access_token: 't' });
+    mockHasValidAuth.mockReturnValue(true);
+    mockUseResumeTicket.mockReturnValue({ status: 'none' });
+    const { container } = renderApp();
+    await waitFor(() => expect(screen.getByTestId('today-view')).toBeTruthy());
+    // AC7: promoted search is the FIRST child and autofocused.
+    expect(container.querySelector('main')?.firstElementChild?.querySelector('[role="combobox"]')).toBeTruthy();
+    const results = await scan(container);
+    expect(criticalOrSerious(results.violations)).toEqual([]);
+  });
+
+  it('popup with search results open (combobox/listbox/option ARIA shape) has zero Critical/Serious axe violations', async () => {
+    mockGetAuth.mockResolvedValue({ kind: 'oauth', access_token: 't' });
+    mockHasValidAuth.mockReturnValue(true);
+    mockUseResumeTicket.mockReturnValue({
+      status: 'ready',
+      key: 'PROJ-1',
+      summary: 'Fix the flaky checkout test',
+      prefillSeconds: 9000,
+      startedAt: new Date().toISOString(),
+    });
+    mockUseTicketSearch.mockReturnValue({
+      kind: 'results',
+      items: [
+        {
+          issue: {
+            id: '1',
+            key: 'GAPI-330',
+            fields: {
+              summary: 'Payment gateway rollout',
+              issuetype: { id: '1', name: 'Story', subtask: false },
+              assignee: { accountId: 'other', displayName: 'Anucha P.' },
+            },
+          },
+          assignment: 'other',
+        },
+        {
+          issue: {
+            id: '2',
+            key: 'GAPI-331',
+            fields: {
+              summary: 'Fix the flaky checkout test',
+              issuetype: { id: '2', name: 'Subtask', subtask: true },
+              assignee: { accountId: 'me', displayName: 'Me' },
+            },
+          },
+          assignment: 'you',
+        },
+      ],
+      truncated: false,
+    });
+    const { container } = renderApp();
+    await waitFor(() => expect(screen.getByTestId('today-view')).toBeTruthy());
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'payment' } });
+    expect(container.querySelector('ul[role="listbox"]')).toBeTruthy();
     const results = await scan(container);
     expect(criticalOrSerious(results.violations)).toEqual([]);
   });

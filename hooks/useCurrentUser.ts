@@ -14,8 +14,14 @@ const MYSELF_STALE_TIME = 24 * 60 * 60 * 1000; // 24h — the current user chang
  * other manager hooks. `useManagerReports` already resolves `myself` for the row
  * set, but does not surface the accountId — this small hook exposes it without
  * changing that hook's return shape (and its own query is deduped/cached).
+ *
+ * @param enabled Story 7.4 (D-7.4-21): `hooks/useTicketSearch.ts` needs this
+ *   query for the "assigned to you" pill, but must NOT fire it on the
+ *   popup's first-paint path (NFR1) — only once the user has actually typed
+ *   a search query. Every other caller keeps the old always-on behaviour via
+ *   the default.
  */
-export function useCurrentUser() {
+export function useCurrentUser(enabled = true) {
   return useQuery<string, JiraError>({
     queryKey: ['current-user'],
     queryFn: async () => {
@@ -27,5 +33,6 @@ export function useCurrentUser() {
       return myself.value.accountId;
     },
     staleTime: MYSELF_STALE_TIME,
+    enabled,
   });
 }

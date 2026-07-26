@@ -142,9 +142,20 @@ export function ResumeCard({ resume, onLogged }: ResumeCardProps): React.ReactEl
   // Focus latch (D-7.3-4 / AC3): fires at most once per popup session. A
   // later enrichment re-render (Task 2's week-query refinement) must never
   // steal focus back from wherever the user has since moved it.
+  //
+  // D-7.4-17 (reverse focus-steal guard, Story 7.4 Task 8): on a cold open
+  // this card can still be 'loading' for up to COLD_START_SKELETON_BUDGET_MS
+  // (D-7.3-10). If the user presses `/` during that window and starts
+  // typing into search, this effect firing when the card resolves to
+  // 'ready' must NOT yank focus back out of search. One-line,
+  // dependency-free: bail before flipping the latch if focus has already
+  // been explicitly claimed by anything other than the document body — this
+  // also protects against any future focus-claiming surface (7.9's
+  // banners), not just search.
   useEffect(() => {
     if (!ticket) return;
     if (focusedRef.current) return;
+    if (document.activeElement && document.activeElement !== document.body) return;
     focusedRef.current = true;
     inputRef.current?.focus({ preventScroll: true });
   }, [ticket]);
@@ -306,6 +317,11 @@ export function ResumeCard({ resume, onLogged }: ResumeCardProps): React.ReactEl
             aria-keyshortcuts="Enter"
             aria-invalid={isAmber || undefined}
             aria-describedby={hasVisibleMessage ? MESSAGE_ID : undefined}
+            // D-7.4-17: `/` is never a legitimate character in this field
+            // (only hour syntax — `lib/hours.ts`), so it does not consume
+            // Story 7.4's `/`-focuses-search shortcut the way a generic
+            // text input would.
+            data-slash-passthrough="true"
             className="tabular w-full min-w-0 flex-1 bg-transparent text-[14px] focus:outline-none"
           />
           <span aria-hidden="true" className="tabular text-[14px] text-faint">

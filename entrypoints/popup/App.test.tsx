@@ -8,6 +8,9 @@ const mockGetAuth = vi.fn();
 const mockHasValidAuth = vi.fn();
 const mockUseTodayTotal = vi.fn();
 const mockUseResumeTicket = vi.fn();
+const mockUseTicketSearch = vi.fn();
+const postWorklogMock = vi.fn();
+const setLastLoggedTicketMock = vi.fn((..._args: unknown[]) => Promise.resolve());
 
 vi.mock('@/lib/storage/tokens', () => ({
   getAuth: () => mockGetAuth(),
@@ -28,6 +31,14 @@ vi.mock('@/hooks/useTodayTotal', () => ({
 // already does for the chrome figure.
 vi.mock('@/hooks/useResumeTicket', () => ({
   useResumeTicket: () => mockUseResumeTicket(),
+}));
+
+// Story 7.4: `SearchPanel` renders for real in this file (only `TodayView`
+// is stubbed below), so its own search-results hook needs the same
+// controllable-mock treatment as `useResumeTicket` above — these tests only
+// need to drive the WRITE path, never a real debounced Jira search.
+vi.mock('@/hooks/useTicketSearch', () => ({
+  useTicketSearch: (query: string) => mockUseTicketSearch(query),
 }));
 
 vi.mock('@/components/today/TodayView', () => ({
@@ -56,9 +67,11 @@ vi.mock('@/components/today/PtoQuickAction', () => ({
 // drives a submission through the card.
 vi.mock('@/lib/storage/last-logged', () => ({
   getLastLoggedTicket: vi.fn(async () => null),
-  setLastLoggedTicket: vi.fn(async () => {}),
+  setLastLoggedTicket: (...args: unknown[]) => setLastLoggedTicketMock(...args),
 }));
-vi.mock('@/lib/jira-client', () => ({ postWorklog: vi.fn() }));
+vi.mock('@/lib/jira-client', () => ({
+  postWorklog: (...args: unknown[]) => postWorklogMock(...args),
+}));
 
 vi.mock('@/lib/log', () => ({
   log: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
@@ -83,6 +96,8 @@ beforeEach(() => {
   mockHasValidAuth.mockReturnValue(false);
   mockUseTodayTotal.mockReturnValue({ seconds: 0, isPending: false, isError: false });
   mockUseResumeTicket.mockReturnValue({ status: 'none' });
+  mockUseTicketSearch.mockReturnValue({ kind: 'idle' });
+  postWorklogMock.mockResolvedValue({ kind: 'ok', value: { id: 'wl-search-1', timeSpentSeconds: 3600 } });
   // @ts-expect-error minimal chrome stub
   globalThis.chrome = { runtime: { openOptionsPage: vi.fn(), getURL: vi.fn((path: string) => `chrome-extension://abc/${path}`) }, tabs: { create: vi.fn() } };
 });
@@ -253,13 +268,56 @@ describe('App', () => {
       expect(main.querySelector('.shadow-lift')).toBeNull();
       // Finding 3: the two assertions above cannot tell "no card" apart from
       // "an empty reserved-space wrapper where the card would go" — D-7.3-1's
-      // named deliverable is specifically "no reserved dead space", and a
-      // stray `<div className="mb-3" />` left in the wrapper's place would
-      // satisfy both assertions above while still holding the gap open.
-      // Assert the resume slot contributes NO element at all: <main>'s only
-      // child is the (stubbed) TodayView.
-      expect(main.children.length).toBe(1);
-      expect(main.firstElementChild).toBe(screen.getByTestId('today-view'));
+      // named deliverable is specifically "no reserved dead space". Story 7.4
+      // (AC7 / D-7.4-23) closes the other half of this same AC: the resume
+      // slot is no longer dead space at all — it is the search field,
+      // promoted to primary. So <main>'s first child is now the REAL search
+      // control (not an empty wrapper), immediately followed by TodayView.
+      expect(main.children.length).toBe(2);
+      expect(main.firstElementChild?.querySelector('[role="combobox"]')).toBeTruthy();
+      expect(main.firstElementChild).not.toBe(screen.getByTestId('today-view'));
+      expect(main.children[1]).toBe(screen.getByTestId('today-view').parentElement);
+    });
+
+    // ---- AC7 / D-7.4-23: Story 7.4 closes Story 7.3's carried-forward half ---
+    it('AC7: promotes search to primary — first child, autofocused — when there is no resume history', async () => {
+      stubConnected();
+      mockUseResumeTicket.mockReturnValue({ status: 'none' });
+      const { container } = renderApp();
+      await waitFor(() => expect(screen.getByTestId('today-view')).toBeTruthy());
+
+      const main = container.querySelector('main')!;
+      const searchInput = main.firstElementChild!.querySelector(
+        '[role="combobox"]',
+      ) as HTMLInputElement;
+      expect(searchInput).toBeTruthy();
+      // `waitFor` rather than a bare synchronous assertion: the autofocus
+      // fires from a `useEffect` one commit after the initial render, and
+      // under load (e.g. the full suite running in parallel) that commit
+      // can land a tick after `today-view` appears.
+      await waitFor(() => expect(document.activeElement).toBe(searchInput));
+    });
+
+    it('renders search BELOW the resume card, not autofocused, when status is "ready"', async () => {
+      stubConnected();
+      mockUseResumeTicket.mockReturnValue({
+        status: 'ready',
+        key: 'PROJ-1',
+        summary: 'Fix the flaky checkout test',
+        prefillSeconds: 9000,
+        startedAt: new Date().toISOString(),
+      });
+      const { container } = renderApp();
+      await waitFor(() => expect(screen.getByTestId('today-view')).toBeTruthy());
+
+      const main = container.querySelector('main')!;
+      const card = main.querySelector('.shadow-lift')!;
+      const searchInput = screen.getByRole('combobox');
+      expect(
+        card.compareDocumentPosition(searchInput) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      // The hour input (not search) still gets the hot-path autofocus here.
+      expect(document.activeElement).not.toBe(searchInput);
     });
 
     it('renders a skeleton that shares the ready card\'s offset (Finding 5) while status is "loading"', async () => {

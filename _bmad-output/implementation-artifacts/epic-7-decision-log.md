@@ -681,3 +681,518 @@ a pause only for a genuinely load-bearing decision. Confirms SD-3 rather than re
 heaviest upcoming stories were offered as explicit checkpoints and declined — so 7.6 (the shared
 day-status component that 7.7 and 7.8 both consume) and 7.10 (which carries the "Re-authenticate"
 scope trap from SD-1) will be flagged in-flight if they fork, not stopped for pre-emptively.
+
+---
+
+## Story 7.4 — Search as the Browse Mechanism
+
+*Story file written and `ready-for-dev` (`7-4-search-as-the-browse-mechanism.md`, baseline commit
+`dfccf5a`). The creator recorded its own `D-7.4-1 … D-7.4-10` inside the story file; per D-7.3-11
+those are folded into this log when the story finishes, and **this file stays canonical**. D-7.4-11
+through D-7.4-16 below are the orchestrator/owner rulings made before development began and during
+review, numbered from `D-7.4-11` so they could not collide with the creator's original `D-7.4-1…10`.
+Per the finisher pass (D-7.3-11's fold-in pattern), the creator's `D-7.4-1…10` are folded in below as
+`D-7.4-17…26` — continuing after `D-7.4-16` rather than reusing `1…10`, which stayed reserved for the
+duration of the story to avoid exactly the numbering collision `D-7.3-11` had to clean up. Every
+`D-7.4-1…10` citation in the story file and in source comments has been repointed to its `D-7.4-17…26`
+equivalent; none were left dangling.*
+
+### D-7.4-11 — Search shows every issue type, allows logging directly to a non-subtask, and warns
+**Owner decision** (asked — this is the money path: it decides whether hours can land somewhere the
+approval matrix will never look).
+
+**Verdict.** Search applies **no issue-type filter**. Tasks, Stories and Epics appear alongside
+subtasks. Selecting a non-subtask result and pressing `⏎` **logs directly to it in one step**, exactly
+as AC5 specifies for any result — but the result row and the write path both carry a visible,
+plain-language warning that hours logged there may not appear in manager approval.
+
+**Situation.** This product posts worklogs at **subtask** level everywhere else. `lib/hierarchy.ts:45`
+filters `issue.fields.issuetype?.subtask === true`, and only subtasks are grouped under a parent
+(`hierarchy.ts:161-179`, which even logs `hierarchy.fetch.subtask-missing-parent` when a subtask has no
+parent). Epic 5's manager matrix is built per **epic** column (`lib/manager-matrix.ts` keys everything
+off `epicKey`). The JQL behind search, however, returns whatever matches — including issue types that
+never enter that subtask→parent→epic walk. So an hour logged straight onto a Story is a real worklog in
+Jira, correctly recorded against that issue, that may simply never appear in the grid a manager
+approves from.
+
+**In simple terms.** Priya searches "payment gateway" and picks the Story `GAPI-330` rather than one of
+its subtasks. She logs 3 hours. In Jira those 3 hours exist and are hers. But when Marco opens the
+approval matrix on Friday, his grid is assembled by walking subtasks up to their parent epic — and
+`GAPI-330` was never a subtask, so it has no parent to roll into. Her 3 hours are invisible to him. She
+believes she logged them; he believes she is 3 hours short. Neither is lying, and nothing in the
+product tells either of them what happened.
+
+**Options considered.** (a) *Hard-filter to subtasks only* — every result would be loggable and would
+roll up correctly, but it makes the story's own premise ("one search control that reaches every ticket
+in Jira") false, and re-creates the dead end the browse tree already had: a Story with no subtask yet
+becomes unreachable. (b) *Show all; route non-subtasks through the existing `lib/create-subtask.ts`
+flow* — the orchestrator's recommendation. It preserves both reach and roll-up correctness, at the cost
+of a second step for non-subtask results. **Rejected on the owner's instruction.** (c) *Show all, log
+directly, warn* — chosen by the owner.
+
+**Why this one wins, and what it costs.** It honours AC5's "logs the selected result without a second
+step" literally and uniformly — every result behaves the same way, and the user is never blocked from
+logging against something they can see. The accepted downside is stated plainly and must not be
+softened: **hours can be written where the approval matrix will not find them**, and the only defence is
+a warning the user is free to ignore. This is a deliberate trade of guaranteed correctness for reach and
+uniformity. Because the sole mitigation is the warning, the warning is not decoration — it is the entire
+safety mechanism, and it must be treated as a first-class requirement.
+
+**Consequences.** The warning must satisfy the epic's own a11y rule: colour is never the signal — it
+pairs a `lucide-react` icon (`aria-hidden="true"`) with a **visible text label** that survives deleting
+both the icon and the colour. It renders **amber, never red** (red is reserved for a write Jira actually
+refused). It must state the consequence in plain language rather than naming an issue type — something a
+user who has never heard the word "subtask" can act on. It must appear **at the point of the write**, not
+only as a row pill, so a keyboard user pressing `⏎` on a preselected row cannot miss it. A test must pin
+that a non-subtask result renders the warning and that a subtask result does not. `hierarchy.ts` and
+`manager-matrix.ts` are **not** changed by this story — this is a search-surface decision only.
+
+**How we'd know it was wrong.** A worker and their manager disagreeing about the same week's hours, or
+support reports of "I logged it and it's not in the matrix". That is the signal to revisit option (b) —
+which stays available and cheap, because `lib/create-subtask.ts` already exists from Story 2.3.
+
+### D-7.4-12 — Results are a listbox; the mockup's per-row inputs are dropped
+**Owner decision** (asked because it removes an affordance the mockup draws).
+
+**Verdict.** The results container is `combobox` + `listbox` + `option`, per AC5's "semantic list" and
+its `aria-activedescendant` requirement. The hour input moves **up into a results header strip**; the
+per-row hour input and `+` buttons drawn in the round-2 mockup are **not built**. A row is actioned by
+clicking it or pressing `⏎` on the active option.
+
+**Situation.** `aria-activedescendant` roving selection forces the combobox/listbox/option pattern, and
+`role="option"` **may not contain interactive descendants** — a focusable input inside an option is
+invalid ARIA and breaks screen-reader navigation. The mockup draws exactly that. The only way to keep
+per-row controls is `role="grid"`, which is valid but contradicts AC5's wording and is materially harder
+to get right for keyboard and screen-reader users.
+
+**Why this wins.** The standing Epic 7 rule already settles it — `DESIGN.md` / `EXPERIENCE.md` and the
+ACs win over the reference mockups on conflict — and this is the simpler, more accessible build. The
+accepted cost: logging a non-preselected result takes an extra keystroke to move the selection first.
+
+**Consequences.** Exactly one `aria-activedescendant` tracks the active option; options are not
+focusable and contain no interactive descendants. *Action for the DESIGN.md owner:* the round-2 mockup's
+result rows should be redrawn to match, alongside the still-outstanding `/70` → `/85` chrome-eyebrow fix
+from Story 7.2.
+
+### D-7.4-13 — The JQL is widened to match the promise, rather than the copy narrowed to match the JQL
+**Owner decision** (asked — the orchestrator recommended the opposite).
+
+**Verdict.** The idle field keeps its spec'd copy, "Search any ticket — key or text", and the **query is
+widened to make that true**: text matching moves from `summary ~` to Jira's `text ~` operator (which
+covers summary and description), and the `updated >= -28d` recency clause is **removed**.
+
+**Situation.** The shipped `lib/ticket-search.ts` runs `summary ~ "q" AND statusCategory != Done AND
+updated >= -28d`. So a ticket untouched for 29 days, or one whose match lives only in its description,
+simply cannot be found — while the field above it promises "any ticket". The orchestrator proposed
+rewording the placeholder to describe the real reach, on latency and rate-limit grounds. The owner chose
+to fix the product instead of the sentence.
+
+**Why this wins.** The alternative asks the user to absorb a limitation the tool could remove, and this
+epic's whole premise is that the tool should be honest *and* useful rather than merely honest about being
+less useful. The accepted cost is real: a broader query is slower and touches more of Jira's index on a
+control that fires as the user types.
+
+**Consequences and the required mitigations** — these are not optional, because they are what makes the
+widening affordable:
+- The single 250 ms debounce and `useQuery`-keyed cancellation the story already mandates stay, and are
+  now load-bearing rather than nice-to-have.
+- `statusCategory != Done` is **also dropped** — a forced consequence, since a ticket closed yesterday is
+  still a ticket you may need to log against, and leaving the clause in would keep "any ticket" false.
+  Mitigated by **ranking**: open tickets rank above done ones, and recently-updated above stale, so
+  removing the filters changes what is *reachable* without changing what surfaces first.
+- A 429 renders the existing neutral `rate-limited` state and is **never auto-retried**.
+- If measured latency makes this untenable in practice, the fallback is to reinstate the recency clause
+  *and* reword the copy — but that reopens this decision rather than being done silently.
+
+**How we'd know it was wrong.** Search latency that makes typing feel laggy, or 429s appearing in normal
+single-user use. Either would mean the index cost is real and the copy-narrowing option should return.
+
+### D-7.4-14 — Result truncation is stated, never silent
+**Orchestrator decision** (routine — a standing quality rule, and a forced consequence of D-7.4-13).
+
+**Verdict.** Search keeps a bounded `maxResults`, but when the result set is truncated the UI **says so**
+in words rather than silently showing the first N.
+
+Widening the query (D-7.4-13) makes truncation more likely, not less, so a silent cap would now actively
+mislead: a user searching an old ticket could see twenty unrelated rows and conclude their ticket does not
+exist. Bounded fetch, stated truncation, no pagination in this story.
+
+**Consequences.** The truncation line is plain text, not a pill or an icon-only hint. No auto-paging and
+no "load more" — if that is wanted it belongs in its own story. A test pins that the line appears when the
+result set is capped and is absent when it is not.
+
+### D-7.4-15 — The widened JQL is scoped to the new search field; `TicketPicker` keeps the old query
+**Orchestrator decision** (routine — this restores D-7.4-13 to the scope the owner actually decided,
+rather than extending it to a surface nobody asked about. Flagged here so the owner can overturn it).
+
+**Verdict.** `lib/ticket-search.ts` must take the widened behaviour as a **parameter**, not as a change
+to its default. The new popup `SearchPanel` opts in to `text ~`, no recency clause and no
+`statusCategory` clause. **`TicketPicker` keeps the query it had at `dfccf5a`, byte-for-byte.**
+
+**Situation.** The reviewer found the developer widened the shared `searchTickets` function itself, so
+the new JQL silently reached **`TicketPicker`** — which is used by the popup *and* by `WeeklyGrid` on
+the week surface. Worse, D-7.4-13's mitigation did not follow it: the ranking lives only in the new
+`useTicketSearch`, while `TicketPicker.tsx:214-218` maps results in raw Jira order. So the week grid's
+picker inherited every downside of the widening (done tickets, stale tickets, a broader index hit) and
+none of the compensating ranking.
+
+The developer's "purely additive" claim was true of the **field projection** and false of the **JQL**.
+Neither test suite could catch it: `TicketPicker.test.tsx:23` mocks `@/lib/ticket-search` wholesale and
+`WeeklyGrid.test.tsx:11` mocks `TicketPicker` away, and neither asserts anything about the query. This
+is the **third** time this epic that a change leaked through a shared seam behind a mock — see Story
+7.2's `TicketPicker` scrolling regression and the same pattern flagged in 7.3.
+
+**In simple terms.** The owner agreed to widen *one* search box — the popup's, whose placeholder
+promises "Search any ticket". A different, older picker on the week screen quietly started running the
+same broader query, but sorts its results in whatever order Jira returns them. So a week-grid user who
+previously saw a short list of recent open tickets now sees closed and long-dormant ones mixed in, in no
+particular order, with no ranking to push the likely one to the top. Nobody asked for that, and no test
+would have shown it.
+
+**Options considered.** (a) *Scope the widening to the new search* — chosen. (b) *Keep it global and
+port the ranking into `TicketPicker` too* — defensible, and it would make both surfaces consistent, but
+it changes a shipped week-surface behaviour that this story was never scoped to touch, on the last day of
+a story that is already at review. (c) *Keep it global and accept raw order in `TicketPicker`* — this is
+simply the bug as found; rejected.
+
+**Why this wins.** D-7.4-13 was a decision about the popup search field's promise; applying it elsewhere
+is scope the owner did not grant. Restricting it is also the lowest-risk correction — it returns an
+untouched surface to a known-good state rather than asking a finisher to design ranking for a component
+outside the story. The accepted cost is a temporary inconsistency: two search paths with different reach
+until someone decides otherwise.
+
+**Consequences.** `searchTickets` gains an explicit opt-in parameter; the widened branch is **not** the
+default, so any future caller gets the conservative query unless it asks. A test must assert the **exact
+JQL** for both branches — the absence of any JQL assertion is what let this through. `TicketPicker`'s
+query must be diffed against `dfccf5a` and proven identical. Option (b) remains available as a
+follow-up if the owner wants both surfaces to reach equally.
+
+**How we'd know it was wrong.** Week-grid users reporting they cannot find a ticket the popup search
+finds. That inconsistency is the accepted cost, and it is the signal to take option (b).
+
+### D-7.4-16 — The non-subtask warning must be unmissable, not merely present
+**Orchestrator decision** (routine — a forced consequence of D-7.4-11's own wording, which already
+requires the warning "at the point of the write, not only as a row pill").
+
+**Verdict.** Two fixes, both required. The active option must be scrolled into view as the selection
+moves, **and** the warning must render in the always-visible write area (the results header strip that
+D-7.4-12 created), not only on the result row.
+
+**Situation.** The reviewer found no `scrollIntoView` on the active option. `↑`/`↓` move `activeIndex`
+only, both handlers `preventDefault()`, and focus never leaves the input — so the browser never scrolls
+for us. With up to 20 results inside the popup's single scroll region, the active row can sit entirely
+outside the viewport.
+
+**In simple terms.** You arrow down eight times and press Enter. The row you just logged against has been
+off-screen for the last four presses — and so was the amber warning telling you these hours may never
+reach your manager's approval matrix. You have written to a ticket you cannot see, having been warned in
+a place you could not look. D-7.4-11 accepted a real correctness risk on the explicit basis that the
+warning is "the entire safety mechanism"; a safety mechanism that can scroll out of view is not one.
+
+**Why this wins.** It is what D-7.4-11 already said, made literal. Neither fix trades anything away:
+scrolling the active option into view is standard listbox behaviour users expect, and duplicating the
+warning into the header strip costs a few lines.
+
+**Consequences.** Scroll the active option into view on every selection change, including the initial
+preselection, using nearest-edge scrolling so the list does not jump. Because the popup has **exactly
+one scroll region** (7.2 AC), verify the scrolling targets that container and does not introduce a nested
+one. A test must assert the warning is reachable **without scrolling** when a non-subtask option is
+active — pinning the guarantee, not the pixel.
+
+**How we'd know it was wrong.** Any report of hours logged against a ticket the user says they never
+selected would mean the selection is still not visible enough.
+
+### D-7.4-17 through D-7.4-26 — folding the story creator's `D-7.4-1…10` into numbered canonical entries
+**Finisher, per D-7.3-11's fold-in pattern** ("the finisher audits every `D-7.x-*` citation in the
+story file and in source comments, repoints each to the correct entry here"). The story creator wrote
+ten fully-formed decisions directly into `7-4-search-as-the-browse-mechanism.md` as
+`### ORCHESTRATOR DECISION D-7.4-1` through `D-7.4-10`, before the owner's later review-time rulings
+(`D-7.4-11…16`) existed. Continuing the numbering at `D-7.4-17` (rather than reusing `1…10`) avoids
+colliding with `11…16`. No behaviour changes — documentation only. The full original reasoning
+(situation / options considered / why it wins) is preserved verbatim below; only the header IDs and
+in-text self-citations were renumbered.
+
+### D-7.4-17 — `/` reaches search even when the hour input has focus
+
+**The collision.** D-7.3-4 focuses the resume card's hour input on popup open via a `useRef` focus latch
+(`ResumeCard.tsx` lines 152–160). AC2 says `/` focuses search "when focus is not already in a text input".
+The hour input **is** a text input. Read literally, `/` is inert in the popup's single most common opening
+state — and `EXPERIENCE.md`'s own Flow 2 opens with *"She opens the popup and presses `/`"* (line 293).
+The spec contradicts itself if "text input" is read as `tagName === 'INPUT'`.
+
+**Verdict.** The exclusion is narrowed to **text inputs where `/` is a legitimate character**. The resume
+card's hour input accepts only hour syntax (`2.5h`, `2h 30m`, `2:30` — `lib/hours.ts`); `/` is never valid
+there, so it does not consume the shortcut.
+
+**Implementation, concretely.** The document-level `keydown` handler ignores `/` when
+`document.activeElement` is a text-entry element **unless** that element carries
+`data-slash-passthrough="true"`. `ResumeCard`'s hour input gains that one attribute. The search field
+itself is of course excluded (typing `/` into a query must insert a slash), as is any
+`<textarea>`/`contenteditable` and the subtask-name input in `TicketPicker`. (Finisher note: `SearchPanel`'s
+own header hour input gained the same attribute at review time — Finding 7.)
+
+**The second half of the collision — the reverse steal.** On a cold open the resume card may still be
+`'loading'` (up to `COLD_START_SKELETON_BUDGET_MS` = 2000 ms, D-7.3-10). If the user presses `/` during
+that window and starts typing, the card resolving to `'ready'` will fire its focus latch and **yank focus
+out of the search field mid-query**. `ResumeCard`'s focus effect must therefore bail when focus has
+already been claimed: guard it with `if (document.activeElement && document.activeElement !== document.body) return;`
+*before* setting `focusedRef.current`. This is a one-line, dependency-free guard that also protects against
+any future focus-claiming surface (7.9's banners). **Pin it with a test.** (Finisher note: the review found
+`SearchPanel`'s own new autofocus effect needed the symmetric guard too — Finding 3.)
+
+**Why not the alternatives.** (a) *Take AC2 literally* — ships a dead primary shortcut and contradicts
+Flow 2. (b) *Make `/` global with no exclusion at all* — breaks typing a slash into the query itself and
+into `TicketPicker`'s create-subtask field, which is a real regression on shipped behaviour.
+
+**D-7.3-9 is not violated.** Adding a `data-*` attribute and letting focus leave the card changes nothing
+about the card's subtask, pre-fill, or write target. D-7.3-15 already anticipated this exact case: the
+`focus-within:ring-focus` correctly stops glowing when `/` moves focus away, which is why it was applied
+via `focus-within:` rather than statically.
+
+### D-7.4-18 — the lists are hidden, not unmounted
+
+**The hazard, concretely.** `TodayView` owns `loggedEntries` in `useState` (`TodayView.tsx` line 48) and
+lifts its total to the shell via `onTotalChange` (lines 155–157). If AC3's "replaced" is implemented as
+`{searchActive ? <SearchResults/> : <TodayView/>}`, then typing one character **unmounts** `TodayView`:
+every worklog logged this session disappears from "Logged today", `onTotalChange` is never called again
+with the old value, and — worse — on remount the fresh `useState([])` fires `onTotalChange(0)`, silently
+dropping those seconds out of the chrome header's figure. Search would corrupt the running total.
+
+**Verdict.** `TodayView` stays mounted for the whole popup session. It is wrapped in a container that
+carries the **HTML `hidden` attribute** while a search is active.
+
+- Use the **`hidden` attribute**, not a Tailwind `hidden` class. The UA stylesheet gives it
+  `display: none`, so it leaves the accessibility tree and satisfies "exactly one list on screen at a
+  time" — and, unlike a Tailwind class, **jsdom honours it**, so `toBeVisible()` and Testing Library's
+  default role queries can actually assert the AC. A class-only implementation would be untestable in
+  this repo (there is no paint engine and no Tailwind at test time).
+- The trigger is `query.trim().length > 0`, evaluated on the **raw** query, not the debounced one — so the
+  lists vanish on the first keystroke and do not flicker back while a request is in flight
+  (`EXPERIENCE.md` line 188: "Search focused with a query → lists replaced").
+- The resume card is **not** hidden. `EXPERIENCE.md`'s IA (lines 51–56) places search *below* the resume
+  card, and only *Logged today* and *Recently worked* are named as replaced. The card is the primary
+  affordance and stays put — which also keeps D-7.3-9's "frozen while on screen" invariant trivially true.
+
+**Test teeth required (this is the finding a reviewer will hunt for):** log an entry, type a query, press
+`Esc`, and assert the entry is **still** in "Logged today" **and** the chrome figure is unchanged. Prove it
+goes red against a conditional-render implementation.
+
+*Note for 7.5:* 7.5 rebuilds "Logged today" and may lift `loggedEntries` into the shell alongside
+`ptoEntries` / `resumeEntries` / `searchEntries`. If it does, the `hidden` wrapper stays correct and this
+hazard disappears. 7.4 does **not** do that lift — it is 7.5's diff.
+
+### D-7.4-19 — the ARIA shape, and where the hour input lives
+
+**This is the story's biggest accessibility risk.**
+
+AC5 mandates `aria-activedescendant`. That attribute is only valid on an element with a **composite
+widget** role, and the element it names must be an owned descendant. So the only conforming construction is
+the ARIA 1.2 **combobox with listbox popup**:
+
+```
+<input role="combobox" aria-expanded={hasResults} aria-controls="search-results"
+       aria-activedescendant={activeId} aria-autocomplete="list" aria-keyshortcuts="/" />
+<ul id="search-results" role="listbox" aria-label="Search results" aria-busy={inFlight}>
+  <li id="search-result-0" role="option" aria-selected={i === activeIndex}> … </li>
+</ul>
+```
+
+DOM focus **never leaves the search input** while results are on screen. `↑`/`↓` move `activeIndex` only.
+
+**The trap.** `role="option"` **must not contain interactive descendants.** The round-2 mockup draws a
+real hour input and a `+` button inside the result rows (lines 660–690) — that markup is ARIA-invalid and
+will read as a broken listbox to a screen reader. `imports/*.dc.html` is reference-only and loses to the
+spines, and the spines' own Accessibility Floor (lines 244–269) demands full keyboard operation with
+correct semantics.
+
+**Verdict.**
+
+1. **Result rows carry zero interactive descendants.** Each `<li role="option">` contains only text and
+   `aria-hidden` decoration. Its accessible name is composed as
+   `"{KEY}. {summary}. {assigned to you | assignee name | Unassigned}"` — so the pill's meaning survives
+   with colour and icon deleted (the epic's practical AA test).
+2. **The hour input is a single, real `<input>` rendered once, in the results header strip**, directly
+   above the list — the strip the mockup already uses for `Results · 3 · ↑↓ to move · ⏎ to log`. It is
+   labelled `Hours for {activeKey}` (updating as the selection moves), pre-filled `1`, styled per
+   `DESIGN.md`'s `hour-input` (1.5 px primary border, `rounded-md`, `focus-within:ring-focus`), with the
+   same decorative `CornerDownLeft` badge the resume card uses. It is reachable by `Tab` from the search
+   field.
+3. **`⏎` in the search field logs the active result immediately**, using the hour input's current value.
+   No second step, exactly as AC5 requires. `⏎` in the hour input does the same thing.
+4. **Clicking a row** sets it active **and** logs it with the current hour value (the row is the affordance;
+   there is no separate `+` button, because a button inside an option is the thing we just ruled out).
+5. **A `role="status" aria-live="polite"` region** announces the result count (`"3 results"` / `"No
+   results"`). Cheap, and it is what makes an `aria-activedescendant` list comprehensible when it appears.
+   (Finisher note: this region's coverage was extended to the `in-flight` and `failed` states at review
+   time — Finding 4.)
+
+**Recorded deviation from the mockup, resolved as D-7.4-12.** The mockup's active row shows an inline
+`1.0h` box and non-active rows show a `+` button. This story renders neither *inside* the rows — see
+D-7.4-12 for the owner's ruling and its reasoning.
+
+### D-7.4-20 — search returns non-subtask issues; they are not filtered out
+
+**The concern.** This product posts worklogs at **subtask** level (D-7.3-9 states it explicitly; the
+manager matrix in Epic 5 rolls subtask → parent → epic). `lib/ticket-search.ts`'s JQL
+(`summary ~ "…" AND statusCategory != Done AND updated >= -28d`, or `key = "X"`) returns **any** issue
+type — Epics, Stories, Tasks and subtasks alike. So `⏎` on a search result can post a worklog directly to
+a Task.
+
+**Verdict (creator's original, before the owner ruled on the safety mechanism as D-7.4-11): no hard
+filter.** The story's premise is "one search control that reaches **every** ticket in Jira"; silently
+dropping half of Jira's issues would make the field lie, and Jira accepts worklogs on non-subtasks
+perfectly well. The projection **is** widened to include `issuetype` (free — see D-7.4-21) so the data
+exists, and `isSubtask` is carried on the result model, but 7.4 adds **no** issue-type pill (it would
+compete with the assignee pill, and the AC does not ask for one).
+
+**Flagged, not hidden.** The consequence — a Task-level worklog rolls up differently on the manager matrix
+than a subtask-level one — is a genuine product question. It was raised as an explicit escalation, and
+the owner's ruling (allow, log directly, and warn) is recorded as **D-7.4-11** above — the canonical
+verdict for this question.
+
+### D-7.4-21 — reuse `JiraHierarchySearchSchema`; write no new schema
+
+**Investigated before proposing anything new.** `lib/ticket-search.ts` already exists and is the only
+ticket-search seam in the repo (its sole consumer is `TicketPicker.tsx` line 214). But it projects
+`fields=key,summary` and parses with `JiraSearchSchema`, which is
+`{ issues: [{ id, key, fields: { summary } }] }` — **no assignee, no issuetype**, so AC4 cannot be
+satisfied from it as-is.
+
+`lib/jira-types.ts` already declares exactly the shape needed: `JiraHierarchyIssueSchema` (lines 163–186)
+extends `JiraIssueSchema` with optional `issuetype` (including `subtask: boolean`), `parent`, and
+`assignee` (`accountId` + `displayName`), and `JiraHierarchySearchSchema` wraps it. **Reuse it.** No new
+schema, no new type.
+
+**Change to `lib/ticket-search.ts`:** widen `SEARCH_FIELDS` from `'key,summary'` to
+`'key,summary,issuetype,assignee'`, parse with `JiraHierarchySearchSchema`, and return
+`JiraHierarchyIssue[]`. (Finisher note: at review time this field list grew further, and the widened JQL
+itself became an opt-in parameter rather than the module's default — see D-7.4-13 and D-7.4-15.)
+
+**Shared-consumer check (the 7.2 Finding 2 lesson).** `TicketPicker` is used by **both** the popup and
+`components/week/WeeklyGrid.tsx`, so this change reaches the week surface. It is **purely additive** — more
+fields requested, all new ones optional, `fields.summary` still present, so `TicketPicker.tsx` line 218
+(`i.fields.summary`) keeps compiling and behaving identically. Verify by running `WeeklyGrid`'s tests, and
+say so in the Completion Notes. Do not touch `TicketPicker.tsx` otherwise; **do not** change its
+`unbounded` prop or its default. (Finisher note: the field-projection widening held up under this check;
+the JQL widening did not — see D-7.4-15's own account of how this check was structurally blind to it.)
+
+**"Assigned to you" needs an accountId.** Use `hooks/useCurrentUser.ts` — `['current-user']`, 24 h
+`staleTime`, already deduped with the manager surfaces. **Mount it inside the results component only**, so
+it cannot fire on the popup's first-paint path (NFR1). It is a single `rest/api/3/myself` GET, cached for
+a day, and it happens while the user is typing — not while the popup is painting.
+
+### D-7.4-22 — one 250 ms debounce, `useQuery` not `useMutation`, no retry
+
+`TicketPicker`'s existing search is the anti-pattern to avoid: **two** chained debounces (100 ms
+`query → debouncedQuery` at line 210, then 300 ms before firing at line 235 = ~400 ms), fired through
+`useMutation`, whose `onSuccess` writes into `useState`. `useMutation` has **no request identity and no
+cancellation**, so a slow response to `"aba"` can land after a fast response to `"abacus"` and clobber the
+newer results. That bug is real in the shipped picker; do not copy it.
+
+**Verdict for 7.4:**
+
+- **One** debounce, **250 ms**, `query → debouncedQuery`.
+- `useQuery({ queryKey: ['ticket-search', debouncedQuery], … })`. Keying by query means a stale response
+  can never overwrite a newer one, and re-typing a previous query is served from cache.
+- `enabled: debouncedQuery.trim().length >= 2` — a one-character query is not worth a Jira round trip.
+- `staleTime: 30_000`, `retry: false`, `refetchOnWindowFocus: false`.
+- **Rate limiting.** `jiraGet` already maps HTTP 429 to `{ kind: 'rate-limited', retryAfterMs }`
+  (`lib/jira-client.ts` lines 83–90). Render it as a neutral inline note ("Jira is rate-limiting search —
+  try again in a moment"), **never red**, and **never auto-retry** into the limiter. `lib/scheduler.ts`
+  (the token-bucket used by the manager fan-out) is **not** used here: this is one debounced request per
+  typing burst, not a fan-out.
+- **Query keys are namespaced away from everything else.** `['ticket-search', …]` must not collide with
+  `['week-worklogs', …]`, `['hierarchy-tickets']`, `['catch-all', …]`, `['current-user']`. **Never**
+  invalidate `['week-worklogs', …]` from this story — `useTodayTotal.ts` lines 13–31.
+
+### D-7.4-23 — what "promoted to primary position" means (closes 7.3's AC5)
+
+When `resume.status === 'none'`:
+
+1. The search panel renders as the **first child of the scroll region**, in the slot the resume card would
+   have occupied. When the card is present, search renders **below** it (`EXPERIENCE.md` IA lines 51–56).
+2. The search field **takes the autofocus** the hour input would otherwise have had. There is no other
+   focusable primary affordance, and the hot path must still start with a focused control. (Finisher note:
+   this autofocus effect needed the same reverse focus-steal guard as D-7.4-17 — Finding 3.)
+3. Because it is focused, its badge reads `esc` and it carries the 1.5 px primary border + `ring-focus`
+   from `focus-within:` — this falls out of AC2's rule for free, with no special case.
+4. **The −10 px baseline offset does not move to search.** `DESIGN.md` grants `offset: '-10px'` to
+   `components.resume-card` alone (line 139), and the round-2 mockup sets `resumeOffset: "0px"` in every
+   state without a card. So `App.tsx`'s existing boolean
+   `breaksHeaderBaseline = connected && resume.status !== 'none'` is **left exactly as it is** — one line,
+   untouched, still ready for 7.9 to append `&& !offlineBanner && !writeErrorBanner`.
+5. **No empty resume card renders and no dead space is reserved** — that half is already shipped and pinned
+   by `App.test.tsx` (7.3 Finding 3); 7.4 must not regress it. The promoted search field is the *content*
+   of that slot, not a re-inflation of the card.
+
+### D-7.4-24 — `Esc` must `preventDefault()`, or Chrome closes the popup
+
+In a Chromium extension popup, an unhandled `Escape` **closes the popup window**. AC5 says `Esc` clears the
+query and restores the lists; if the handler does not call `preventDefault()` **and** `stopPropagation()`,
+the user's popup vanishes instead. Semantics:
+
+| State when `Esc` is pressed | Behaviour |
+|---|---|
+| Query non-empty | Clear the query, restore the lists, **keep focus in the field** (badge stays `esc`). `preventDefault()`. |
+| Query empty, field focused | Blur the field (badge returns to `/`). `preventDefault()`. |
+| Field not focused | Do nothing — let the event through, so `Esc` still closes the popup as users expect. |
+
+`TicketPicker.tsx` line 286 already handles `Escape` without `preventDefault` — that is pre-existing Epic 2
+behaviour and is **out of scope** to change here (and 7.5 removes that component from the popup anyway).
+
+### D-7.4-25 — this `LoaderCircle` is not the one Story 7.6 forbids
+
+Recorded pre-emptively so a later agent does not "fix" a non-bug. `EXPERIENCE.md` line 206 states:
+*"Neither `{icons.loading}` nor `{icons.restricted}` is a day status. `LoaderCircle` means the product is
+still working."* Story 7.6 will forbid `LoaderCircle` **as a day status** in the five-state day vocabulary.
+AC6 here uses it for **genuine in-flight work**, which is precisely the meaning `DESIGN.md` line 239
+assigns it. **These are different contexts and there is no conflict.** Do not remove this usage when 7.6
+lands; add a code comment saying so.
+
+### D-7.4-26 — the seam Story 7.5 will call
+
+Story 7.5's final "Recently worked" row reads `"N more assigned tickets · Search to find them →"` and must
+**focus this search field**. So 7.4 publishes the seam rather than making 7.5 invent one:
+
+`SearchPanel` accepts a `ref` (React 19 ref-as-prop — no `forwardRef`) and exposes, via
+`useImperativeHandle`, a handle typed:
+
+```ts
+export type SearchPanelHandle = { focus: () => void };
+```
+
+`entrypoints/popup/App.tsx` holds `const searchPanelRef = useRef<SearchPanelHandle>(null)`. 7.5's handoff
+row calls `searchPanelRef.current?.focus()`. The same handle is what the document-level `/` listener calls
+internally, so there is exactly **one** focus path and 7.5 cannot drift from it. Export the type from
+`SearchPanel.tsx` and name it in this story's File List so 7.5's author finds it.
+
+### Review findings and their resolutions
+
+The reviewer re-measured every gate independently and proved test teeth with five reverted mutations
+(N1–N5). 0 Blockers, 3 Majors, 3 Minors, 4 Nits. All ten numbered findings were resolved — see the story
+file's "Finding Resolutions" section (below its frozen "## Review Findings" record) for the full
+FIX/DISMISS/DEFER rationale per finding. In summary:
+
+- **Finding 1 (Major) → D-7.4-15.** `searchTickets` gained an explicit `widen` opt-in parameter;
+  `TicketPicker`'s call site (unchanged) now gets the byte-identical `dfccf5a` query by default. Both
+  branches gained exact-JQL-string assertions (`lib/ticket-search.test.ts`), plus a dedicated end-to-end
+  test (`TicketPicker.search-jql.test.tsx`) that does not mock `lib/ticket-search` away.
+- **Finding 2 (Major) → D-7.4-16.** The active option is now scrolled into view (`block: 'nearest'`) on
+  every selection change, and the D-7.4-11 warning was duplicated into the always-visible results header
+  strip (not only the row).
+- **Finding 3 (Major).** `SearchPanel`'s autofocus effect gained the same reverse focus-steal guard
+  `ResumeCard` already had (D-7.4-17), RED-proven by temporarily removing it.
+- **Finding 4 (Minor).** The `role="status"` region now announces the `in-flight` and `failed` (rate-limited
+  vs. generic) states, not only `results`/`empty`.
+- **Finding 5 (Minor).** The `App.session-total.test.tsx` "D-7.3-9 via search" test was reframed — it no
+  longer claims to pin the identity-latch invariant (structurally, a search-driven log never causes
+  `useResumeTicket`'s data to change in this test or in production, so the latch never gets a chance to
+  fire twice here); `ResumeCard.test.tsx`'s own RED-proven latch test is cited as the real pin.
+- **Finding 6 (Minor).** The header hour input's `aria-describedby` now references the header-strip
+  warning (Finding 2's fix) when the active result is a non-subtask.
+- **Finding 7 (Nit).** `SearchPanel`'s own hour input gained `data-slash-passthrough="true"`.
+- **Finding 8 (Nit).** `text-royal-purple` → `text-primary` (the established semantic token).
+- **Finding 9 (Nit).** An emptied hour field now renders the same amber helper text as an unparseable one.
+- **Finding 10 (Nit).** The ranking comparator guards against a `NaN` result when both compared issues lack
+  `updated`; the truncation off-by-one (exactly `MAX_RESULTS` matches) was reviewed and left as documented,
+  conservative-direction behaviour rather than fixed — see the story file's Finding Resolutions for why.
