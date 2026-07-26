@@ -43,6 +43,11 @@ colors:
   error-soft: '#FEF2F2'
   error-border: '#F3C9C9'
   error-ink: '#991B1B'
+
+  # Success outline button border. status-clean on white is 4.9:1.
+  status-clean-border: '#BFE0C8'
+  # status-clean has no contrast on the purple gradient — chrome-only variant.
+  status-clean-on-chrome: '#8FE0A8'
 typography:
   display:
     fontFamily: Kanit
@@ -96,6 +101,12 @@ typography:
     fontSize: 13px
     fontWeight: '500'
     note: 'Always font-variant-numeric: tabular-nums. KKP has no monospace.'
+  guest:
+    # The banner cannot load the bundled faces — see § The Guest Surface.
+    fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
+    fontSize: 13px
+    fontWeight: '400'
+    note: 'tabular-nums still applies; it works on any system face.'
 rounded:
   sm: 4px
   md: 6px
@@ -192,10 +203,25 @@ components:
     color: '{colors.legacy-purple}'
     icon: '{icons.time-off}'
     label: time off
+  guest-rail:
+    # The banner inside Jira. Owns no chrome, so it carries brand with hue,
+    # geometry and number discipline instead. See § The Guest Surface.
+    height: 44px
+    background: '{colors.surface}'
+    spine: '3px solid {colors.legacy-purple}' # left edge, decorative
+    border-bottom: '1px solid {colors.border}' # purple-tinted, NOT Jira's #DFE1E6
+    mark: '18px rounded-5px {colors.legacy-purple} square with a 5px white dot'
+    font: '{typography.guest}'
+    control-height: 28px
+    radius: '{rounded.md}'
 icons:
   # lucide-react (already a project dependency; components.json sets it as THE icon
   # library). No second icon set enters the product. Rendered as inline SVG — no
   # icon font, no CDN, tree-shaken per import.
+  #
+  # EXCEPTION — the guest rail is vanilla DOM under Jira's CSP and cannot import
+  # React components. It uses HAND-INLINED lucide SVG paths: same shapes, no
+  # dependency, no font. Never a text glyph.
   library: lucide-react
   defaults:
     size: 13
@@ -459,6 +485,49 @@ actions like "Mark today as PTO".
 Noto. Evidence (the list of gaps, the list of changed worklogs) sits in `{colors.surface-sunk}` rows between
 title and actions, so the user reads facts before deciding.
 
+## The Guest Surface
+
+One surface owns no chrome: the banner injected into Jira's own page. It runs under Jira's CSP as vanilla
+DOM with inline styles only — **no gradient, no orbital motif, no Kanit, no Noto.** Three of the four things
+that carry brand identity everywhere else are unavailable there.
+
+What remains is **hue, geometry, and number discipline** — and it is enough, because those are the three
+things the popup and the banner can share pixel for pixel.
+
+- **The exact purple, in a tiny dose.** A 3px spine on the left edge and an 18px mark: under 2% of the bar's
+  area. Recognition doesn't need coverage; it needs the *right* `{colors.legacy-purple}` beside the right
+  neutral.
+- **Purple-tinted neutrals.** Borders are `{colors.border}` `#E4E3EC`, deliberately not Jira's `#DFE1E6`.
+  Sitting directly against Jira's own chrome, the rail reads as a different object — warmer, quieter —
+  without a single saturated pixel.
+- **Geometry, carried verbatim.** `{rounded.md}` radii, 28px control height, 1px dividers, the same button
+  proportions as the popup's quick-increment row. Shape is the most CSP-proof brand asset there is.
+- **Tabular numerals.** `font-variant-numeric: tabular-nums` works on any system face, so the product's
+  numbers look like the product's numbers even in a system font.
+
+**It is a rail, not a bar.** White ground, 44px, one purple spine, one purple mark, a hairline beneath. It
+sits above Jira the way a browser's bookmarks bar does — structurally present, chromatically quiet, and
+never mistakable for a warning or an ad. A full-bleed purple bar pinned over Jira's blue chrome would read
+as something wrong with the page.
+
+**Do not ship Kanit here.** It costs a `web_accessible_resources` entry and a permission-warning risk at
+install, and any Jira instance with a strict `font-src` falls back silently — so the surface you would
+actually be designing for is the fallback. A 44px rail is not where anyone reads type.
+
+**Icons are hand-inlined lucide SVG paths**, never text glyphs and never the React components. Same shapes
+as everywhere else, no dependency, no font file.
+
+**Expansion must not change the rail's height.** It stays 44px and swaps its right-hand contents — the hours
+field appears in the space the contextual action vacated. The rail's height is a layout contract with Jira's
+page: the `body padding-top` the content script sets is written once, and the page never reflows twice for
+one interaction.
+
+**Restraint is the design.** The rail states a number and stops. No icon parade, no progress bar, and no
+colour that escalates as the week slips — an amber rail on Thursday would be a scold, which the rest of this
+system forbids. It asks for something exactly once, on a `/browse/<KEY>` page, where the ask is specific and
+almost always right. Everywhere else it is a fact you can ignore, which is the only thing that survives
+being seen fifty times a day.
+
 ## Do's and Don'ts
 
 **Do**
@@ -482,5 +551,8 @@ title and actions, so the user reads facts before deciding.
 - Let an icon carry meaning on its own — if the text beside it were deleted, the state must still be readable.
 - Lighten `{colors.faint}` below 4.6:1, or use `{colors.faint-decorative}` for text.
 - Put the orbital motif, the gradient, or a purple tint under data.
+- Pin a full-bleed purple bar over Jira — on the guest surface that reads as a warning, not a tool.
+- Let the guest rail change height when it expands; its height is a layout contract with Jira's page.
+- Escalate the guest rail's colour as the week slips. An amber bar on Thursday is a scold.
 - Let elevation appear on more than one element per group — if everything lifts, nothing does.
 - Show 55 rows when four and a search field will do.

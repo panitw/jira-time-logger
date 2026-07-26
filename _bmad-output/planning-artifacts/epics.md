@@ -2017,36 +2017,132 @@ As Priya configuring the extension,
 I want settings on the same full-page surface as the week and matrix,
 So that there is one patient surface rather than a separate options page.
 
+**Design:** `DESIGN.md` + `EXPERIENCE.md` (Settings blocks, Catch-all validation). Reference mockup: `imports/jira-time-logger-round2.dc.html` Surface 5. Spines win on conflict.
+
 **Acceptance Criteria:**
 
-**Given** settings currently live on a separate options page
+**Given** settings currently live on a separate options page with its own hero header
 **When** this story lands
-**Then** the existing settings components render inside the full-page surface's Settings section, restyled to the KKP system
+**Then** settings render as a third section of the full-page surface beside Week and Manager
+**And** the chrome header carries a Week / Manager / Settings tab row, which is the mechanism that folds two pages into one
 **And** the options-page entrypoint either redirects to the full page or is removed
 
-**Given** `EXPERIENCE.md` names Settings in the IA but no visual design was produced for it
-**When** this story is picked up
-**Then** the design is resolved first — either by extending the section-header and data-card patterns already specified in `DESIGN.md`, or by a short `/bmad-ux` Update run
-**And** the resolution is recorded in the UX decision log before implementation begins
+**Given** the full page is a 1180 px shell
+**When** the settings form renders inside it
+**Then** the form is a single **680 px reading column, left-aligned**, with labels above fields — not a two-column label/field split
+**And** field widths are sized to their content (≈180 px for a project key, full width for a subtask title)
+**And** the empty right margin is left empty; it is what signals a page you read rather than a grid you work
 
-### Story 7.11: Inline Jira Banner Reconciliation
+**Given** eleven controls of unequal weight
+**When** they are grouped
+**Then** they form five blocks: **Connection** (facts) · **Reporting line** (facts) · **Logging defaults** (choices) · **Diagnostics** (facts + one action) · **Disconnect** (separated)
+**And** fact blocks render as hairline row tables with **no input affordance at all**
+**And** **Logging defaults is the only region on the page where anything can be typed**
+
+**Given** the chrome header has no headline figure to carry
+**When** it renders
+**Then** it carries identity, connection status (`status-clean-on-chrome` dot + email), last-synced, and the section tab row
+**And** the connected dot is decorative; its adjacent text carries the meaning
+
+**Given** Disconnect is irreversible in a way Clear cache is not
+**When** it renders
+**Then** it sits in a final block under a **grey rule rather than a purple one**, in a `surface-sunk` card, as an outline button with `error-ink`
+**And** it is never adjacent to a routinely-clicked control
+**And** it retains its confirmation dialog
+**And** its body copy states what is and isn't destroyed: credentials and cached worklogs go, hours already written to Jira are untouched
+
+**Given** the catch-all project key is validated live against Jira
+**When** the user is mid-typing
+**Then** the field state is **neutral — never red** — and the dependent time-off subtask select simply waits
+**And** only a settled, invalid key renders amber, and it states what it did to the dependent field
+**And** a valid key confirms with the project name and its subtask count
+
+**Given** the reporting line is read from Jira and may legitimately be unset
+**When** it renders
+**Then** resolving shows skeletons, resolved shows the names, and "not set in Jira" renders as a normal value in `faint` — not as an error
+**And** a failed lookup states the consequence honestly ("Approvals still work — your manager finds you from their side") with a Try again action
+
+**Given** the user is not connected
+**When** settings renders
+**Then** a connect card is the only actionable element, with a secondary "Set up with an API token instead" path
+**And** the logging-defaults block renders dimmed behind it
+**And** the dimmed controls are verified to still meet WCAG AA contrast — halving the opacity of a compliant control usually does not
+
+**Given** field labels were unclear
+**When** this story lands
+**Then** they read: **Catch-all project key** · **Time-off subtask** · **Work-day target** · **Daily reminder** · **Approval cycle**
+**And** each carries a one-line consequence beneath it rather than a tooltip ("Marking a day as time off logs a full day here.")
+
+**Out of scope:** the "Re-authenticate" action shown in the round-2 mockup. No such path exists in the codebase today — it is new functionality, not a restyle, and needs its own story.
+
+### Story 7.11: Inline Jira Banner — the Guest Rail
 
 As Priya on a Jira ticket I worked on this morning,
-I want the banner to look like the same product as the popup,
-So that the extension does not feel half-revamped.
+I want a quiet rail that offers to log against exactly this ticket,
+So that the tool reaches me where I already am without ever looking like something is wrong with the page.
+
+**Design:** `DESIGN.md` § The Guest Surface + `EXPERIENCE.md` § The Guest Rail. Reference mockup: `imports/jira-time-logger-round2.dc.html` Surface 4. Spines win on conflict.
 
 **Acceptance Criteria:**
 
 **Given** the banner is a guest inside Jira's UI under Jira's CSP
-**When** it is restyled
-**Then** it uses inline styles only — no Tailwind classes, no external font loads, no `blob:` URLs
-**And** the KKP palette is applied via literal values since utilities are unavailable on that surface
+**When** it is built
+**Then** it uses vanilla DOM with inline styles only — no stylesheet, no class names, no keyframes, no media queries, no pseudo-elements
+**And** it makes no external request of any kind
 
-**Given** the banner sits inside Jira's own visual language
-**When** it renders
-**Then** it reads as the same product as the popup without competing with Jira's chrome
-**And** it does not use the full chrome gradient — the banner is a guest, not a chrome surface
+**Given** a full-bleed purple bar over Jira's blue chrome would read as a browser warning
+**When** the rail renders
+**Then** it is a **44 px white rail** with a 3 px `legacy-purple` left spine, one 18 px purple mark, and a `border` hairline beneath
+**And** it uses the purple-tinted `#E4E3EC` border rather than Jira's own `#DFE1E6`, so it reads as a distinct object without a saturated pixel
+**And** it carries neither the chrome gradient nor the orbital motif
 
-**Given** no visual design exists for the banner in this revamp
-**When** this story is picked up
-**Then** the design is resolved first via a short `/bmad-ux` Update run scoped to the banner, and recorded in the UX decision log
+**Given** the bundled Kanit and Noto files are not web-accessible and Jira's `font-src` may reject them anyway
+**When** the rail renders type
+**Then** it uses the `{typography.guest}` system font stack
+**And** `font-variant-numeric: tabular-nums` is applied to every figure, which works on any system face
+**And** no `web_accessible_resources` entry is added for fonts
+
+**Given** brand identity must survive without gradient, motif, or brand fonts
+**When** the rail renders
+**Then** identity is carried by the exact `legacy-purple` in a small dose, purple-tinted neutrals, `rounded-md` radii, 28 px control height, and tabular figures — the same geometry as the popup's quick-increment row
+
+**Given** the rail's height is a layout contract with Jira's page
+**When** the contextual action is expanded into the quick-log
+**Then** the rail **stays 44 px** and swaps its right-hand contents; the hours field appears in the space the action vacated
+**And** the `body padding-top` the content script sets is written exactly once
+**And** the page never reflows twice for a single interaction
+
+**Given** inline styles cannot express `:hover`, `:focus`, or keyframes
+**When** interactivity is wired
+**Then** entry, expand, and exit are all `transform: translateY()` with `transition` set in the inline style string — no keyframes anywhere
+**And** hover is `mouseenter`/`mouseleave` writing `el.style.background`; focus rings are `focus`/`blur` writing `boxShadow`
+**And** reduced motion is read via `matchMedia` and applied by setting `transition: 'none'` and jumping to the end state
+
+**Given** the user is on a `/browse/<KEY>` page
+**When** the rail renders
+**Then** the contextual action "Log time on \<KEY\>" is the only emphasised element, as a filled primary button
+**And** on any other Jira page the rail shows only the state line, "Open extension ↗", and dismiss
+
+**Given** the viewport is narrower than ~860 px
+**When** the rail renders
+**Then** the eyebrow and "Open extension" drop, the state line truncates with an ellipsis, and the contextual action keeps its full width
+**And** the action **never wraps to a second line**, because wrapping would change the height and break the layout contract
+
+**Given** icons are required and `lucide-react` cannot be imported into vanilla DOM
+**When** the rail renders an icon
+**Then** it uses **hand-inlined lucide SVG paths** — the same shapes as the rest of the product
+**And** no text glyph is used as an icon, since a screen reader would announce it
+
+**Given** the rail appears on every Jira page the user visits, all day
+**When** the week slips further behind
+**Then** the rail's colour **never escalates** — no amber, no red, no progress bar, no icon parade
+**And** it states a number and stops
+
+**Given** the user is caught up, dismissed it today, is disconnected, or their auth expired
+**When** the page loads
+**Then** no rail is rendered at all
+**And** the rail never blocks, never throws, and never asks twice
+
+**Given** the existing behaviour from Story 3.3 must be preserved
+**When** the rail is rebuilt
+**Then** SPA-aware re-injection, daily-dismiss persistence, the hours parser and its three error strings, the success confirmation followed by slide-away at 600 ms, and `role="region"` with an accessible name all still work

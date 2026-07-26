@@ -30,7 +30,7 @@ no touch, no mobile. Two designed surfaces plus two ambient ones:
 | Toolbar popup, 380×560 | Ephemeral. One job: log time today. | Redesigned |
 | Full page (browser tab) | Patient. Week review, manager matrix, settings. | Redesigned |
 | Toolbar badge | Ambient. A number, always visible. | Unchanged |
-| Inline Jira banner (content script) | Guest inside Jira's UI, inline styles only (CSP). | **Unreconciled — see Open Items** |
+| Inline Jira banner (content script) | Guest inside Jira's UI, inline styles only (CSP). | Redesigned as the **guest rail** |
 
 **UI system:** shadcn/ui on React 19 + Tailwind v4 (CSS-first `@theme`), Radix primitives (dialog, tabs,
 popover), lucide-react icons. DESIGN.md tokens override shadcn's neutral defaults wholesale; component
@@ -58,7 +58,17 @@ Toolbar popup (380×560) ─ "log time today"
 Full page (tab)
 ├── Week review — grid, totals, time off, mark-week-done + gap dialog
 ├── Manager matrix — reports × epics, approve, drill-down   (only if the user has reports)
-└── Settings — connection, targets, catch-all project, cadence
+└── Settings — five blocks, weighted by what they are:
+    ├── Connection ......... facts, no input affordance
+    ├── Reporting line ..... facts, read-only, resolved from Jira
+    ├── Logging defaults ... the ONLY place anything can be typed
+    ├── Diagnostics ........ facts + one safe action
+    └── Disconnect ......... separated, grey rule, error ink, confirm dialog
+
+Guest rail (inside Jira, 44px) ─ "you have unlogged time, and here's the ticket you're looking at"
+├── Mark · "Time Logger" · "3.5h unlogged this week"
+├── Contextual action — ONLY on /browse/<KEY> — expands in place
+└── Open extension ↗ · Dismiss for today
 ```
 
 **Closure check.** Log today → popup. See the week → week review. Fix a forgotten day → week review grid.
@@ -142,6 +152,24 @@ for full-day or half-day time off.
 line reading "Loading 2 of 7 reports — rows appear as Jira responds (rate-limited, ~600 cells)." Clicking
 any exception cell opens the drill-down rail. Approve is per-report; "Approve remaining" batches the
 untouched ones behind a single confirm.
+
+**Settings blocks.** Grouping is by *what a thing is*, not by topic. Facts (connection, reporting line,
+diagnostics) render as hairline row tables with no input affordance at all — you can see immediately that
+there is nothing to fill in. Choices live in a single padded card, so there is exactly one region on the page
+where typing happens. Disconnect sits apart under a grey rule rather than a purple one, in a sunk card with
+an error-ink outline button, reachable by scrolling and never adjacent to anything clicked routinely. It
+keeps its confirm dialog because it is irreversible in a way Clear cache is not.
+
+**Catch-all validation.** Four states across the key field and its dependent time-off select: idle ·
+**validating (neutral — never red)** · valid, showing the project name and subtask count · invalid, amber,
+stating what it did to the dependent field. Mid-typing must never look like failure; the select simply
+waits. Only a settled, wrong key earns amber.
+
+**Guest rail.** Appears only when the user has unlogged time, hasn't dismissed today, is connected, and has
+valid auth. Collapsed it states a number and stops. On a `/browse/<KEY>` page it adds one contextual action,
+which expands **in place without changing the rail's height** — the hours field takes the space the action
+vacated. `Enter` logs, `Esc` closes. On success the button confirms, then the rail slides away after 600ms.
+Dismissal lasts for the day. It never blocks, never throws, and never asks twice.
 
 **Dialogs.** Two exist, both deliberate friction: gap acknowledgment and approval confirm. Each presents
 evidence rows before its actions, and each requires an explicit affirmative — a checked statement or a
@@ -339,6 +367,26 @@ and degrade by letting the rail wrap below the grid under ~1600px viewport width
 - The content-script banner cannot use Tailwind classes — Jira's CSP forces inline styles.
 - No CDN of any kind: fonts, icons, and styles are all bundled.
 
+## The Guest Rail — platform behaviour
+
+Behaviour that only exists because this surface lives inside someone else's page.
+
+- **Inline styles only.** No stylesheet, no class names, no keyframes, no media queries, no pseudo-elements.
+- **Motion is one property.** Entry, expand, and exit are all `transform: translateY()` with `transition`
+  set in the inline style string. No keyframes are required anywhere.
+- **Hover and focus are JS.** `mouseenter`/`mouseleave` write `el.style.background`; `focus`/`blur` write
+  `boxShadow`. Reduced motion is read via `matchMedia` and applied by setting `transition: 'none'` and
+  jumping to the end state.
+- **Height is a contract.** 44px, always. The `body padding-top` the content script sets is written once,
+  and the page never reflows twice for a single interaction.
+- **Narrow viewports (<~860px):** the eyebrow and "Open extension" drop, the state line truncates with an
+  ellipsis, and the contextual action keeps its full width. **The action never wraps to a second line** —
+  wrapping would change the height and break the contract above.
+- **Fonts are the system stack.** The bundled Kanit and Noto files are not web-accessible, and Jira's
+  `font-src` may reject them even if declared. `tabular-nums` still applies and still works.
+- **Icons are hand-inlined lucide SVG paths** — the React components can't be imported into vanilla DOM,
+  and a text glyph would be announced by a screen reader.
+
 ## Open Items
 
 0. **"Time off" is a copy change, not a code rename.** All user-facing strings, labels, and accessible names
@@ -347,10 +395,13 @@ and degrade by letting the rail wrap below the grid under ~1600px viewport width
    (`KNP-99 PTO`) is customer data and cannot be renamed from here; where its summary is displayed verbatim,
    show it verbatim.
 
-1. **The inline Jira banner is unreconciled.** Scoped out of the design handoff, so it still wears the old
-   visual language while being the product's second-strongest discovery channel. Needs its own pass,
-   constrained to inline styles.
-2. **First-run / connect flow** got a popup state ("Not connected") but no dedicated options-page treatment.
-3. **Settings** is named in the IA and lives on the full page, but was never designed. Spine-only.
+1. ~~Inline Jira banner unreconciled~~ — **resolved** in round 2 as the guest rail.
+2. ~~First-run / connect flow~~ — **resolved**: settings first-run shows a connect card with the logging
+   defaults dimmed behind it. *Check that the dimmed controls still clear AA — halving the opacity of a
+   compliant control usually doesn't.*
+3. ~~Settings never designed~~ — **resolved** in round 2.
+3a. **"Re-authenticate" is new functionality, not a restyle.** Round 2 put a Re-authenticate button in the
+   Connection block; no such path exists in the codebase (Connect, Disconnect, and ApiTokenSetup only).
+   Out of scope for Epic 7 — needs its own story if wanted.
 4. **Stakes assumed** internal tool, ~10 users. `[ASSUMPTION]` — never explicitly confirmed.
 5. **Popup at 380px** was a facilitator recommendation the producer adopted, not a Note decision. `[ASSUMPTION]`
