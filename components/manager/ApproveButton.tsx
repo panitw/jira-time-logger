@@ -1,7 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO, isValid } from 'date-fns';
-import { Check, Info } from 'lucide-react';
+import { Info } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
+import { DayStatusIndicator } from '@/components/shared/DayStatusIndicator';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -10,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { cn } from '@/components/ui/utils';
 import { secondsToHours } from '@/lib/hours';
 import { log } from '@/lib/log';
 import { sendRequest } from '@/lib/messages';
@@ -39,23 +41,29 @@ export type ApproveMode = 'approve' | 'reapprove';
 const STRINGS = {
   approve: (person: string) => `Approve ${person}`,
   reapprove: (person: string) => `Re-approve ${person}`,
-  approveShort: 'Approve',
-  reapproveShort: 'Re-approve',
-  cancel: 'Cancel',
-  done: '✓ Done',
+  done: 'Done',
   approving: 'Approving…',
-  summary: (
-    verb: string,
-    person: string,
-    cycleTitle: string,
-    hours: string,
-    n: number,
-  ) => `${verb} ${person}'s ${cycleTitle}: ${hours}h across ${n} ${n === 1 ? 'Epic' : 'Epics'}`,
+  cancel: 'Cancel',
+  // Story 7.8, Task 9: title and body are now TWO separate strings (was one
+  // combined "summary" line) — dc.html:609-610.
+  dialogTitle: (verb: string, person: string, cycleTitle: string) =>
+    `${verb} ${person}'s ${cycleTitle}?`,
+  dialogBodyLead: "You're approving",
+  dialogBodyEpics: (n: number) => `across ${n} ${n === 1 ? 'epic' : 'epics'}`,
+  dialogBodyTail: (cycleTitle: string) =>
+    `for the ${cycleTitle} cycle. Accounting uses this figure.`,
+  // The commit button now CARRIES THE FIGURE (dc.html:618) — replaces the
+  // bare "Approve"/"Re-approve" label.
+  commit: (verb: string, hours: string) => `${verb} ${hours}h`,
   supersede: (formattedAt: string) =>
     `Re-approving — supersedes prior approval from ${formattedAt}`,
-  restricted: (n: number) =>
-    `⚠ ${n} restricted-visibility worklog${n === 1 ? '' : 's'} excluded from your view; ` +
-    `${n === 1 ? 'its' : 'their'} count will be captured in the approval metadata for audit.`,
+  // Story 7.8 / AC6: the axis changes from WORKLOGS to EPICS — "{N} epic{s}
+  // has/have worklogs you can't see. Approving does not cover them."
+  // (dc.html:613). Finding 26 (Nit): the noun pluralises AND the verb
+  // agrees — dc.html:613 only quotes the n=1 form, so subject-verb
+  // agreement at n>1 was a free choice, not a spec requirement.
+  restrictedCaveat: (n: number) =>
+    `${n} epic${n === 1 ? '' : 's'} ${n === 1 ? 'has' : 'have'} worklogs you can't see. Approving does not cover them.`,
   partial: (confirmed: number, total: number) =>
     `Approval partial — ${confirmed} of ${total} Epics confirmed`,
   // Retryable failures were enqueued in the outbox and WILL retry automatically.
@@ -68,8 +76,14 @@ const STRINGS = {
     'Some Epics could not be confirmed and were not queued for retry (e.g. permission or not-found errors). Re-approve to try again.',
 };
 
-/** Format the row total like the matrix cell: whole when whole, else 1 decimal. */
-function formatHours(totalSeconds: number): string {
+/**
+ * Format the row total like the matrix cell: whole when whole, else 1
+ * decimal. Exported (Story 7.8, Task 5) so `ManagerMatrix.tsx`'s row-total
+ * column and confirm dialogs reuse this SAME shape rather than writing a
+ * fourth hours formatter (siblings: `lib/manager-matrix.ts#formatCellHours`,
+ * `DrillDownPanel.tsx#formatTotalHours`, `lib/hours.ts#secondsToFixedHoursDisplay`).
+ */
+export function formatHours(totalSeconds: number): string {
   const hours = secondsToHours(totalSeconds);
   return hours.toFixed(1).replace(/\.0$/, '');
 }
@@ -104,7 +118,12 @@ type Props = {
   epics: TouchedEpic[];
   /** Row total seconds (dialog "<H>h"). */
   rowSeconds: number;
-  /** Row-summed restrictedCount (dialog "⚠ N restricted" line). */
+  /**
+   * Row-summed restrictedCount — gates WHETHER the restricted caveat renders
+   * (`> 0`). The caveat's own COPY counts Epics, not worklogs (AC6) —
+   * derived locally from `epics.filter(e => e.restrictedCount > 0).length`,
+   * no new prop needed.
+   */
   restrictedCount: number;
   /**
    * A non-empty reason disables the button with a tooltip (5.8 seam: pass a
@@ -126,6 +145,25 @@ type Props = {
    * fall back gracefully and never block re-approval.
    */
   priorApprovalAt?: string | undefined;
+  /**
+   * Story 7.8 / Task 8: overrides the trigger button's visible text AND
+   * accessible name (labels only — the dialog/mutation/state machine are
+   * untouched). Used by `DrillDownPanel`'s "Re-approve Nh" / "Approve Nh"
+   * action, which reuses this SAME component (mutation + canonicality gate +
+   * outbox behaviour) rather than a second write path, but needs a
+   * figure-carrying label per AC5 instead of the row button's person-named
+   * one.
+   */
+  triggerLabel?: string | undefined;
+  /**
+   * Finding 18 (Minor): additive classes for the trigger `<Button>`. Lets
+   * `DrillDownPanel` widen the trigger to the footer's full width — D-7.8-18's
+   * stated compensation for removing the "Ask Anucha" secondary ("the primary
+   * spans the footer's full width") was recorded in a comment but never
+   * actually implemented, because `ApproveButton` exposed no way in. The row
+   * button passes nothing and keeps its shrink-to-fit width.
+   */
+  className?: string | undefined;
 };
 
 export function ApproveButton({
@@ -139,7 +177,9 @@ export function ApproveButton({
   restrictedCount,
   disabledReason,
   mode = 'approve',
+  className,
   priorApprovalAt,
+  triggerLabel,
 }: Props): React.ReactElement {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -222,12 +262,10 @@ export function ApproveButton({
 
   if (state === 'done') {
     return (
-      <span
-        className="inline-flex items-center gap-1 text-xs font-medium text-state-success"
-        data-testid="approve-done"
-      >
-        <Check size={14} aria-hidden />
-        {STRINGS.done}
+      <span data-testid="approve-done">
+        {/* AC11: the `✓` text glyph is gone — routed through the shared
+         * registry (`met` → `CircleCheck` at `text-status-clean`). */}
+        <DayStatusIndicator variant="inline" status="met" label={STRINGS.done} />
       </span>
     );
   }
@@ -265,11 +303,16 @@ export function ApproveButton({
   // primary), distinct label, and a supersede dialog line. The state machine,
   // mutation, and write payload are identical to first approval.
   const isReapprove = mode === 'reapprove';
-  const label = isReapprove ? STRINGS.reapprove(personName) : STRINGS.approve(personName);
-  const commitLabel = isReapprove ? STRINGS.reapproveShort : STRINGS.approveShort;
-  const dialogTitle = isReapprove
-    ? STRINGS.summary('Re-approve', personName, cycleTitle, formatHours(rowSeconds), total)
-    : STRINGS.summary('Approve', personName, cycleTitle, formatHours(rowSeconds), total);
+  const verb = isReapprove ? 'Re-approve' : 'Approve';
+  const label =
+    triggerLabel ?? (isReapprove ? STRINGS.reapprove(personName) : STRINGS.approve(personName));
+  const hoursDisplay = formatHours(rowSeconds);
+  const commitLabel = STRINGS.commit(verb, hoursDisplay);
+  const dialogTitle = STRINGS.dialogTitle(verb, personName, cycleTitle);
+  // AC6: the caveat's epic count, not the row's worklog count — derived
+  // locally from the fan-out set (`restrictedCount` above only gates
+  // WHETHER the caveat renders).
+  const restrictedEpicCount = epics.filter((e) => e.restrictedCount > 0).length;
 
   return (
     <>
@@ -282,7 +325,7 @@ export function ApproveButton({
         // Mirror native disabled affordances without leaving the tab order:
         // greyed text + not-allowed cursor (pointer activation is also guarded
         // in onClick below so a mouse click cannot open the dialog).
-        className={disabled ? 'cursor-not-allowed opacity-60' : undefined}
+        className={cn(disabled ? 'cursor-not-allowed opacity-60' : undefined, className)}
         onClick={() => {
           // Fail-closed: never open the confirm dialog while disabled (this is
           // the Story 5.8 non-canonical Approve guard — must not regress).
@@ -310,17 +353,40 @@ export function ApproveButton({
           aria-describedby={undefined}
         >
           <DialogHeader>
-            <DialogTitle>{dialogTitle}</DialogTitle>
+            {/* dc.html:609 — `font-chrome text-[16px] font-semibold`. */}
+            <DialogTitle className="font-chrome text-[16px] font-semibold">
+              {dialogTitle}
+            </DialogTitle>
           </DialogHeader>
+          {/* dc.html:610 — the figure and epic count in font-chrome font-medium tabular. */}
+          <p className="text-sm text-muted" data-testid="approve-dialog-body">
+            {STRINGS.dialogBodyLead}{' '}
+            <span className="font-chrome font-medium tabular">{hoursDisplay}h</span>{' '}
+            <span className="font-chrome font-medium">{STRINGS.dialogBodyEpics(total)}</span>{' '}
+            {STRINGS.dialogBodyTail(cycleTitle)}
+          </p>
           {isReapprove ? (
             <p className="text-sm text-neutral-700" data-testid="approve-supersede-line">
               {STRINGS.supersede(formatPriorApprovalAt(priorApprovalAt))}
             </p>
           ) : null}
           {restrictedCount > 0 ? (
-            <p className="text-sm text-state-warning" data-testid="approve-restricted-line">
-              {STRINGS.restricted(restrictedCount)}
-            </p>
+            // dc.html:611-613 — the caveat box carries its own border + sunk
+            // fill; the EyeOff registry icon + `text-faint` (matching
+            // dc.html's #6B6B72) carry the signal, NOT amber (Task 9: amber
+            // is reserved for the truncation caveat below — AC8 permits
+            // amber here too, but the design source uses muted grey, not
+            // warning colour, for a visibility caveat).
+            <div
+              className="flex items-start gap-2 rounded-md border border-border bg-surface-sunk px-[10px] py-2"
+              data-testid="approve-restricted-line"
+            >
+              <DayStatusIndicator
+                variant="inline"
+                status="restricted"
+                label={STRINGS.restrictedCaveat(restrictedEpicCount)}
+              />
+            </div>
           ) : null}
           <DialogFooter>
             <Button variant="secondary" size="sm" onClick={() => setOpen(false)}>

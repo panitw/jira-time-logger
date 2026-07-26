@@ -524,6 +524,65 @@ export async function fetchCurrentUserWeekWorklogs(
 }
 
 /**
+ * Jira's `/rest/api/3/search/jql` enhanced search endpoint is TOKEN-paginated
+ * (`nextPageToken` / `isLast`), not offset-paginated — a page can come back
+ * shorter than `maxResults` while further pages remain. Story 7.8's review
+ * (D-7.8-20, superseding D-7.8-16) found that `fetchReportCycleWorklogsByEpic`
+ * discarded this signal entirely (its Zod schema didn't even declare the
+ * fields), which is why the `truncated` flag it used to compute could not be
+ * trusted. This helper walks every page for one JQL query and returns the
+ * concatenated issue list, so callers are simply correct instead of
+ * capped-with-an-unreliable-warning.
+ *
+ * Shared by `fetchReportCycleWorklogsByEpic` and
+ * `fetchCurrentUserWeekWorklogsByIssue` (D-7.8-20: "use ONE shared paging
+ * helper, not two loops") — do not fork a second copy.
+ *
+ * Bounded and LOUD: `SEARCH_PAGE_SIZE` issues/request, `MAX_SEARCH_PAGES`
+ * pages max (5,000 issues — far beyond any realistic single-report/single-week
+ * volume). Hitting the ceiling without `isLast`/`nextPageToken` signalling
+ * completion is treated as a real failure — logged and returned as a
+ * `network` error — rather than silently capped. D-7.8-20 is explicit that
+ * "a silent cap is exactly what this decision removes."
+ */
+const SEARCH_PAGE_SIZE = 100;
+const MAX_SEARCH_PAGES = 50;
+
+async function fetchAllSearchPages<TIssue>(
+  jql: string,
+  fields: string,
+  schema: z.ZodType<{
+    issues: TIssue[];
+    nextPageToken?: string | undefined;
+    isLast?: boolean | undefined;
+  }>,
+  context: string,
+): Promise<Result<TIssue[], JiraError>> {
+  const collected: TIssue[] = [];
+  let pageToken: string | undefined;
+
+  for (let page = 0; page < MAX_SEARCH_PAGES; page++) {
+    const tokenParam = pageToken ? `&nextPageToken=${encodeURIComponent(pageToken)}` : '';
+    const searchPath = `rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&maxResults=${SEARCH_PAGE_SIZE}&fields=${encodeURIComponent(fields)}${tokenParam}`;
+    const result = await jiraGet(searchPath, schema);
+    if (result.kind !== 'ok') {
+      return result;
+    }
+    collected.push(...result.value.issues);
+
+    if (result.value.isLast === true || !result.value.nextPageToken) {
+      return ok(collected);
+    }
+    pageToken = result.value.nextPageToken;
+  }
+
+  log.error('jira.search.page-ceiling', { context, pages: MAX_SEARCH_PAGES, collected: collected.length });
+  return network(
+    `${context}: exceeded ${MAX_SEARCH_PAGES} pages (${collected.length} issues) without reaching the last page`,
+  );
+}
+
+/**
  * Like `fetchCurrentUserWeekWorklogs`, but preserves which issue each worklog
  * belongs to (Story 4.1, week grid). Returns one `WeekIssueWorklogs` per issue
  * that has at least one of the current user's in-range worklogs, carrying the
@@ -532,6 +591,11 @@ export async function fetchCurrentUserWeekWorklogs(
  * NOTE: This is a sibling of `fetchCurrentUserWeekWorklogs` — do NOT collapse
  * the two. The flat version is consumed by the badge (3.1) and banner (3.3),
  * which only need a sum; this version is consumed by the Week view grid.
+ *
+ * Story 7.8 / D-7.8-20: pages through every result via `fetchAllSearchPages`
+ * so the week grid and the manager matrix never disagree about the same
+ * report's hours. The flat `fetchCurrentUserWeekWorklogs` sibling is NOT
+ * paged by this change — see `deferred-work.md`.
  */
 export async function fetchCurrentUserWeekWorklogsByIssue(
   range: CycleRange,
@@ -545,11 +609,15 @@ export async function fetchCurrentUserWeekWorklogsByIssue(
   const startDate = toJqlDate(range.start);
   const endDate = toJqlDate(range.end);
   const jql = `worklogAuthor = currentUser() AND worklogDate >= "${startDate}" AND worklogDate <= "${endDate}"`;
-  const searchPath = `rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&maxResults=100&fields=key,summary`;
 
-  const searchResult = await jiraGet(searchPath, JiraSearchSchema);
-  if (searchResult.kind !== 'ok') {
-    return searchResult;
+  const issuesResult = await fetchAllSearchPages(
+    jql,
+    'key,summary',
+    JiraSearchSchema,
+    'fetchCurrentUserWeekWorklogsByIssue',
+  );
+  if (issuesResult.kind !== 'ok') {
+    return issuesResult;
   }
 
   const startMs = range.start.getTime();
@@ -558,7 +626,7 @@ export async function fetchCurrentUserWeekWorklogsByIssue(
   const startedBefore = endMs + 1; // inclusive upper bound
 
   const collected: WeekIssueWorklogs[] = [];
-  for (const issue of searchResult.value.issues) {
+  for (const issue of issuesResult.value) {
     const worklogResult = await jiraGet(
       `rest/api/3/issue/${encodeURIComponent(issue.key)}/worklog?startedAfter=${startedAfter}&startedBefore=${startedBefore}`,
       JiraWorklogListSchema,
@@ -645,6 +713,11 @@ async function resolveEpicForParent(
  * All HTTP routes through `jiraGet` (scheduler + auth + 401-refresh + Zod +
  * Result) — never raw `fetch`. Returns one `ReportEpicWorklogs` per Epic the
  * report touched in the cycle. Empty when the report logged nothing.
+ *
+ * Story 7.8 / D-7.8-20 (SUPERSEDES D-7.8-16): pages through every result via
+ * `fetchAllSearchPages` rather than capping at one page and surfacing a
+ * `truncated` warning — the review found that warning could not be trusted
+ * (see `fetchAllSearchPages`'s doc comment and `ReportCycleWorklogs`'s).
  */
 export async function fetchReportCycleWorklogsByEpic(
   reportAccountId: string,
@@ -653,12 +726,16 @@ export async function fetchReportCycleWorklogsByEpic(
   const startDate = toJqlDate(range.start);
   const endDate = toJqlDate(range.end);
   const jql = `worklogAuthor = "${reportAccountId}" AND worklogDate >= "${startDate}" AND worklogDate <= "${endDate}"`;
-  // `parent`/`issuetype` are requested so each subtask can roll up to its Epic.
-  const searchPath = `rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&maxResults=100&fields=${encodeURIComponent('key,summary,parent,issuetype')}`;
 
-  const searchResult = await jiraGet(searchPath, JiraMatrixSearchSchema);
-  if (searchResult.kind !== 'ok') {
-    return searchResult;
+  // `parent`/`issuetype` are requested so each subtask can roll up to its Epic.
+  const issuesResult = await fetchAllSearchPages(
+    jql,
+    'key,summary,parent,issuetype',
+    JiraMatrixSearchSchema,
+    'fetchReportCycleWorklogsByEpic',
+  );
+  if (issuesResult.kind !== 'ok') {
+    return issuesResult;
   }
 
   const startMs = range.start.getTime();
@@ -671,7 +748,7 @@ export async function fetchReportCycleWorklogsByEpic(
   // epicKey → accumulating group.
   const groups = new Map<string, ReportEpicWorklogs>();
 
-  for (const issue of searchResult.value.issues) {
+  for (const issue of issuesResult.value) {
     // Resolve the Epic column for this subtask. A subtask with no parent at all
     // buckets under its own key so its hours are never dropped.
     let epic: { epicKey: string; epicSummary: string };

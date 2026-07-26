@@ -71,8 +71,6 @@ const ALL_SOURCE_FILES = SOURCE_DIRS.flatMap((d) =>
  * change, matching the file's actual new count.
  */
 const ALLOWLIST: Record<string, { count: number; owner: string }> = {
-  'components/manager/ManagerMatrix.tsx': { count: 1, owner: 'Story 7.8' },
-  'components/manager/DrillDownPanel.tsx': { count: 2, owner: 'Story 7.8' },
   'components/settings/DiagnosticsBlock.tsx': { count: 2, owner: 'Story 7.10' },
   'components/settings/ManagerDisplay.tsx': { count: 2, owner: 'Story 7.10' },
   'components/settings/CatchAllProjectField.tsx': { count: 1, owner: 'Story 7.10' },

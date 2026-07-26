@@ -78,8 +78,18 @@ export const JiraCreateIssueSchema = z.object({
 
 export type JiraCreateIssue = z.infer<typeof JiraCreateIssueSchema>;
 
+/**
+ * Story 7.8 / D-7.8-20: `nextPageToken`/`isLast` are the enhanced
+ * `/rest/api/3/search/jql` endpoint's TOKEN-pagination signal. Optional and
+ * purely additive — every existing consumer (`lib/catch-all.ts`,
+ * `lib/ticket-search.ts`, the flat `fetchCurrentUserWeekWorklogs`) reads only
+ * `issues` and is unaffected. `lib/jira-client.ts#fetchAllSearchPages` is the
+ * ONLY place that reads these two fields.
+ */
 export const JiraSearchSchema = z.object({
   issues: z.array(JiraIssueSchema),
+  nextPageToken: z.string().optional(),
+  isLast: z.boolean().optional(),
 });
 
 // ---- Worklog (Story 2.4) — POST /rest/api/3/issue/{key}/worklog response ----
@@ -242,8 +252,12 @@ export const JiraMatrixIssueSchema = z.object({
 
 export type JiraMatrixIssue = z.infer<typeof JiraMatrixIssueSchema>;
 
+/** Story 7.8 / D-7.8-20: same additive token-pagination signal as
+ * `JiraSearchSchema` above — see that schema's doc comment. */
 export const JiraMatrixSearchSchema = z.object({
   issues: z.array(JiraMatrixIssueSchema),
+  nextPageToken: z.string().optional(),
+  isLast: z.boolean().optional(),
 });
 
 /**
@@ -286,6 +300,17 @@ export type ReportEpicWorklogs = {
  * the row-summed `restrictedCount` (the "⚠ N restricted" chip count). Wrapping
  * the array keeps the per-Epic lock overlay (each `ReportEpicWorklogs`'s own
  * `restrictedCount`) and the row chip in one return value.
+ *
+ * Story 7.8 / D-7.8-20 (SUPERSEDES D-7.8-16): this type USED to carry a
+ * `truncated: boolean` flag for `fetchReportCycleWorklogsByEpic`'s unpaged
+ * `maxResults=100` search cap. The review found the flag could not be
+ * trusted — Jira's `/search/jql` is token-paginated and can return a page
+ * shorter than `maxResults` while further pages remain, so a genuinely
+ * truncated response could read as complete. Rather than ship an unreliable
+ * warning, `fetchReportCycleWorklogsByEpic` now pages through every result via
+ * `fetchAllSearchPages` (`lib/jira-client.ts`), so the totals are simply
+ * correct and no flag is needed. Do not re-add a `truncated` field without a
+ * new owner ruling.
  */
 export type ReportCycleWorklogs = {
   epics: ReportEpicWorklogs[];

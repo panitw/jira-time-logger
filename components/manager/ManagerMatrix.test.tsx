@@ -49,8 +49,13 @@ vi.mock('@/lib/messages', () => ({
   sendRequest: (...a: unknown[]) => sendRequestMock(...a),
 }));
 
+// Finding 12 (Major): the mock used to drop `cycleId` before it ever reached
+// the spy, so `toHaveBeenCalledWith('r-bob')` could not distinguish a row
+// re-querying the OLD cycle from the NEW one — the exact bug (`cycle` passed
+// instead of `effectiveCycle`) this test claims to guard against was
+// invisible to it. Pass both through.
 vi.mock('@/hooks/useManagerRow', () => ({
-  useManagerRow: (accountId: string) => rowMock(accountId),
+  useManagerRow: (accountId: string, cycleId: string) => rowMock(accountId, cycleId),
 }));
 
 vi.mock('@/hooks/useEpicApprovals', () => ({
@@ -188,7 +193,7 @@ describe('ManagerMatrix', () => {
     expect(screen.getAllByTestId('matrix-skeleton-row')).toHaveLength(2);
   });
 
-  it('shows neutral monospace hours and em-dash for empty cells', () => {
+  it('shows a bare tabular number and a faint-decorative middot for empty cells (Story 7.8 AC2/AC3)', () => {
     reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
     rowMock.mockReturnValue(
       rowState({
@@ -197,9 +202,67 @@ describe('ManagerMatrix', () => {
       }),
     );
     renderMatrix();
-    expect(screen.getByText('64')).toBeTruthy();
-    // PROJ-2 has a 0-second group → still an empty cell.
-    expect(screen.getAllByText('──').length).toBeGreaterThan(0);
+    // The cell shows the bare number (scoped — "64" also appears in the row
+    // total column now, Task 5).
+    const cell = screen.getByLabelText(/Bob, PROJ-1, 64 hours/);
+    expect(within(cell).getByText('64')).toBeTruthy();
+    // PROJ-2 has a 0-second group → the faint-decorative middot, not `──`.
+    expect(screen.getAllByText('·').length).toBeGreaterThan(0);
+    expect(screen.queryByText('──')).toBeNull();
+  });
+
+  // --- D-7.8-17 "no hours" chip (Finding 4/33: had ZERO coverage) ---------
+
+  describe('D-7.8-17: the row-grain "no hours" chip', () => {
+    it('(a) row-grain: renders exactly ONE chip for a whole-cycle-zero row, regardless of column count', () => {
+      reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+      rowMock.mockReturnValue(
+        rowState({
+          status: 'success',
+          data: [epic('PROJ-1', 0), epic('PROJ-2', 0), epic('PROJ-3', 0)],
+        }),
+      );
+      renderMatrix();
+      expect(screen.getAllByText('no hours')).toHaveLength(1);
+    });
+
+    it('(b) whole-cycle-zero ONLY: a row with 40h on one Epic and 0 on another renders ZERO chips', () => {
+      reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+      rowMock.mockReturnValue(
+        rowState({
+          status: 'success',
+          data: [epic('PROJ-1', 40 * 3600), epic('PROJ-2', 0)],
+        }),
+      );
+      renderMatrix();
+      expect(screen.queryByText('no hours')).toBeNull();
+    });
+
+    it('(c) no chip on an errored row — the ONLY thing stopping a false accusation that a report logged nothing when the tool merely failed to read their data', () => {
+      reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+      rowMock.mockReturnValue(rowState({ status: 'error' }));
+      renderMatrix();
+      expect(screen.queryByText('no hours')).toBeNull();
+      expect(screen.getByText("Couldn't load")).toBeTruthy();
+    });
+
+    it('(d) the chip is not interactive — no cursor-pointer, no click affordance', () => {
+      reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+      rowMock.mockReturnValue(rowState({ status: 'success', data: [epic('PROJ-1', 0)] }));
+      renderMatrix();
+      const chip = screen.getByText('no hours');
+      expect(chip.tagName).not.toBe('BUTTON');
+      expect(chip.closest('button')).toBeNull();
+      expect(chip.className).not.toMatch(/cursor-pointer/);
+    });
+
+    it('never double-states: on a WHOLE-matrix-empty cycle, the row shows the placeholder cell text but NOT also the chip', () => {
+      reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+      rowMock.mockReturnValue(rowState({ status: 'success', data: [] }));
+      renderMatrix();
+      expect(screen.getByText('(no hours logged this cycle)')).toBeTruthy();
+      expect(screen.queryByText('no hours')).toBeNull();
+    });
   });
 
   it('sorts rows by display name', () => {
@@ -394,7 +457,7 @@ describe('ManagerMatrix', () => {
     );
     renderMatrix();
     // No approvals → 0 done of 1 report.
-    expect(screen.getByTestId('matrix-progress').textContent).toBe('0 of 1 done');
+    expect(screen.getByTestId('matrix-progress').textContent).toBe('0 of 1 approved');
   });
 
   it('counts a row as done in the progress chip when its only touched Epic is approved', async () => {
@@ -428,11 +491,11 @@ describe('ManagerMatrix', () => {
     approvalsMock.mockReturnValue(approvalsState([approval]));
     renderMatrix();
     await waitFor(() =>
-      expect(screen.getByTestId('matrix-progress').textContent).toBe('1 of 1 done'),
+      expect(screen.getByTestId('matrix-progress').textContent).toBe('1 of 1 approved'),
     );
   });
 
-  it('renders an approved cell with a Check icon + approved aria-label when an approval exists and no later edit', () => {
+  it('renders an approved cell as a bare tabular number — no fill, no border, no icon (Story 7.8 AC2; D-7.8-34 rewrite of the old bg-state-success pin)', () => {
     reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
     rowMock.mockReturnValue(
       rowState({
@@ -463,12 +526,25 @@ describe('ManagerMatrix', () => {
     approvalsMock.mockReturnValue(approvalsState([approval]));
     const { container } = renderMatrix();
     const cell = screen.getByLabelText(/Bob, PROJ-1, 64 hours, approved/);
-    // Approved is dark-green bg + white text — inherited by the cell's own
-    // bare number (D-7.6-41 revert: no icon, no DayStatusIndicator, no
-    // second `text-status-clean` colour class fighting the td's `text-white`
-    // — that collision was Blocker 1/2, both `#15803D` at 1.00:1).
-    expect(container.querySelector('.bg-state-success.text-white')).toBeTruthy();
+    // D-7.8-34: after Task 3/4, an approved cell has NO fill class at all —
+    // the green dark bg + white text this test used to pin is gone by design
+    // (DESIGN.md:475 — "Correct cells are near-silent").
+    expect(container.querySelector('.bg-state-success')).toBeNull();
     expect(within(cell).getByText('64')).toBeTruthy();
+    // Finding 11(a) (Major): the test's own TITLE says "no border" but only
+    // ever asserted the FILL class — `border border-state-success` on the
+    // cell passed undetected. Assert STRUCTURALLY: the number span carries
+    // no `border`/`bg-`/`ring-` Tailwind token at all, rather than
+    // enumerating one forbidden class name.
+    const numberSpan = within(cell).getByText('64');
+    const decoratedTokens = numberSpan.className
+      .split(/\s+/)
+      .filter((c) => /^(border|bg-|ring-)/.test(c));
+    expect(decoratedTokens).toEqual([]);
+    // ...and exactly one text child — the structural rule "a correct cell
+    // contains one text node", not a specific enumerated wording.
+    expect(numberSpan.childNodes).toHaveLength(1);
+    expect(numberSpan.childNodes[0]!.nodeType).toBe(Node.TEXT_NODE);
   });
 
   it('an approved cell renders a bare number — no icon, no status label (D-7.6-41; stops Story 7.8 inheriting the pre-emption)', () => {
@@ -505,9 +581,14 @@ describe('ManagerMatrix', () => {
     expect(cell.querySelector('svg')).toBeNull();
     expect(within(cell).queryByText('approved')).toBeNull();
     expect(within(cell).queryByText('on target')).toBeNull();
+    // Finding 11(b) (Major): the two word-literal queries above pin COPY,
+    // not the structural rule — a differently-worded label (e.g. "verified")
+    // would pass undetected. Assert the button's own visible text is
+    // EXACTLY the number, full stop — no other text node anywhere inside it.
+    expect(cell.textContent).toBe('64');
   });
 
-  it('an approved+restricted cell renders its "hidden" overlay in full white, not the default text-faint (D-7.6-49: text-faint on bg-state-success measures ~1.05:1)', () => {
+  it('an approved+restricted cell renders "hidden" on its OWN chip-surface background, no cell fill at all (D-7.8-34/D-7.8-26: chrome-solid removed, no dependency on the cell behind it)', () => {
     reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
     rowMock.mockReturnValue(
       rowState({
@@ -541,18 +622,19 @@ describe('ManagerMatrix', () => {
     const cell = screen.getByLabelText(
       /Bob, PROJ-1, 64 hours, approved, restricted visibility/,
     );
-    // The cell fill is still the dark, filled approved green (D-7.6-41
-    // reverted the STATUS indicator, not the td's own bg-state-success).
-    expect(container.querySelector('.bg-state-success.text-white')).toBeTruthy();
-    // The restricted overlay renders EyeOff + "hidden" in `text-white`
-    // (tone="chrome-solid"), never the default `text-faint` — that pairing
-    // is the ~1.05:1 regression this test pins.
+    // D-7.8-34: after Task 3, the cell itself has NO fill at all.
+    expect(container.querySelector('.bg-state-success')).toBeNull();
+    // The restricted chip renders `text-faint` on its OWN `bg-chip-surface`
+    // background — the SAME pairing regardless of the cell's status, which
+    // is the stronger property D-7.8-34 asked for (the regression this test
+    // used to pin — `text-faint` on a dark green fill — cannot recur because
+    // there is no more fill for the chip to sit on).
     const restrictedWrapper = within(cell).getByText('hidden').parentElement;
-    expect(restrictedWrapper?.className).toContain('text-white');
-    expect(restrictedWrapper?.className).not.toContain('text-faint');
+    expect(restrictedWrapper?.className).toContain('text-faint');
+    expect(restrictedWrapper?.parentElement?.className).toContain('bg-chip-surface');
   });
 
-  it('a restricted cell on a NON-approved (light) background keeps the default text-faint — the override is scoped to approved only', () => {
+  it('a restricted cell on ANY cell status renders the SAME text-faint on bg-chip-surface (no more per-status override — D-7.8-26/AC9)', () => {
     reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
     rowMock.mockReturnValue(
       rowState({
@@ -564,12 +646,19 @@ describe('ManagerMatrix', () => {
     const cell = screen.getByLabelText(
       'Bob, PROJ-1, 64 hours, short of target, restricted visibility',
     );
+    // `hidden` sits in DayStatusIndicator's own inner span (text-faint); its
+    // OWN chip-surface background lives one level further up, on the box
+    // that wraps the indicator (D-7.8-26/AC9's actual claim: the chip reads
+    // correctly regardless of the cell behind it, BECAUSE it carries its own
+    // fill — checking only the inner span would miss a dropped box entirely).
     const restrictedWrapper = within(cell).getByText('hidden').parentElement;
+    const chipBox = restrictedWrapper?.parentElement;
     expect(restrictedWrapper?.className).toContain('text-faint');
     expect(restrictedWrapper?.className).not.toContain('text-white');
+    expect(chipBox?.className).toContain('bg-chip-surface');
   });
 
-  it('renders a dirty cell (RefreshCw + needs re-approval) when a worklog changed after approval', () => {
+  it('renders a dirty cell as an amber chip (filled Circle + hours + "edited after approval") when a worklog changed after approval', () => {
     reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
     rowMock.mockReturnValue(
       rowState({
@@ -599,9 +688,13 @@ describe('ManagerMatrix', () => {
     };
     approvalsMock.mockReturnValue(approvalsState([approval]));
     const { container } = renderMatrix();
+    // The aria-label still states the required ACTION ("needs re-approval");
+    // the VISIBLE chip word states the FACT (Task 4 / D-7.6-12: never a
+    // verdict in the visible text).
     expect(screen.getByLabelText(/needs re-approval/)).toBeTruthy();
-    expect(screen.getByText('needs re-approval')).toBeTruthy();
-    expect(container.querySelector('.bg-state-warning-subtle')).toBeTruthy();
+    expect(screen.getByText('edited after approval')).toBeTruthy();
+    expect(container.querySelector('.bg-amber-soft')).toBeTruthy();
+    expect(container.querySelector('svg.lucide-circle')).toBeTruthy();
   });
 
   // --- Story 5.7: dirty rows drive the re-approve mode --------------------
@@ -747,7 +840,8 @@ describe('ManagerMatrix', () => {
     renderMatrix();
     // The whole row is in re-approve mode because at least one cell is dirty.
     fireEvent.click(screen.getByRole('button', { name: 'Re-approve Bob' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Re-approve' }));
+    // The commit button now carries the figure (Task 9): 64h + 8h = 72h.
+    fireEvent.click(screen.getByRole('button', { name: 'Re-approve 72h' }));
     await waitFor(() =>
       // The fan-out posts to the FULL current touched set (both Epics), not just
       // the dirty one — recomputed at click time.
@@ -763,19 +857,24 @@ describe('ManagerMatrix', () => {
     );
   });
 
-  it('renders a gap row amber with the shared Circle icon + "short of target" — never "below target" or red (AC1/D-7.6-4)', () => {
+  it('a gap row states "short of target" ONCE at the row total (D-7.8-32) — never on the cell, never "below target", never red', () => {
     reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
     // 10h is far below 8h × ~22 May workdays → gap.
     rowMock.mockReturnValue(
       rowState({ status: 'success', data: [epic('PROJ-1', 10 * 3600)] }),
     );
     const { container } = renderMatrix();
+    // D-7.8-32: the shortfall moved from the cell to the row total — the CELL
+    // itself is now a bare number with the plain aria-label suffix, not a
+    // decorated chip. The row-total note carries the amber "short of target"
+    // text (via the shared Circle/attention token).
     expect(screen.getByText('short of target')).toBeTruthy();
-    expect(screen.getByLabelText(/short of target/)).toBeTruthy();
+    expect(screen.getByLabelText(/Bob, PROJ-1, 10 hours, short of target/)).toBeTruthy();
     expect(screen.queryByText('below target')).toBeNull();
     expect(container.querySelector('.bg-state-danger-subtle')).toBeNull();
     expect(container.innerHTML).not.toContain('state-danger');
-    expect(container.querySelector('.bg-state-warning-subtle')).toBeTruthy();
+    expect(container.querySelector('svg.lucide-circle')).toBeTruthy();
+    expect(container.querySelector('.text-amber-ink')).toBeTruthy();
   });
 
   it('keeps an empty cell neutral with the "no hours logged" label (never red)', () => {
@@ -791,7 +890,7 @@ describe('ManagerMatrix', () => {
     expect(screen.getByLabelText('Bob, PROJ-2, no hours logged')).toBeTruthy();
   });
 
-  it('shows an EyeOff overlay (D-7.6-11, was Lock) on a restricted cell AND the row chip "⚠ N restricted"', () => {
+  it('shows an EyeOff overlay (D-7.6-11, was Lock) on a restricted cell AND the row chip "N restricted" (no text glyph — AC11)', () => {
     reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
     rowMock.mockReturnValue(
       rowState({
@@ -812,7 +911,8 @@ describe('ManagerMatrix', () => {
     expect(container.querySelector('svg.lucide-lock')).toBeNull();
     expect(container.querySelector('svg.lucide-eye-off')).toBeTruthy();
     // Row chip beside the name.
-    expect(screen.getByText('⚠ 2 restricted')).toBeTruthy();
+    expect(screen.getByText('2 restricted')).toBeTruthy();
+    expect(screen.queryByText('⚠ 2 restricted')).toBeNull();
   });
 
   it('opens the drill-down panel when a data cell is clicked, populated from resolved records', () => {
@@ -834,7 +934,7 @@ describe('ManagerMatrix', () => {
     const cell = screen.getByRole('button', { name: /Bob, PROJ-1, 12 hours/ });
     fireEvent.click(cell);
     // Panel header + per-ticket evidence appear.
-    expect(screen.getByText('Bob · PROJ-1 · May 2026')).toBeTruthy();
+    expect(screen.getByText('Bob · PROJ-1')).toBeTruthy();
     expect(screen.getByText('PROJ-1-101')).toBeTruthy();
     expect(screen.getByText('12.0h')).toBeTruthy();
   });
@@ -846,9 +946,9 @@ describe('ManagerMatrix', () => {
     );
     renderMatrix();
     fireEvent.click(screen.getByRole('button', { name: /Bob, PROJ-1/ }));
-    expect(screen.getByText('Bob · PROJ-1 · May 2026')).toBeTruthy();
+    expect(screen.getByText('Bob · PROJ-1')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /^close$/i }));
-    expect(screen.queryByText('Bob · PROJ-1 · May 2026')).toBeNull();
+    expect(screen.queryByText('Bob · PROJ-1')).toBeNull();
   });
 
   it('closes the panel on Esc', () => {
@@ -858,12 +958,12 @@ describe('ManagerMatrix', () => {
     );
     renderMatrix();
     fireEvent.click(screen.getByRole('button', { name: /Bob, PROJ-1/ }));
-    expect(screen.getByText('Bob · PROJ-1 · May 2026')).toBeTruthy();
+    expect(screen.getByText('Bob · PROJ-1')).toBeTruthy();
     fireEvent.keyDown(document.activeElement ?? document.body, {
       key: 'Escape',
       code: 'Escape',
     });
-    expect(screen.queryByText('Bob · PROJ-1 · May 2026')).toBeNull();
+    expect(screen.queryByText('Bob · PROJ-1')).toBeNull();
   });
 
   it('returns focus to the originating cell button when the panel closes (AC 10)', async () => {
@@ -875,9 +975,9 @@ describe('ManagerMatrix', () => {
     const cell = screen.getByRole('button', { name: /Bob, PROJ-1/ });
     cell.focus();
     fireEvent.click(cell);
-    expect(screen.getByText('Bob · PROJ-1 · May 2026')).toBeTruthy();
+    expect(screen.getByText('Bob · PROJ-1')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /^close$/i }));
-    expect(screen.queryByText('Bob · PROJ-1 · May 2026')).toBeNull();
+    expect(screen.queryByText('Bob · PROJ-1')).toBeNull();
     // The conditionally-unmounted panel cannot rely on Radix's focus return, so
     // the matrix restores focus to the clicked cell itself (deferred a frame).
     await waitFor(() => expect(document.activeElement).toBe(cell));
@@ -899,7 +999,7 @@ describe('ManagerMatrix', () => {
     ).toBeTruthy();
   });
 
-  it('does not leak a 5.6/5.7 Approve/Re-approve/Done action or POST into the panel', () => {
+  it('the panel action reuses ApproveButton verbatim (Task 8: no second write path) — Story 7.8 supersedes the old "no action ever" boundary', () => {
     reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
     rowMock.mockReturnValue(
       rowState({
@@ -915,13 +1015,21 @@ describe('ManagerMatrix', () => {
     );
     renderMatrix();
     fireEvent.click(screen.getByRole('button', { name: /Bob, PROJ-1/ }));
-    const panel = screen.getByRole('dialog');
-    expect(within(panel).getByText('Bob · PROJ-1 · May 2026')).toBeTruthy();
-    // The drill-down panel itself stays READ-ONLY: the Approve action lives in
-    // the matrix row, never inside the panel (Story 5.5/5.6 boundary).
+    const panel = screen.getByRole('dialog', { name: /Bob · PROJ-1/ });
+    expect(within(panel).getByText('Bob · PROJ-1')).toBeTruthy();
+    // AC5 adds ONE action to the panel (Task 8) — reusing ApproveButton, the
+    // SAME component the row's own button uses. Proven by the confirm
+    // dialog it opens carrying ApproveButton's OWN copy/props (title, body,
+    // commit label) — a hand-rolled second write path would not produce
+    // this exact shape. (The mutation itself — the actual `sendRequest`
+    // call — is exhaustively covered by `ApproveButton.test.tsx`; repeating
+    // that full async round-trip here would only duplicate coverage.)
+    fireEvent.click(within(panel).getByRole('button', { name: 'Approve 12h' }));
+    const confirmDialog = screen.getByRole('dialog', { name: "Approve Bob's May 2026?" });
     expect(
-      within(panel).queryByRole('button', { name: /approve|re-approve|done/i }),
-    ).toBeNull();
+      within(confirmDialog).getByTestId('approve-dialog-body').textContent,
+    ).toBe("You're approving 12h across 1 epic for the May 2026 cycle. Accounting uses this figure.");
+    expect(within(confirmDialog).getByRole('button', { name: 'Approve 12h' })).toBeTruthy();
   });
 
   it('surfaces the per-Epic VisibilityWarning chip inside the panel when restrictedCount > 0', () => {
@@ -934,8 +1042,9 @@ describe('ManagerMatrix', () => {
     );
     renderMatrix();
     fireEvent.click(screen.getByRole('button', { name: /Bob, PROJ-1/ }));
+    // AC11: no `⚠` text glyph — the chip's own registry icon carries it now.
     expect(
-      screen.getByText(/⚠ 2 worklogs with restricted visibility were excluded/),
+      screen.getByText(/2 worklogs with restricted visibility were excluded/),
     ).toBeTruthy();
   });
 
@@ -954,6 +1063,486 @@ describe('ManagerMatrix', () => {
     expect(container.querySelector('[data-testid="matrix-scroll"]')!.className).toContain(
       'overflow-x-auto',
     );
+  });
+
+  // --- Story 7.8: the chrome header, streaming line, cycle nav, and
+  // "Approve remaining" ----------------------------------------------------
+
+  describe('the chrome header + streaming line (AC1/AC4)', () => {
+    it('shows the "N of M reports" streaming line as a role="status" live region while a report is still pending', () => {
+      reportsMock.mockReturnValue(reportsOk(REPORTS));
+      // Stable per-account mock objects (a fresh object per render would
+      // make the parent's resolved-map effect loop, since it dedupes by
+      // reference) — same convention as the pre-existing mixed-row tests.
+      const bobRow = rowState({ status: 'success', data: [epic('PROJ-1', 8 * 3600)] });
+      const amyRow = rowState({ status: 'pending' });
+      rowMock.mockImplementation((accountId: string) =>
+        accountId === 'r-bob' ? bobRow : amyRow,
+      );
+      renderMatrix();
+      // `role="status"` has no "name from contents" per ARIA — query by role
+      // alone and assert on its textContent.
+      const line = screen.getByRole('status');
+      expect(line.textContent).toMatch(/Loading 1 of 2 reports — rows appear as Jira responds/);
+    });
+
+    it('hides the streaming line once every report has settled', () => {
+      reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+      rowMock.mockReturnValue(rowState({ status: 'success', data: [epic('PROJ-1', 8 * 3600)] }));
+      renderMatrix();
+      expect(screen.queryByRole('status')).toBeNull();
+    });
+
+    // Finding 31 (Minor, D-7.8-38): the POSITIVE half (deleting `role="status"`
+    // from the streaming line reddens) was already guarded — this pins the
+    // NEGATIVE half, which had nothing: re-adding `aria-live="polite"` to
+    // `<tbody>` (the exact regression D-7.8-38 fixed — every streaming row,
+    // every cell re-render, every status flip announced) passed undetected.
+    it('Finding 31: <tbody> never carries aria-live (D-7.8-38 must not regress)', () => {
+      reportsMock.mockReturnValue(reportsOk(REPORTS));
+      rowMock.mockReturnValue(rowState({ status: 'success', data: [epic('PROJ-1', 8 * 3600)] }));
+      const { container } = renderMatrix();
+      expect(container.querySelector('tbody')?.getAttribute('aria-live')).toBeNull();
+    });
+
+    // Finding 13 (Minor, AC1): zero tests pinned the eyebrow at baseline.
+    it('Finding 13: renders the "Approvals · N reports" eyebrow', () => {
+      reportsMock.mockReturnValue(reportsOk(REPORTS));
+      rowMock.mockReturnValue(rowState({ status: 'success', data: [] }));
+      renderMatrix();
+      expect(screen.getByText('Approvals · 2 reports')).toBeTruthy();
+    });
+
+    it('renders "N need attention" in white/opacity only on the chrome — never amber (D-7.8-30/AC8)', () => {
+      reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+      rowMock.mockReturnValue(
+        rowState({
+          status: 'success',
+          data: [
+            epic('PROJ-1', 64 * 3600, {
+              worklogs: [
+                {
+                  ticketKey: 'PROJ-1-1',
+                  ticketSummary: 's',
+                  seconds: 64 * 3600,
+                  updated: '2026-05-25T00:00:00.000Z',
+                },
+              ],
+            }),
+          ],
+        }),
+      );
+      approvalsMock.mockReturnValue(
+        approvalsState([
+          {
+            v: 1,
+            user: 'r-bob',
+            cycle: '2026-05',
+            by: 'mgr',
+            at: '2026-05-20T00:00:00.000Z',
+            restrictedCount: 0,
+            checksum: 'x',
+          },
+        ]),
+      );
+      renderMatrix();
+      // The text sits in DayStatusIndicator's bare inner <span>; the colour
+      // class lives on its parent wrapper.
+      const needAttentionText = screen.getByText('1 need attention');
+      const wrapper = needAttentionText.parentElement;
+      expect(wrapper?.className).toContain('text-white');
+      expect(wrapper?.className).not.toMatch(/amber|state-warning/);
+    });
+
+    it('omits "need attention" entirely when the count is zero', () => {
+      reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+      rowMock.mockReturnValue(rowState({ status: 'success', data: [epic('PROJ-1', 8 * 3600)] }));
+      renderMatrix();
+      expect(screen.queryByText(/need attention/)).toBeNull();
+    });
+  });
+
+  describe('"Change cycle" actually moves between cycles of the SAME cadence (D-7.8-29/D-7.8-19e)', () => {
+    it('moving to the previous cycle re-fetches the prior month and updates the title', () => {
+      reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+      rowMock.mockReturnValue(rowState({ status: 'success', data: [] }));
+      renderMatrix();
+      expect(screen.getByText('May 2026')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Change cycle' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Previous cycle' }));
+      expect(screen.getByText('April 2026')).toBeTruthy();
+      expect(screen.queryByText('May 2026')).toBeNull();
+      // The row re-queries the NEW cycle id, not the old one — Finding 12:
+      // asserting the cycle id (not just the account id) is what actually
+      // distinguishes this from the bug (passing `cycle` instead of
+      // `effectiveCycle`) the test's own name claims to guard against.
+      // (The mount naturally calls with the OLD '2026-05' first — the bug
+      // this guards is the row STAYING on it after the cycle changes, so
+      // the assertion checks the MOST RECENT call, not "never called".)
+      expect(rowMock).toHaveBeenCalledWith('r-bob', '2026-04');
+      const lastCall = rowMock.mock.calls[rowMock.mock.calls.length - 1];
+      expect(lastCall).toEqual(['r-bob', '2026-04']);
+    });
+
+    it('moving next then previous returns to the original cycle', () => {
+      reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+      rowMock.mockReturnValue(rowState({ status: 'success', data: [] }));
+      renderMatrix();
+      fireEvent.click(screen.getByRole('button', { name: 'Change cycle' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Next cycle' }));
+      expect(screen.getByText('June 2026')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Change cycle' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Previous cycle' }));
+      expect(screen.getByText('May 2026')).toBeTruthy();
+    });
+  });
+
+  describe('"Approve remaining" actually works and respects the per-row canonicality gate (D-7.8-29/D-7.8-19e)', () => {
+    it('is disabled with a visible reason when no report is eligible', () => {
+      reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+      rowMock.mockReturnValue(rowState({ status: 'success', data: [] }));
+      renderMatrix();
+      const btn = screen.getByRole('button', { name: 'Approve remaining' });
+      expect(btn.getAttribute('aria-disabled')).toBe('true');
+      expect(btn.title).toBe('No reports ready to approve');
+    });
+
+    it('batches every untouched-but-approvable report behind ONE confirm, excluding an already-approved row, a dirty row, and a non-canonical row', async () => {
+      reportsMock.mockReturnValue(
+        reportsOk([
+          { accountId: 'r-amy', displayName: 'Amy' }, // untouched, canonical → eligible
+          { accountId: 'r-bob', displayName: 'Bob' }, // already approved → excluded
+          { accountId: 'r-cid', displayName: 'Cid' }, // dirty → excluded
+          { accountId: 'r-deb', displayName: 'Deb' }, // non-canonical → excluded
+        ]),
+      );
+      const amyRow = rowState({ status: 'success', data: [epic('PROJ-1', 10 * 3600)] });
+      const bobRow = rowState({
+        status: 'success',
+        data: [
+          epic('PROJ-1', 20 * 3600, {
+            worklogs: [
+              {
+                ticketKey: 'PROJ-1-1',
+                ticketSummary: 's',
+                seconds: 20 * 3600,
+                updated: '2026-05-10T00:00:00.000Z',
+              },
+            ],
+          }),
+        ],
+      });
+      const cidRow = rowState({
+        status: 'success',
+        data: [
+          epic('PROJ-1', 5 * 3600, {
+            worklogs: [
+              {
+                ticketKey: 'PROJ-1-1',
+                ticketSummary: 's',
+                seconds: 5 * 3600,
+                updated: '2026-05-25T00:00:00.000Z', // after approval → dirty
+              },
+            ],
+          }),
+        ],
+      });
+      const debRow = rowState({ status: 'success', data: [epic('PROJ-1', 3 * 3600)] });
+      rowMock.mockImplementation((accountId: string) => {
+        if (accountId === 'r-amy') return amyRow;
+        if (accountId === 'r-bob') return bobRow;
+        if (accountId === 'r-cid') return cidRow;
+        return debRow;
+      });
+      approvalsMock.mockImplementation(() =>
+        approvalsState([
+          {
+            v: 1,
+            user: 'r-bob',
+            cycle: '2026-05',
+            by: 'mgr',
+            at: '2026-05-20T00:00:00.000Z',
+            restrictedCount: 0,
+            checksum: 'x',
+          },
+          {
+            v: 1,
+            user: 'r-cid',
+            cycle: '2026-05',
+            by: 'mgr',
+            at: '2026-05-20T00:00:00.000Z',
+            restrictedCount: 0,
+            checksum: 'x',
+          },
+        ]),
+      );
+      canApproveMock.mockImplementation((accountId: string) =>
+        accountId === 'r-deb' ? canApproveState(false, 'Other Manager') : canApproveState(true),
+      );
+      sendRequestMock.mockResolvedValue({ confirmed: ['PROJ-1'], failed: [], enqueued: [] });
+      renderMatrix();
+      await waitFor(() =>
+        expect(screen.getByTestId('matrix-progress').textContent).toBe('1 of 4 approved'),
+      );
+      const btn = screen.getByRole('button', { name: 'Approve remaining' });
+      expect(btn.getAttribute('aria-disabled')).toBeNull();
+      fireEvent.click(btn);
+      expect(screen.getByText('Approve 1 remaining report?')).toBeTruthy();
+      expect(screen.getByTestId('approve-remaining-dialog-body').textContent).toBe(
+        "You're approving 10h across 1 report for the May 2026 cycle. Accounting uses this figure.",
+      );
+      fireEvent.click(screen.getByTestId('approve-remaining-confirm'));
+      await waitFor(() =>
+        expect(sendRequestMock).toHaveBeenCalledWith('approve-cycle', {
+          user: 'r-amy',
+          cycle: '2026-05',
+          by: 'mgr-1',
+          epics: [{ epicKey: 'PROJ-1', restrictedCount: 0 }],
+        }),
+      );
+      // Never fanned out for the excluded rows.
+      expect(sendRequestMock).not.toHaveBeenCalledWith(
+        'approve-cycle',
+        expect.objectContaining({ user: 'r-bob' }),
+      );
+      expect(sendRequestMock).not.toHaveBeenCalledWith(
+        'approve-cycle',
+        expect.objectContaining({ user: 'r-cid' }),
+      );
+      expect(sendRequestMock).not.toHaveBeenCalledWith(
+        'approve-cycle',
+        expect.objectContaining({ user: 'r-deb' }),
+      );
+    });
+  });
+
+  // D-7.8-20 superseded D-7.8-16: `fetchReportCycleWorklogsByEpic` now pages
+  // through every result, so the `truncated` flag/note/caveat this describe
+  // block used to cover no longer exist anywhere in the type or the UI —
+  // see `lib/jira-client.test.ts` for the pagination coverage that replaces
+  // it. D-7.8-21 below is the Blocker's remaining half.
+
+  describe('D-7.8-21: "Approve remaining" carries the aggregate restricted caveat', () => {
+    it('renders the aggregate restricted caveat when any batched row has restrictedCount > 0', () => {
+      reportsMock.mockReturnValue(
+        reportsOk([
+          { accountId: 'r-amy', displayName: 'Amy' },
+          { accountId: 'r-bob', displayName: 'Bob' },
+        ]),
+      );
+      const amyRow = rowState({
+        status: 'success',
+        data: [epic('PROJ-1', 10 * 3600, { restrictedCount: 2 })],
+      });
+      const bobRow = rowState({
+        status: 'success',
+        data: [
+          epic('PROJ-1', 5 * 3600, { restrictedCount: 1 }),
+          epic('PROJ-2', 3 * 3600, { restrictedCount: 0 }),
+        ],
+      });
+      rowMock.mockImplementation((accountId: string) => (accountId === 'r-amy' ? amyRow : bobRow));
+      renderMatrix();
+      fireEvent.click(screen.getByRole('button', { name: 'Approve remaining' }));
+      const line = screen.getByTestId('approve-remaining-restricted-line');
+      // 2 restricted epics total: Amy's PROJ-1 + Bob's PROJ-1 (Bob's PROJ-2 has none).
+      expect(line.textContent).toMatch(/2 epics across these reports have worklogs you can't see/);
+    });
+
+    it('omits the aggregate restricted caveat when no batched row has any restricted worklogs', () => {
+      reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-amy', displayName: 'Amy' }]));
+      rowMock.mockReturnValue(
+        rowState({ status: 'success', data: [epic('PROJ-1', 10 * 3600, { restrictedCount: 0 })] }),
+      );
+      renderMatrix();
+      fireEvent.click(screen.getByRole('button', { name: 'Approve remaining' }));
+      expect(screen.queryByTestId('approve-remaining-restricted-line')).toBeNull();
+    });
+
+    it('singular: "1 epic across these reports has worklogs..." at n=1', () => {
+      reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-amy', displayName: 'Amy' }]));
+      rowMock.mockReturnValue(
+        rowState({ status: 'success', data: [epic('PROJ-1', 10 * 3600, { restrictedCount: 1 })] }),
+      );
+      renderMatrix();
+      fireEvent.click(screen.getByRole('button', { name: 'Approve remaining' }));
+      expect(
+        screen.getByTestId('approve-remaining-restricted-line').textContent,
+      ).toMatch(/1 epic across these reports has worklogs you can't see/);
+    });
+
+    // Does NOT regress Story 5.8's canonicality gate — the existing
+    // "batches every untouched-but-approvable report..." test above already
+    // proves a non-canonical row is excluded; this proves adding the caveat
+    // didn't change that.
+    it('still excludes a non-canonical row from the batch even when it has restricted worklogs', async () => {
+      reportsMock.mockReturnValue(
+        reportsOk([
+          { accountId: 'r-amy', displayName: 'Amy' },
+          { accountId: 'r-deb', displayName: 'Deb' },
+        ]),
+      );
+      const amyRow = rowState({
+        status: 'success',
+        data: [epic('PROJ-1', 10 * 3600, { restrictedCount: 0 })],
+      });
+      const debRow = rowState({
+        status: 'success',
+        data: [epic('PROJ-1', 3 * 3600, { restrictedCount: 5 })],
+      });
+      rowMock.mockImplementation((accountId: string) => (accountId === 'r-amy' ? amyRow : debRow));
+      canApproveMock.mockImplementation((accountId: string) =>
+        accountId === 'r-deb' ? canApproveState(false, 'Other Manager') : canApproveState(true),
+      );
+      sendRequestMock.mockResolvedValue({ confirmed: ['PROJ-1'], failed: [], enqueued: [] });
+      renderMatrix();
+      fireEvent.click(screen.getByRole('button', { name: 'Approve remaining' }));
+      // Deb is excluded (non-canonical), so no restricted worklog reaches the batch.
+      expect(screen.queryByTestId('approve-remaining-restricted-line')).toBeNull();
+      fireEvent.click(screen.getByTestId('approve-remaining-confirm'));
+      await waitFor(() =>
+        expect(sendRequestMock).toHaveBeenCalledWith(
+          'approve-cycle',
+          expect.objectContaining({ user: 'r-amy' }),
+        ),
+      );
+      expect(sendRequestMock).not.toHaveBeenCalledWith(
+        'approve-cycle',
+        expect.objectContaining({ user: 'r-deb' }),
+      );
+    });
+  });
+
+  describe('Finding 2: the "Approve remaining" confirm dialog backdrop does not dismiss', () => {
+    it('a pointer-down outside the batch confirm dialog does NOT close it', async () => {
+      reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-amy', displayName: 'Amy' }]));
+      rowMock.mockReturnValue(rowState({ status: 'success', data: [epic('PROJ-1', 10 * 3600)] }));
+      renderMatrix();
+      fireEvent.click(screen.getByRole('button', { name: 'Approve remaining' }));
+      expect(screen.getByRole('dialog')).toBeTruthy();
+      // Let Radix's deferred outside-pointerdown listener attach (Story 7.7's
+      // house pattern — a synchronous fireEvent never reaches it).
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      fireEvent.pointerDown(document.body);
+      expect(screen.getByRole('dialog')).toBeTruthy();
+      expect(sendRequestMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Finding 9/22: "Approve remaining" is never silently partial, and cannot double-fire', () => {
+    it('Finding 22: the header button disables mid-batch, and a stray second click starts no overlapping batch', async () => {
+      reportsMock.mockReturnValue(
+        reportsOk([
+          { accountId: 'r-amy', displayName: 'Amy' },
+          { accountId: 'r-bob', displayName: 'Bob' },
+        ]),
+      );
+      rowMock.mockReturnValue(rowState({ status: 'success', data: [epic('PROJ-1', 10 * 3600)] }));
+      let resolveFirst: (v: { confirmed: string[]; failed: string[]; enqueued: string[] }) => void;
+      let sendCallCount = 0;
+      sendRequestMock.mockImplementation(() => {
+        sendCallCount += 1;
+        if (sendCallCount === 1) {
+          return new Promise((resolve) => {
+            resolveFirst = resolve;
+          });
+        }
+        return Promise.resolve({ confirmed: ['PROJ-1'], failed: [], enqueued: [] });
+      });
+      renderMatrix();
+      fireEvent.click(screen.getByRole('button', { name: 'Approve remaining' }));
+      fireEvent.click(screen.getByTestId('approve-remaining-confirm'));
+      // Mid-batch, after the first (still-pending) post: the HEADER button
+      // must be disabled — the original defect left it enabled throughout
+      // the whole sequential loop, so a second click could re-open the
+      // dialog over a still-stale row set and start an overlapping batch.
+      await waitFor(() => {
+        const btn = screen.getByRole('button', { name: 'Approve remaining' });
+        expect(btn.getAttribute('aria-disabled')).toBe('true');
+      });
+      // A stray click while disabled opens no dialog and posts nothing extra
+      // (MatrixChromeHeader's onClick fails closed on `aria-disabled`).
+      fireEvent.click(screen.getByRole('button', { name: 'Approve remaining' }));
+      expect(screen.queryAllByRole('dialog')).toHaveLength(0);
+      expect(sendCallCount).toBe(1);
+      resolveFirst!({ confirmed: ['PROJ-1'], failed: [], enqueued: [] });
+      await waitFor(() => expect(sendCallCount).toBe(2));
+      // The batch settles and the header re-enables.
+      await waitFor(() => {
+        const btn = screen.getByRole('button', { name: 'Approve remaining' });
+        expect(btn.getAttribute('aria-disabled')).toBeNull();
+      });
+    });
+
+    it('Finding 9: a mid-batch failure surfaces a visible amber (never red) summary — never silent', async () => {
+      reportsMock.mockReturnValue(
+        reportsOk([
+          { accountId: 'r-amy', displayName: 'Amy' },
+          { accountId: 'r-bob', displayName: 'Bob' },
+        ]),
+      );
+      const amyRow = rowState({ status: 'success', data: [epic('PROJ-1', 10 * 3600)] });
+      const bobRow = rowState({ status: 'success', data: [epic('PROJ-2', 5 * 3600)] });
+      rowMock.mockImplementation((accountId: string) => (accountId === 'r-amy' ? amyRow : bobRow));
+      sendRequestMock.mockImplementation((_type: string, payload: { user: string }) =>
+        Promise.resolve(
+          payload.user === 'r-amy'
+            ? { confirmed: ['PROJ-1'], failed: [], enqueued: [] }
+            : null, // sendRequest returns null (never throws) on a rejected/absent response
+        ),
+      );
+      renderMatrix();
+      fireEvent.click(screen.getByRole('button', { name: 'Approve remaining' }));
+      fireEvent.click(screen.getByTestId('approve-remaining-confirm'));
+      const summary = await screen.findByTestId('approve-remaining-summary');
+      expect(summary.textContent).toMatch(/Approved 1 of 2 reports/);
+      expect(summary.className).not.toMatch(/state-danger|status-error/);
+      expect(summary.className).toMatch(/amber/);
+    });
+
+    it('Finding 9: aborts and posts nothing if the manager account is unresolved at click time', async () => {
+      reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-amy', displayName: 'Amy' }]));
+      rowMock.mockReturnValue(rowState({ status: 'success', data: [epic('PROJ-1', 10 * 3600)] }));
+      currentUserMock.mockReturnValue({ isPending: false, isError: false, data: 'mgr-1' });
+      const { rerender } = renderMatrix();
+      fireEvent.click(screen.getByRole('button', { name: 'Approve remaining' }));
+      // The current-user query invalidates to unresolved WHILE the dialog is
+      // open — force the re-render a real invalidation would trigger.
+      currentUserMock.mockReturnValue({ isPending: true, isError: false, data: undefined });
+      rerender(<ManagerMatrix cycle="2026-05" onSwitchToToday={() => {}} />);
+      fireEvent.click(screen.getByTestId('approve-remaining-confirm'));
+      await new Promise((r) => setTimeout(r, 0));
+      expect(sendRequestMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Finding 34: "Approve remaining" excludes a zero-second row', () => {
+    it('a row whose Epic groups sum to 0 seconds is excluded from the batch', async () => {
+      reportsMock.mockReturnValue(
+        reportsOk([
+          { accountId: 'r-amy', displayName: 'Amy' },
+          { accountId: 'r-zero', displayName: 'Zero' },
+        ]),
+      );
+      const amyRow = rowState({ status: 'success', data: [epic('PROJ-1', 10 * 3600)] });
+      const zeroRow = rowState({ status: 'success', data: [epic('PROJ-1', 0)] });
+      rowMock.mockImplementation((accountId: string) => (accountId === 'r-amy' ? amyRow : zeroRow));
+      sendRequestMock.mockResolvedValue({ confirmed: ['PROJ-1'], failed: [], enqueued: [] });
+      renderMatrix();
+      fireEvent.click(screen.getByRole('button', { name: 'Approve remaining' }));
+      expect(screen.getByText('Approve 1 remaining report?')).toBeTruthy();
+      fireEvent.click(screen.getByTestId('approve-remaining-confirm'));
+      await waitFor(() =>
+        expect(sendRequestMock).toHaveBeenCalledWith(
+          'approve-cycle',
+          expect.objectContaining({ user: 'r-amy' }),
+        ),
+      );
+      expect(sendRequestMock).not.toHaveBeenCalledWith(
+        'approve-cycle',
+        expect.objectContaining({ user: 'r-zero' }),
+      );
+    });
   });
 
   // --- Story 6.1 AC1: axe a11y scan of the rendered Manager matrix --------

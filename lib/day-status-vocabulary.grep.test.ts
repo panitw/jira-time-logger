@@ -188,6 +188,24 @@ describe('AC3 — no surface hard-codes a day-status icon (source-level grep)', 
     }
     expect(violations).toEqual([]);
   });
+
+  // Finding 8(c): deleting `EyeOff`/`CircleCheck` from `BANNED_ICONS` above
+  // was GREEN — nothing pins the banned SET itself against the vocabulary
+  // it exists to cover, so the list can silently shrink. Extract
+  // `DayStatusIndicator.tsx`'s own `STATUS_ICON` map and assert
+  // `BANNED_ICONS` names exactly the same icon set (order-independent) —
+  // the banned list is derived from, not merely inspired by, the source of
+  // truth.
+  it('BANNED_ICONS names exactly the icon set DayStatusIndicator.tsx#STATUS_ICON declares — no fewer, no more', () => {
+    const source = readFileSync(path.join(ROOT, INDICATOR_FILE), 'utf-8');
+    const match = /const STATUS_ICON: Record<StatusKind, LucideIcon> = \{([^}]*)\}/.exec(source);
+    expect(match).not.toBeNull();
+    const body = match![1]!;
+    // Each entry is `key: IconName,` — capture the icon identifier values.
+    const iconNames = [...body.matchAll(/:\s*(\w+),/g)].map((m) => m[1]!);
+    expect(iconNames.length).toBeGreaterThan(0);
+    expect(new Set(BANNED_ICONS)).toEqual(new Set(iconNames));
+  });
 });
 
 describe('AC3 — no surface hard-codes a day-status colour token (source-level grep)', () => {
@@ -220,10 +238,21 @@ describe('AC3 — no surface hard-codes a day-status colour token (source-level 
   // `ManagerMatrix.tsx`'s own `CellStatus` axis, D-7.6-4 — so a blanket ban
   // on those two would be false at baseline, the same reasoning that scopes
   // `text-amber-ink` below rather than banning it outright.)
-  it('no file other than DayStatusIndicator.tsx / DayCell.tsx / globals.css contains bg-amber-soft', () => {
+  // Story 7.8: manager-surface call sites reuse the SAME amber-soft chip
+  // fill for their OWN box (the dirty cell chip, the drill-down "needs
+  // re-approval" chip, the "Approve remaining" partial-failure summary) — a
+  // plain `className=` literal, not a hidden status-tint map (the
+  // per-occurrence companion test below closes that gap per D-7.6-43's
+  // lesson, rather than a bare file-level widening). `ApproveButton.tsx` is
+  // deliberately NOT allowlisted here: its one use (the truncation caveat)
+  // was removed by D-7.8-20, and leaving a now-unused entry in would be
+  // exactly the stale-allowlist problem Finding 8(b) flags below.
+  it('no file other than DayStatusIndicator.tsx / DayCell.tsx / the manager surface / globals.css contains bg-amber-soft', () => {
     const allowlist = new Set([
       INDICATOR_FILE,
       'components/week/DayCell.tsx',
+      'components/manager/ManagerMatrix.tsx',
+      'components/manager/DrillDownPanel.tsx',
       'styles/globals.css',
     ]);
     const violations: string[] = [];
@@ -232,6 +261,48 @@ describe('AC3 — no surface hard-codes a day-status colour token (source-level 
       if (allowlist.has(rel)) continue;
       const source = stripCommentLines(readFileSync(file, 'utf-8'));
       if (source.includes('bg-amber-soft')) violations.push(`${rel}: bg-amber-soft`);
+    }
+    expect(violations).toEqual([]);
+  });
+
+  // Finding 8(b) (Major, D-7.8-22): the file-level allowlist above has no
+  // STALE-entry detection — a file that stops using `bg-amber-soft`
+  // (exactly what just happened to `ApproveButton.tsx` above) can sit in an
+  // allowlist forever with nothing failing. Pin the manager surface's two
+  // ACTIVE entries to their exact count, modelled on
+  // `lib/no-monospace.grep.test.ts`'s `ALLOWLIST` — an entry whose count
+  // drifts (including to zero) fails the build instead of silently
+  // outliving its reason.
+  it('the manager surface\'s bg-amber-soft occurrences are pinned to an exact count each (stale-entry detection)', () => {
+    const PINNED: Record<string, number> = {
+      'components/manager/ManagerMatrix.tsx': 2,
+      'components/manager/DrillDownPanel.tsx': 1,
+    };
+    const violations: string[] = [];
+    for (const [rel, expected] of Object.entries(PINNED)) {
+      const source = readFileSync(path.join(ROOT, rel), 'utf-8');
+      const actual = (source.match(/bg-amber-soft/g) ?? []).length;
+      if (actual !== expected) {
+        violations.push(
+          `${rel}: expected exactly ${expected} bg-amber-soft occurrence(s), found ${actual} — update PINNED in this test as part of the SAME change that touches this file (a drop to 0 means the entry is now stale and should be removed from the allowlist test above too)`,
+        );
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  // D-7.6-43's lesson applied proactively: a file-level allowlist alone
+  // would permit a hidden status→tint MAP inside the newly-allowlisted
+  // manager files too. `bg-amber-soft` may appear as a plain JSX
+  // `className=` string, but never as an object-literal property value.
+  it('bg-amber-soft never appears as an object-literal property value (a hidden status-tint map) outside DayStatusIndicator.tsx', () => {
+    const mapValuePattern = /[\w'"-]+\s*:\s*(['"`])(?:(?!\1).)*bg-amber-soft(?:(?!\1).)*\1/;
+    const violations: string[] = [];
+    for (const file of ALL_SOURCE_FILES) {
+      const rel = relPath(file);
+      if (rel === INDICATOR_FILE) continue;
+      const source = stripCommentLines(readFileSync(file, 'utf-8'));
+      if (mapValuePattern.test(source)) violations.push(rel);
     }
     expect(violations).toEqual([]);
   });
@@ -326,8 +397,15 @@ describe('AC3 — no surface hard-codes a day-status colour token (source-level 
   // above, a strict "nowhere but the indicator" check is safe and catches
   // BOTH a bare literal and an object-map value in one pass (the check does
   // not care about surrounding syntax, only presence).
-  it('no file other than DayStatusIndicator.tsx / globals.css contains a STATUS_BAR_CLASS token', () => {
+  it('no file other than DayStatusIndicator.tsx / globals.css contains a STATUS_BAR_CLASS token (Story 7.8: ManagerMatrix.tsx narrowly excepted for bg-royal-purple ONLY)', () => {
     const allowlist = new Set([INDICATOR_FILE, 'styles/globals.css']);
+    // Story 7.8: the manager matrix's streaming-progress bar (AC4) reuses
+    // `bg-royal-purple` for a GENERIC loading indicator — not a day status —
+    // per `dc.html:564`. Narrowly permitted for THIS ONE token only, so the
+    // other four (the actual per-status bar-colour map) still fail here if
+    // they ever leak into this file — a file-level allowlist alone would
+    // have permitted all five silently (D-7.6-43's lesson).
+    const MANAGER_MATRIX = 'components/manager/ManagerMatrix.tsx';
     const BAR_TOKENS = [
       'bg-status-clean',
       'bg-royal-purple',
@@ -341,7 +419,9 @@ describe('AC3 — no surface hard-codes a day-status colour token (source-level 
       if (allowlist.has(rel)) continue;
       const source = stripCommentLines(readFileSync(file, 'utf-8'));
       for (const tok of BAR_TOKENS) {
-        if (source.includes(tok)) violations.push(`${rel}: ${tok}`);
+        if (!source.includes(tok)) continue;
+        if (rel === MANAGER_MATRIX && tok === 'bg-royal-purple') continue;
+        violations.push(`${rel}: ${tok}`);
       }
     }
     expect(violations).toEqual([]);
@@ -368,6 +448,30 @@ describe('AC3 — no surface hard-codes a day-status colour token (source-level 
       if (rel === INDICATOR_FILE) continue;
       const source = stripCommentLines(readFileSync(file, 'utf-8'));
       if (mapValuePattern.test(source)) violations.push(rel);
+    }
+    expect(violations).toEqual([]);
+  });
+
+  // Finding 8(c) (Major, D-7.8-22): this story's OWN two new tokens — the
+  // restricted chip's fill and the "no hours" chip's dashed border — carried
+  // ZERO grep coverage at review time (adding them to a strict check turned
+  // it RED, proving they are live and ungoverned). Both are genuinely
+  // exclusive to the manager surface (D-7.8-36: purpose-built tokens, not
+  // reused elsewhere), so a strict "nowhere but their owners" check is safe,
+  // the same reasoning as `text-status-clean` above.
+  it('no file other than ManagerMatrix.tsx / VisibilityWarning.tsx / globals.css contains bg-chip-surface or border-chip-dashed-border', () => {
+    const allowlist = new Set([
+      'components/manager/ManagerMatrix.tsx',
+      'components/manager/VisibilityWarning.tsx',
+      'styles/globals.css',
+    ]);
+    const violations: string[] = [];
+    for (const file of [...ALL_SOURCE_FILES, ...CSS_FILES]) {
+      const rel = relPath(file);
+      if (allowlist.has(rel)) continue;
+      const source = stripCommentLines(readFileSync(file, 'utf-8'));
+      if (source.includes('bg-chip-surface')) violations.push(`${rel}: bg-chip-surface`);
+      if (source.includes('border-chip-dashed-border')) violations.push(`${rel}: border-chip-dashed-border`);
     }
     expect(violations).toEqual([]);
   });
@@ -437,6 +541,39 @@ describe('AC6 — no STRINGS value contains "PTO" (excluding the verbatim-Jira-d
 
       if (linesWithoutDefaultSummary.includes('PTO')) {
         violations.push(rel);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Finding 32 (Minor, Story 7.8): AC11's text-glyph ban is a single
+// hard-coded `'⚠ N restricted'` literal check (`ManagerMatrix.test.tsx:842`)
+// — a DIFFERENT glyph in the SAME STRINGS block ships undetected. Scoped to
+// the four manager-surface files AC11 actually names (not repo-wide: a
+// broad scan found `→` legitimately used in unrelated pre-existing copy —
+// `ApiTokenSetup.tsx`'s/`RecentlyWorked.tsx`'s "Search to find them →" —
+// which is not the glyph-vs-icon-registry hazard AC11 is about).
+// ---------------------------------------------------------------------------
+
+describe('AC11 — no manager-surface STRINGS value contains a banned text glyph (source-level grep)', () => {
+  const BANNED_GLYPHS = ['⚠', '✓', '✕', '⚑', '●', '▾', '▴', '→'];
+  const MANAGER_SURFACE_FILES = [
+    'components/manager/ManagerMatrix.tsx',
+    'components/manager/ApproveButton.tsx',
+    'components/manager/DrillDownPanel.tsx',
+    'components/manager/VisibilityWarning.tsx',
+  ];
+
+  it('no STRINGS object in the manager surface contains any of ⚠ ✓ ✕ ⚑ ● ▾ ▴ →', () => {
+    const violations: string[] = [];
+    for (const rel of MANAGER_SURFACE_FILES) {
+      const source = stripCommentLines(readFileSync(path.join(ROOT, rel), 'utf-8'));
+      const block = extractStringsBlock(source);
+      if (!block) continue;
+      for (const glyph of BANNED_GLYPHS) {
+        if (block.includes(glyph)) violations.push(`${rel}: "${glyph}"`);
       }
     }
     expect(violations).toEqual([]);

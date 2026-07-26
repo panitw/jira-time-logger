@@ -56,12 +56,21 @@ describe('serializeApproval', () => {
 });
 
 describe('serialize → parse round-trip', () => {
-  it('preserves all fields exactly through serialize → parse', async () => {
+  // Story 7.8 / D-7.8-35: AC6's "the caveat is recorded in the approval
+  // comment" clause is discharged HERE — `makeValidPayload()`'s default
+  // ALREADY carries `restrictedCount: 3` (a restricted-Epic approval), so
+  // this round-trip proves exactly what AC6 needs: a restricted-Epic
+  // approval writes a non-zero, checksum-covered `restrictedCount` that
+  // survives serialize → parse intact. No prose was added to discharge this
+  // clause — see the negative test below for why.
+  it('preserves all fields exactly through serialize → parse, including a restricted-Epic restrictedCount > 0 (AC6)', async () => {
     const payload = await makeValidPayload();
+    expect(payload.restrictedCount).toBeGreaterThan(0);
     const result = await parseApprovalComment(serializeApproval(payload));
     expect(isOk(result)).toBe(true);
     if (isOk(result)) {
       expect(result.value).toEqual(payload);
+      expect(result.value.restrictedCount).toBe(payload.restrictedCount);
     }
   });
 
@@ -149,6 +158,35 @@ describe('parseApprovalComment fail-closed reasons', () => {
     const body = `${APPROVAL_MARKER_V1}\n{"v":1,"user":"u","cycle":"c","by":"b","at":"t","restrictedCount":-1,"checksum":"abc"}`;
     const result = await parseApprovalComment(body);
     expect(result).toEqual({ kind: 'parse-error', reason: 'malformed' });
+  });
+
+  // Story 7.8 / D-7.8-35 — THE HAZARD TEST. Pins the exact catastrophe the
+  // decision log calls "the single most dangerous line in the story":
+  // `parseApprovalComment` finds the first `{` after the marker and runs
+  // `JSON.parse` on EVERYTHING from there to the end of the string
+  // (`lib/comment-schema.ts`'s `jsonRegion` slice has no upper bound). If a
+  // future change appended a human-readable sentence AFTER the JSON to
+  // "improve" the restricted-worklogs caveat, `JSON.parse` would throw on
+  // the trailing prose, the comment would parse as `malformed`, the system
+  // would fail closed, and EVERY restricted-Epic approval ever written
+  // would become invisible — its cells silently reverting to unapproved.
+  // This test proves that failure mode fires today, so nobody "fixes" this
+  // the expensive way by shipping it to production first.
+  it('HAZARD: appending prose AFTER the JSON breaks the parse — proves why the comment body must stay byte-identical (D-7.8-35)', async () => {
+    const payload = await makeValidPayload();
+    const validBody = serializeApproval(payload);
+    // Sanity check: the unmodified body parses fine.
+    const okResult = await parseApprovalComment(validBody);
+    expect(isOk(okResult)).toBe(true);
+
+    // The exact "improvement" a future dev might attempt: append a
+    // human-readable caveat sentence after the JSON object.
+    const withTrailingProse = `${validBody}\nNote: 1 epic has worklogs you can't see.`;
+    const brokenResult = await parseApprovalComment(withTrailingProse);
+    expect(brokenResult).toEqual({ kind: 'parse-error', reason: 'malformed' });
+    // Fail-closed, not a crash — but every restricted-Epic approval this
+    // shape touches becomes invisible (isOk === false).
+    expect(isOk(brokenResult)).toBe(false);
   });
 });
 

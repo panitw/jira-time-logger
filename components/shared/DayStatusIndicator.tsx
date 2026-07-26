@@ -89,26 +89,6 @@ export const TIME_OFF_TEXT_CLASS = STATUS_COLOR_CLASS['time-off'];
 const CHROME_COLOR_CLASS = 'text-white/85';
 
 /**
- * D-7.6-49: a SECOND, full-opacity white — for a composition where the
- * 85%-opacity chrome ink above does not clear AA. `tone="chrome"`'s 85% was
- * calibrated against `ChromeHeader`'s specific consumer (the popup's purple
- * gradient, where `DESIGN.md` itself specifies `rgba(255,255,255,.85)` for
- * the progress note — verified in the code review at 4.89-5.47:1). Reusing
- * that exact 85% figure against a MUCH darker, more saturated fill — the
- * manager matrix's `approved` cell, `bg-state-success` `#15803D` — measures
- * only **≈4.09:1** (hand-computed), which does NOT clear AA's 4.5:1 for
- * normal-size text. `tone="chrome-solid"` is the same white already in use
- * throughout the product (zero new hex, zero new token — `text-white` is
- * the same colour `ChromeHeader.tsx`'s date/figure/avatar-initial already
- * render in), just without the 85%-opacity dilution: full white on
- * `#15803D` is the pre-story-verified **5.02:1**. Still part of the frozen
- * `tone` contract (D-7.6-3), not a per-call-site colour override — every
- * caller passing `tone="chrome-solid"` gets the identical, non-negotiable
- * value, exactly like `"data"`/`"chrome"`.
- */
-const CHROME_SOLID_COLOR_CLASS = 'text-white';
-
-/**
  * Background-wash tint per status, for a caller that needs a `<td>`/cell
  * BACKGROUND rather than the icon+text chip `DayStatusIndicator` itself
  * renders (`components/week/DayCell.tsx`'s body-cell tint, Story 7.6 /
@@ -238,15 +218,19 @@ export type DayStatusIndicatorProps = {
    * error rather than a review finding (D-7.7-30). */
   size?: 11 | 12 | 13;
 
-  /** 'data' (default), 'chrome', or 'chrome-solid'.
-   *  'chrome'       — D-7.6-5/40: white at 85% opacity, calibrated for the
-   *                   popup's purple gradient (`ChromeHeader`'s progress
-   *                   note; `DESIGN.md`'s own specified value there).
-   *  'chrome-solid' — D-7.6-49: the same white, full opacity — for a
-   *                   composition on a solid, more saturated fill (e.g. the
-   *                   matrix's `approved` cell) where 85% does not clear AA.
+  /** 'data' (default) or 'chrome'.
+   *  'chrome' — D-7.6-5/40: white at 85% opacity, calibrated for the
+   *             popup's purple gradient (`ChromeHeader`'s progress note;
+   *             `DESIGN.md`'s own specified value there).
+   *
+   * `'chrome-solid'` (D-7.6-49) was REMOVED by Story 7.8 / D-7.8-26: once the
+   * restricted chip carries its own `#F4F4F7` background (AC9), its only
+   * call site (`ManagerMatrix.tsx`'s `approved`-cell override) no longer
+   * needs a full-opacity white — the chip's contrast no longer depends on
+   * what's behind it. This is the FIRST narrowing of the frozen
+   * `DayStatusIndicatorProps` contract (D-7.6-3) — recorded there.
    */
-  tone?: 'data' | 'chrome' | 'chrome-solid';
+  tone?: 'data' | 'chrome';
 
   className?: string;
 };
@@ -264,12 +248,7 @@ export function DayStatusIndicator({
 }: DayStatusIndicatorProps): React.ReactElement {
   const Icon = STATUS_ICON[status];
   const filled = FILLED_STATUSES.has(status);
-  const colorClass =
-    tone === 'chrome'
-      ? CHROME_COLOR_CLASS
-      : tone === 'chrome-solid'
-        ? CHROME_SOLID_COLOR_CLASS
-        : STATUS_COLOR_CLASS[status];
+  const colorClass = tone === 'chrome' ? CHROME_COLOR_CLASS : STATUS_COLOR_CLASS[status];
   // Finding 16: `||`, not `??` — the component has no icon-only mode
   // (silence is the absence of the component, D-7.6-3), so `label=""` is the
   // one way a caller could accidentally suppress the visible word entirely.

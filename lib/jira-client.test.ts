@@ -912,6 +912,55 @@ describe('fetchCurrentUserWeekWorklogsByIssue', () => {
     expect(result.kind).toBe('forbidden');
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  // --- Story 7.8 / D-7.8-20: paged via the SAME shared helper as the matrix
+  it('D-7.8-20: follows nextPageToken across search pages (shares fetchAllSearchPages with the matrix fetcher)', async () => {
+    fetchMock
+      .mockResolvedValueOnce(okJson({ accountId: ACCOUNT_ID, displayName: 'Me' })) // myself
+      .mockResolvedValueOnce(
+        okJson({
+          issues: [{ id: '1', key: 'PROJ-1', fields: { summary: 'Page 1 issue' } }],
+          nextPageToken: 'tok-week-1',
+          isLast: false,
+        }),
+      )
+      .mockResolvedValueOnce(
+        okJson({ issues: [{ id: '2', key: 'PROJ-2', fields: { summary: 'Page 2 issue' } }], isLast: true }),
+      )
+      .mockResolvedValueOnce(
+        okJson({
+          worklogs: [
+            {
+              id: 'wl-p1',
+              timeSpentSeconds: 3600,
+              started: '2026-06-16T09:00:00.000+0000',
+              author: { accountId: ACCOUNT_ID },
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        okJson({
+          worklogs: [
+            {
+              id: 'wl-p2',
+              timeSpentSeconds: 7200,
+              started: '2026-06-17T09:00:00.000+0000',
+              author: { accountId: ACCOUNT_ID },
+            },
+          ],
+        }),
+      );
+
+    const result = await fetchCurrentUserWeekWorklogsByIssue(range);
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value.map((w) => w.key).sort()).toEqual(['PROJ-1', 'PROJ-2']);
+    }
+    const searchCalls = fetchMock.mock.calls.filter((call: unknown[]) => String(call[0]).includes('search/jql'));
+    expect(searchCalls).toHaveLength(2);
+    expect(String(searchCalls[1]![0])).toContain('nextPageToken=tok-week-1');
+  });
 });
 
 describe('fetchReportCycleWorklogsByEpic', () => {
@@ -1117,6 +1166,115 @@ describe('fetchReportCycleWorklogsByEpic', () => {
       expect(result.value.restrictedCount).toBe(0);
     }
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  // --- Story 7.8 / D-7.8-20 (supersedes D-7.8-16): real pagination --------
+  //
+  // The `truncated` flag/tests this block used to hold are GONE — D-7.8-20
+  // replaced "surface a maybe-wrong warning" with "page until correct".
+  // `fetchAllSearchPages` (`lib/jira-client.ts`) is shared with
+  // `fetchCurrentUserWeekWorklogsByIssue`'s own pagination tests below.
+
+  describe('pagination (D-7.8-20)', () => {
+    // The grandparent-lookup response for a subtask's parent that is
+    // ITSELF the top-level Epic (no further parent).
+    function epicLookup(key: string, summary: string) {
+      return okJson({
+        id: key,
+        key,
+        fields: { summary, issuetype: { id: '5', name: 'Epic', subtask: false } },
+      });
+    }
+
+    function subtask(key: string, parentKey: string) {
+      return {
+        id: key,
+        key,
+        fields: {
+          summary: `Subtask ${key}`,
+          issuetype: { id: '10', name: 'Sub-task', subtask: true },
+          parent: { id: parentKey, key: parentKey, fields: { summary: 'Epic One' } },
+        },
+      };
+    }
+
+    it('does NOT loop when the page is short of maxResults and carries no nextPageToken (the common case)', async () => {
+      fetchMock
+        .mockResolvedValueOnce(okJson({ issues: [subtask('PROJ-100', 'PROJ-1')] }))
+        .mockResolvedValueOnce(epicLookup('PROJ-1', 'Epic One'))
+        .mockResolvedValueOnce(okJson({ worklogs: [] }));
+      const result = await fetchReportCycleWorklogsByEpic(REPORT_ID, range);
+      expect(result.kind).toBe('ok');
+      // 1 search + 1 grandparent lookup + 1 worklog fetch — no second search page.
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+
+    it('a full-but-final page (isLast: true, no nextPageToken) does NOT trigger a second page', async () => {
+      const issues = Array.from({ length: 100 }, (_, i) => subtask(`PROJ-${200 + i}`, 'PROJ-1'));
+      fetchMock.mockResolvedValueOnce(okJson({ issues, isLast: true }));
+      fetchMock.mockResolvedValueOnce(epicLookup('PROJ-1', 'Epic One'));
+      for (let i = 0; i < 100; i++) fetchMock.mockResolvedValueOnce(okJson({ worklogs: [] }));
+      const result = await fetchReportCycleWorklogsByEpic(REPORT_ID, range);
+      expect(result.kind).toBe('ok');
+      // Every subtask's worklog list is empty, so no Epic group is created
+      // (a subtask contributing neither visible hours nor a restricted
+      // signal adds nothing — pre-existing behaviour, unrelated to paging).
+      // What THIS test proves is the request count: exactly one search page
+      // (no second page issued) + 1 grandparent lookup + 100 worklog fetches.
+      expect(fetchMock).toHaveBeenCalledTimes(102);
+    });
+
+    it('follows nextPageToken across pages and aggregates BOTH pages into the totals — a report logging on >100 subtasks is now simply correct, not flagged', async () => {
+      const page1 = Array.from({ length: 100 }, (_, i) => subtask(`PROJ-${300 + i}`, 'PROJ-1'));
+      const page2 = [subtask('PROJ-999', 'PROJ-1')]; // the 101st subtask
+      fetchMock.mockResolvedValueOnce(
+        okJson({ issues: page1, nextPageToken: 'tok-1', isLast: false }),
+      );
+      fetchMock.mockResolvedValueOnce(okJson({ issues: page2, isLast: true }));
+      // ONE grandparent lookup (shared parent, cached) — then one worklog
+      // fetch per subtask, PAGE 1's 100 subtasks first (all empty), then
+      // PAGE 2's single subtask carrying real hours — so the assertion
+      // below can ONLY pass if page 2's issue was actually processed.
+      fetchMock.mockResolvedValueOnce(epicLookup('PROJ-1', 'Epic One'));
+      for (let i = 0; i < 100; i++) fetchMock.mockResolvedValueOnce(okJson({ worklogs: [] }));
+      fetchMock.mockResolvedValueOnce(
+        okJson({
+          worklogs: [
+            {
+              id: 'wl-page2',
+              timeSpentSeconds: 1800,
+              started: '2026-05-05T09:00:00.000+0000',
+              author: { accountId: REPORT_ID },
+            },
+          ],
+        }),
+      );
+
+      const result = await fetchReportCycleWorklogsByEpic(REPORT_ID, range);
+      expect(result.kind).toBe('ok');
+      if (result.kind === 'ok') {
+        // Page 2's subtask (PROJ-999) is the ONLY source of these 1800s —
+        // proof the second page was actually fetched and aggregated, not
+        // silently dropped.
+        expect(result.value.epics[0]!.totalSeconds).toBe(1800);
+      }
+      // 2 search pages issued (the page-2 request must carry nextPageToken).
+      const searchCalls = fetchMock.mock.calls.filter((call: unknown[]) =>
+        String(call[0]).includes('search/jql'),
+      );
+      expect(searchCalls).toHaveLength(2);
+      expect(String(searchCalls[1]![0])).toContain('nextPageToken=tok-1');
+    });
+
+    it('fails LOUDLY (a network-kind error), never silently, if the page ceiling is reached without isLast', async () => {
+      // Every page reports more remain — the loop must give up after its
+      // bounded ceiling rather than spin or silently truncate.
+      fetchMock.mockResolvedValue(
+        okJson({ issues: [], nextPageToken: 'tok-forever', isLast: false }),
+      );
+      const result = await fetchReportCycleWorklogsByEpic(REPORT_ID, range);
+      expect(result.kind).toBe('network');
+    });
   });
 
   it('propagates the JiraError when the search fails', async () => {

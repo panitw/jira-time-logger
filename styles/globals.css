@@ -174,6 +174,24 @@
   --color-status-clean-on-chrome: #8fe0a8;
 
   /* ---------------------------------------------------------------------
+   * Story 7.8 additions (D-7.8-12 / D-7.8-19f) — two design-specified
+   * values the manager-matrix exception chips need that the token layer was
+   * missing. Per D-7.7-15, a design-specified value with no token is
+   * TOKENISED, not inlined and not collapsed onto a near neighbour.
+   * ------------------------------------------------------------------- */
+  /* The "no hours" chip's dashed border (dc.html:531; DESIGN.md:191 also
+   * writes it as a raw hex — the design source itself has no token for it).
+   * Lighter than --color-border (#e4e3ec) but heavier than a hairline. */
+  --color-chip-dashed-border: #cfcdde;
+  /* The restricted chip's own fill (dc.html:534; DESIGN.md:195/258). It
+   * already exists as the legacy `--color-neutral-100` alias, but that alias
+   * is scheduled for removal as each consumer migrates — reaching for a
+   * to-be-deleted alias in brand-new code is how it becomes permanent, so
+   * this is a new semantic name for the same value (contrast unaffected
+   * either way: 4.81:1). */
+  --color-chip-surface: #f4f4f7;
+
+  /* ---------------------------------------------------------------------
    * Legacy aliases — remapped onto KKP values so the ~330 existing
    * `text-neutral-*` / `bg-accent-*` / `text-state-*` usages inherit the
    * KKP palette without a class rename. Remove each alias as its component

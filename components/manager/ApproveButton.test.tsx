@@ -79,12 +79,21 @@ describe('ApproveButton', () => {
     expect(btn.title).toBe('Only the canonical manager can approve');
   });
 
-  it('opens a confirm dialog with the summary copy (H h across N Epics)', () => {
+  // Story 7.8 / Task 9: the title and the "H h across N epics" copy are now
+  // TWO separate strings, and the commit button carries the figure.
+  it('opens a confirm dialog with the title "Approve <Person>\'s <Cycle>?" and the body stating the figure + epic count', () => {
     renderButton();
     fireEvent.click(screen.getByTestId('approve-button'));
-    expect(
-      screen.getByText("Approve Bob's May 2026: 40h across 2 Epics"),
-    ).toBeTruthy();
+    expect(screen.getByText("Approve Bob's May 2026?")).toBeTruthy();
+    expect(screen.getByTestId('approve-dialog-body').textContent).toBe(
+      "You're approving 40h across 2 epics for the May 2026 cycle. Accounting uses this figure.",
+    );
+  });
+
+  it('the commit button carries the figure ("Approve 40h"), not a bare "Approve"', () => {
+    renderButton();
+    fireEvent.click(screen.getByTestId('approve-button'));
+    expect(screen.getByRole('button', { name: 'Approve 40h' })).toBeTruthy();
   });
 
   it('omits the restricted line when restrictedCount is 0', () => {
@@ -93,11 +102,32 @@ describe('ApproveButton', () => {
     expect(screen.queryByTestId('approve-restricted-line')).toBeNull();
   });
 
-  it('shows the restricted line when restrictedCount > 0', () => {
-    renderButton({ restrictedCount: 3 });
+  it('shows the restricted line, counting EPICS (not worklogs) — AC6', () => {
+    renderButton({
+      restrictedCount: 3,
+      epics: [
+        { epicKey: 'EP-1', restrictedCount: 3 },
+        { epicKey: 'EP-2', restrictedCount: 0 },
+      ],
+    });
+    fireEvent.click(screen.getByTestId('approve-button'));
+    // Only ONE of the two epics has a restrictedCount > 0.
+    expect(screen.getByTestId('approve-restricted-line').textContent).toMatch(
+      /1 epic has worklogs you can't see\. Approving does not cover them\./,
+    );
+  });
+
+  it('pluralises the restricted-line epic count AND its verb (Finding 26: "have", not "has")', () => {
+    renderButton({
+      restrictedCount: 4,
+      epics: [
+        { epicKey: 'EP-1', restrictedCount: 3 },
+        { epicKey: 'EP-2', restrictedCount: 1 },
+      ],
+    });
     fireEvent.click(screen.getByTestId('approve-button'));
     expect(screen.getByTestId('approve-restricted-line').textContent).toMatch(
-      /3 restricted-visibility worklogs excluded/,
+      /2 epics have worklogs you can't see\./,
     );
   });
 
@@ -108,7 +138,37 @@ describe('ApproveButton', () => {
     expect(sendRequestMock).not.toHaveBeenCalled();
   });
 
-  it('full success → ✓ Done; invalidates each confirmed Epic', async () => {
+  // Task 12 mutation (h) / QA Finding 2: the developer's own probe found
+  // that a SYNCHRONOUS `fireEvent.pointerDown` never reaches Radix's
+  // `DismissableLayer` outside-click handler (it defers attaching its own
+  // `pointerdown` listener by one `setTimeout(0)` tick, precisely so the
+  // very pointerdown that OPENED the dialog can't immediately close it) —
+  // and concluded the interaction was unprovable in jsdom. That conclusion
+  // was wrong: Story 7.7 already solved this exact false-green
+  // (`components/week/GapAcknowledgmentDialog.test.tsx:201-225`) by
+  // AWAITING the deferred tick before firing the outside pointerdown. The
+  // house pattern, applied here:
+  it('a pointer-down outside the confirm dialog does NOT close it (money-path guard)', async () => {
+    renderButton();
+    fireEvent.click(screen.getByTestId('approve-button'));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    // Let Radix's deferred outside-pointerdown listener attach.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fireEvent.pointerDown(document.body);
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(sendRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('Esc still closes the confirm dialog without sending a request', async () => {
+    renderButton();
+    fireEvent.click(screen.getByTestId('approve-button'));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(sendRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('full success → Done (via the shared registry, no ✓ text glyph); invalidates each confirmed Epic', async () => {
     sendRequestMock.mockResolvedValueOnce({
       confirmed: ['EP-1', 'EP-2'],
       failed: [],
@@ -116,9 +176,12 @@ describe('ApproveButton', () => {
     });
     renderButton();
     fireEvent.click(screen.getByTestId('approve-button'));
-    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve 40h' }));
 
     await waitFor(() => expect(screen.getByTestId('approve-done')).toBeTruthy());
+    const done = screen.getByTestId('approve-done');
+    expect(done.textContent).toBe('Done');
+    expect(done.querySelector('svg')).toBeTruthy();
     expect(sendRequestMock).toHaveBeenCalledWith('approve-cycle', {
       user: 'r-bob',
       cycle: '2026-05',
@@ -140,7 +203,7 @@ describe('ApproveButton', () => {
     });
     renderButton();
     fireEvent.click(screen.getByTestId('approve-button'));
-    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve 40h' }));
 
     const chip = await screen.findByTestId('approve-partial');
     expect(chip.textContent).toContain('Approval partial — 1 of 2 Epics confirmed');
@@ -154,7 +217,7 @@ describe('ApproveButton', () => {
     sendRequestMock.mockResolvedValueOnce(null);
     renderButton();
     fireEvent.click(screen.getByTestId('approve-button'));
-    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve 40h' }));
     const chip = await screen.findByTestId('approve-partial');
     expect(chip.textContent).toContain('0 of 2 Epics confirmed');
   });
@@ -169,7 +232,7 @@ describe('ApproveButton', () => {
     });
     renderButton();
     fireEvent.click(screen.getByTestId('approve-button'));
-    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve 40h' }));
     const chip = await screen.findByTestId('approve-partial');
     expect(chip.getAttribute('title')).not.toMatch(/retry automatically/i);
     expect(chip.getAttribute('title')).toMatch(/re-approve/i);
@@ -191,8 +254,9 @@ describe('ApproveButton', () => {
   it('reapprove dialog shows the supersede line with the formatted prior at', () => {
     renderButton({ mode: 'reapprove', priorApprovalAt: '2026-05-20T08:30:00.000Z' });
     fireEvent.click(screen.getByTestId('approve-button'));
-    // Verb becomes "Re-approve" in the summary.
-    expect(screen.getByText("Re-approve Bob's May 2026: 40h across 2 Epics")).toBeTruthy();
+    // Verb becomes "Re-approve" in the title; the commit button carries the figure.
+    expect(screen.getByText("Re-approve Bob's May 2026?")).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Re-approve 40h' })).toBeTruthy();
     const supersede = screen.getByTestId('approve-supersede-line');
     expect(supersede.textContent).toMatch(/supersedes prior approval from/i);
     // Human-readable formatted date, not the raw ISO.
@@ -223,7 +287,7 @@ describe('ApproveButton', () => {
     });
     renderButton({ mode: 'reapprove', priorApprovalAt: '2026-05-20T08:30:00.000Z' });
     fireEvent.click(screen.getByTestId('approve-button'));
-    fireEvent.click(screen.getByRole('button', { name: 'Re-approve' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Re-approve 40h' }));
 
     await waitFor(() => expect(screen.getByTestId('approve-done')).toBeTruthy());
     expect(sendRequestMock).toHaveBeenCalledWith('approve-cycle', {
@@ -245,7 +309,7 @@ describe('ApproveButton', () => {
     });
     renderButton({ mode: 'reapprove', priorApprovalAt: '2026-05-20T08:30:00.000Z' });
     fireEvent.click(screen.getByTestId('approve-button'));
-    fireEvent.click(screen.getByRole('button', { name: 'Re-approve' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Re-approve 40h' }));
     const chip = await screen.findByTestId('approve-partial');
     expect(chip.textContent).toContain('Approval partial — 1 of 2 Epics confirmed');
   });
@@ -301,7 +365,7 @@ describe('ApproveButton', () => {
       fireEvent.keyDown(btn, { key: 'Enter' });
       fireEvent.keyUp(btn, { key: 'Enter' });
       // No confirm dialog, no approve-cycle request.
-      expect(screen.queryByText(/across .* Epic/)).toBeNull();
+      expect(screen.queryByText(/across .* epic/i)).toBeNull();
       expect(sendRequestMock).not.toHaveBeenCalled();
     });
 
@@ -314,7 +378,7 @@ describe('ApproveButton', () => {
     });
   });
 
-  it('resets a terminal "✓ Done" state when the cycle subject changes', async () => {
+  it('resets a terminal "Done" state when the cycle subject changes', async () => {
     sendRequestMock.mockResolvedValueOnce({
       confirmed: ['EP-1', 'EP-2'],
       failed: [],
@@ -322,7 +386,7 @@ describe('ApproveButton', () => {
     });
     const { rerender } = renderButton();
     fireEvent.click(screen.getByTestId('approve-button'));
-    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve 40h' }));
     await screen.findByTestId('approve-done');
 
     // Switch to a different cycle on the SAME button instance — the stale Done

@@ -1,10 +1,13 @@
+import { DayStatusIndicator } from '@/components/shared/DayStatusIndicator';
+
 const STRINGS = {
   /**
-   * Short chip copy (Story 5.5, FR34). Honest, no exclamation beyond the ⚠
-   * glyph (UX-DR30/31). Singular/plural agreement on the noun + verb.
+   * Short chip copy (Story 5.5, FR34). Honest, no exclamation (AC11 removes
+   * the `⚠` text glyph — the icon now comes from the shared registry).
+   * Singular/plural agreement on the noun + verb.
    */
   chip: (n: number) =>
-    `⚠ ${n} worklog${n === 1 ? '' : 's'} with restricted visibility ${
+    `${n} worklog${n === 1 ? '' : 's'} with restricted visibility ${
       n === 1 ? 'was' : 'were'
     } excluded from this view.`,
   /**
@@ -42,12 +45,16 @@ export function VisibilityWarning({
   const explanation = STRINGS.explanation(personName);
 
   return (
+    // Story 7.8 / AC11: the `⚠` text glyph is gone — the restricted chip's
+    // own vocabulary (`EyeOff` via the shared registry, dc.html:534) carries
+    // the signal, on its OWN chip-surface fill so it composes safely over
+    // any surface behind it (D-7.8-26/AC9's point, applied here too).
     <p
-      className="mt-3 rounded bg-state-warning-subtle px-2 py-1 text-xs text-state-warning"
+      className="mt-3 inline-flex items-center gap-1 rounded-[5px] border border-border bg-chip-surface px-[7px] py-[3px] text-xs"
       title={explanation}
       aria-label={explanation}
     >
-      {STRINGS.chip(restrictedCount)}
+      <DayStatusIndicator variant="inline" status="restricted" label={STRINGS.chip(restrictedCount)} />
     </p>
   );
 }
