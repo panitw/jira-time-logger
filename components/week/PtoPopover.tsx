@@ -11,15 +11,15 @@ import { formatStartedISO } from '@/lib/worklog-date';
 
 const STRINGS = {
   triggerAria: (dayName: string, dayLabel: string) =>
-    `PTO and worklog actions for ${dayName}, ${dayLabel}`,
-  menuLabel: 'PTO and worklog actions',
-  fullDay: (h: number) => `Mark full-day PTO (${formatHours(h)}h)`,
-  halfDay: (h: number) => `Mark half-day PTO (${formatHours(h)}h)`,
+    `Time off and worklog actions for ${dayName}, ${dayLabel}`,
+  menuLabel: 'Time off and worklog actions',
+  fullDay: (h: number) => `Mark full-day time off (${formatHours(h)}h)`,
+  halfDay: (h: number) => `Mark half-day time off (${formatHours(h)}h)`,
   addWorklog: 'Add a worklog…',
   currently: (display: string) => `Currently: ${display} logged`,
-  notConfiguredPrefix: 'PTO subtask not configured. Configure in ',
+  notConfiguredPrefix: 'Time off subtask not configured. Configure in ',
   settings: 'Settings',
-  postError: 'Couldn’t mark PTO — try again',
+  postError: 'Couldn’t mark time off — try again',
   pending: 'Pending — will retry',
 };
 
@@ -279,6 +279,8 @@ export function PtoPopover({
           )}
 
           {showError && (
+            // AC4 survivor: red fires only here, when the time-off post came
+            // back non-retryable — Jira actually refused this write.
             <p
               className="mt-1 px-2 text-xs font-medium text-state-danger"
               aria-live="assertive"

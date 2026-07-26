@@ -8,9 +8,16 @@
  * Pure — no chrome/network/React. Co-located tests cover bucketing, totals,
  * ordering, empty-week, and out-of-range exclusion (AC #11).
  */
+import { dayStatusFor, type DayStatus } from '@/lib/day-status';
 import { hoursToSeconds } from '@/lib/hours';
 import type { WeekIssueWorklogs } from '@/lib/jira-types';
 import type { ISODate } from '@/lib/storage/view-state';
+
+// Re-exported so existing call sites (`WeeklyGrid.tsx`, `DayCell.tsx`) keep
+// compiling unchanged — `DayStatus` now lives in `lib/day-status.ts`, the
+// framework-agnostic vocabulary module shared with
+// `components/shared/DayStatusIndicator.tsx` (Story 7.6, D-7.6-2).
+export type { DayStatus } from '@/lib/day-status';
 
 export const DAYS_PER_WEEK = 7;
 
@@ -197,61 +204,49 @@ export function buildWeekGrid(
 }
 
 /**
- * Per-day status for the week grid's totals/header cells (Story 4.2).
+ * Per-day status for the week grid's totals/header cells (Story 4.2;
+ * rewritten in place for Story 7.6 to the shared five-state vocabulary —
+ * `lib/day-status.ts`'s `dayStatusFor` is the single derivation this
+ * delegates to per day). Pure, no clock read: the caller injects `today` (a
+ * local `YYYY-MM-DD`).
  *
- * - `complete`     — day total >= target hours (green + Check).
- * - `below-target` — past-or-today Mon..Fri under target with no PTO (red + AlertCircle).
- * - `pto`          — the day has a PTO worklog (green + PTO label); PTO always wins.
- * - `neutral`      — future workdays, and weekends without complete/pto (no red).
- */
-export type DayStatus = 'complete' | 'below-target' | 'pto' | 'neutral';
-
-/** True for Saturday/Sunday, derived from the day's local weekday. */
-function isWeekend(iso: ISODate): boolean {
-  const weekday = new Date(`${iso}T00:00:00`).getDay(); // 0 = Sun .. 6 = Sat
-  return weekday === 0 || weekday === 6;
-}
-
-/**
- * Decide each day's status from the already-built grid — pure, no clock read.
- * The caller injects `today` (a local `YYYY-MM-DD`) so the future/past rule is
- * deterministic and testable. Returns a 7-element array, index 0 = Monday.
+ * `null` at an index means the day has no status to render yet (a future
+ * workday with nothing logged, D-7.6-35) — the caller renders a bare number,
+ * not a neutral/sixth status.
+ *
+ * `buildWeekGrid`, `WeekGridCategory`, and `cellEditability` are untouched —
+ * this function is the only thing Story 7.6 changes in this module.
  */
 export function computeDayStatuses(
   grid: WeekGrid,
   params: { targetHours: number; today: ISODate },
-): DayStatus[] {
+): (DayStatus | null)[] {
   const { targetHours, today } = params;
   const targetSeconds = hoursToSeconds(targetHours);
 
-  // Which days have a PTO worklog: any pto-category row with seconds that day.
-  const ptoDays = new Array<boolean>(DAYS_PER_WEEK).fill(false);
+  // Per-day time-off seconds: any pto-category row's seconds that day, summed
+  // (not just a boolean) so `dayStatusNote` can tell a half-day from a full
+  // day (D-7.6-9/38) — the status derivation itself only needs ">0".
+  const timeOffSecondsByDay = new Array<number>(DAYS_PER_WEEK).fill(0);
   for (const r of grid.rows) {
     if (r.category !== 'pto') continue;
     for (let i = 0; i < DAYS_PER_WEEK; i++) {
-      if ((r.cellsSeconds[i] ?? 0) > 0) ptoDays[i] = true;
+      timeOffSecondsByDay[i] = (timeOffSecondsByDay[i] ?? 0) + (r.cellsSeconds[i] ?? 0);
     }
   }
 
-  const statuses = new Array<DayStatus>(DAYS_PER_WEEK).fill('neutral');
+  const statuses: (DayStatus | null)[] = new Array(DAYS_PER_WEEK).fill(null);
   for (let i = 0; i < DAYS_PER_WEEK; i++) {
     const iso = grid.days[i];
     if (!iso) continue; // defensive: malformed grid
 
-    if (ptoDays[i]) {
-      statuses[i] = 'pto';
-      continue;
-    }
-    if ((grid.dayTotalsSeconds[i] ?? 0) >= targetSeconds) {
-      statuses[i] = 'complete';
-      continue;
-    }
-    // Below target: red only for past-or-today workdays (Mon..Fri). Future days
-    // and all weekends stay neutral (an incomplete future day is not "behind").
-    const pastOrToday = iso <= today; // safe lexical compare for YYYY-MM-DD
-    if (pastOrToday && !isWeekend(iso)) {
-      statuses[i] = 'below-target';
-    }
+    statuses[i] = dayStatusFor({
+      iso,
+      loggedSeconds: grid.dayTotalsSeconds[i] ?? 0,
+      timeOffSeconds: timeOffSecondsByDay[i] ?? 0,
+      targetSeconds,
+      today,
+    });
   }
 
   return statuses;

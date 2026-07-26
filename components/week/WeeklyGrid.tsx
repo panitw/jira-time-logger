@@ -1,13 +1,15 @@
 import { useMutation } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
-import { Check, AlertCircle, MoreHorizontal } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { MoreHorizontal } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DayStatusIndicator } from '@/components/shared/DayStatusIndicator';
 import { TicketPicker } from '@/components/today/TicketPicker';
 import { Button } from '@/components/ui/button';
 import { DayCell } from '@/components/week/DayCell';
 import { MarkAsDoneButton } from '@/components/week/MarkAsDoneButton';
 import { PtoPopover } from '@/components/week/PtoPopover';
-import { secondsToCellDisplay } from '@/lib/hours';
+import { dayStatusNote } from '@/lib/day-status';
+import { hoursToSeconds, secondsToCellDisplay } from '@/lib/hours';
 import { deleteWorklog } from '@/lib/jira-client';
 import { log } from '@/lib/log';
 import { sendMessage } from '@/lib/messages';
@@ -20,6 +22,7 @@ import {
   type WeekGridCell,
   type WeekGridRow,
 } from '@/lib/week-grid';
+import { todayDateString } from '@/lib/worklog-date';
 
 const STRINGS = {
   dayHeadersShort: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
@@ -35,9 +38,6 @@ const STRINGS = {
   subtaskColHeader: 'Subtask',
   totalsRowLabel: 'Daily totals',
   addSubtask: '+ Add a subtask to this week',
-  belowTarget: 'below target',
-  pto: 'PTO',
-  statusComplete: 'complete',
   rowActions: (key: string) => `Row actions for ${key}`,
   rowActionsMenu: 'Row actions',
   removeFromWeek: 'Remove from week',
@@ -50,12 +50,20 @@ type Props = {
   grid: WeekGrid;
   /** This week's local-midnight Monday (for the mark-done write, Story 4.5). */
   weekOf?: ISODate;
-  /** Per-day status (index 0 = Monday); when omitted, totals render neutral. */
-  dayStatuses?: DayStatus[];
+  /** Per-day status (index 0 = Monday); `null` at an index (or the array
+   * itself omitted) → that day's total renders as a bare number, no
+   * `DayStatusIndicator` (D-7.6-35's "future workday, no status yet"). */
+  dayStatuses?: (DayStatus | null)[];
   /** Configured PTO subtask key (`null`/blank → PTO popover buttons disabled). */
   ptoSubtaskKey?: string | null;
   /** Daily target hours (full-day PTO posts this; half posts half). */
   targetHours?: number;
+  /** Local `YYYY-MM-DD` "today", for the totals row's plain-language notes
+   * (`dayStatusNote`'s today/past distinction, D-7.6-35). Defaults to the
+   * real local today when omitted — this is presentational wording only,
+   * never the status derivation itself (that already happened upstream in
+   * `computeDayStatuses`). */
+  today?: ISODate;
   /** Invalidate the week query after a successful cell/row mutation (AC #8). */
   onMutated?: () => void;
   /** True when the week is already marked done → hide the mark-done CTA. */
@@ -81,61 +89,74 @@ function emptyCells(): WeekGridCell[] {
   return Array.from({ length: DAYS_PER_WEEK }, emptyCell);
 }
 
-const ICON_SIZE = 16;
-
-/** Tailwind classes + the accessible status word for each colored status. */
-const STATUS_CLASSES: Record<DayStatus, string> = {
-  complete: 'bg-state-success-subtle text-state-success',
-  'below-target': 'bg-state-danger-subtle text-state-danger',
-  pto: 'bg-state-success-subtle text-state-success',
-  neutral: 'text-neutral-500',
-};
-
 /**
- * One per-day totals cell. Color (when a status is present) is always paired
- * with a lucide icon (decorative, `aria-hidden`), an `aria-label`, and — for
- * below-target — the visible literal text `below target`, so the meaning is
- * conveyed without relying on color (NFR12 / UX-DR32).
+ * One per-day totals cell (Story 7.6: unified onto the shared day-status
+ * vocabulary — replaces the old hard-coded `STATUS_CLASSES`/`Check`/
+ * `AlertCircle` map). `status === null` (no status yet — a future workday,
+ * D-7.6-35) renders a bare `tabular` number: correct/no-status → plain
+ * number, exception → `DayStatusIndicator`, no third path (D-7.6-3).
  */
 function TotalsCell({
   seconds,
   status,
   dayName,
+  iso,
+  today,
+  targetHours,
+  timeOffSeconds,
 }: {
   seconds: number;
-  status: DayStatus;
+  status: DayStatus | null;
   dayName: string;
+  iso: ISODate;
+  today: ISODate;
+  targetHours: number;
+  timeOffSeconds: number;
 }): React.ReactElement {
   const total = secondsToCellDisplay(seconds);
-  const colorClass = STATUS_CLASSES[status];
 
-  const ariaLabel =
-    status === 'complete'
-      ? `${dayName}, ${STRINGS.statusComplete}`
-      : status === 'below-target'
-        ? `${dayName}, ${STRINGS.belowTarget}`
-        : status === 'pto'
-          ? `${dayName}, ${STRINGS.pto}`
-          : undefined;
+  if (!status) {
+    return (
+      <td className="px-1 py-1 text-right tabular text-xs motion-safe:transition-colors motion-safe:duration-200">
+        {total}
+      </td>
+    );
+  }
+
+  const note = dayStatusNote({
+    status,
+    loggedSeconds: seconds,
+    timeOffSeconds,
+    targetSeconds: hoursToSeconds(targetHours),
+    iso,
+    today,
+  });
 
   return (
     <td
-      className={`px-1 py-1 text-right font-mono text-xs motion-safe:transition-colors motion-safe:duration-200 ${colorClass}`}
-      {...(ariaLabel ? { 'aria-label': ariaLabel } : {})}
+      // Finding 14: `tabular text-xs` restored on this branch's `<td>` — the
+      // `null` branch above kept it, but the status branch dropped both,
+      // leaving one totals ROW rendering at two font sizes (the indicator's
+      // own inner `tabular` value span still lines up the digits, but the
+      // cell itself, and the multi-word note sharing its narrow column,
+      // inherited the larger body size).
+      className="px-1 py-1 text-right tabular text-xs motion-safe:transition-colors motion-safe:duration-200"
+      // Finding 21: include the figure, not just the note — several notes
+      // (`Weekend`, `Target met — Xh logged`, `Full-day time off`) contain
+      // no digits of their own, so a screen reader announcing only
+      // `${dayName}, ${note}` on THOSE statuses dropped the hours entirely
+      // (a real regression from the pre-story `neutral` days, which carried
+      // no `aria-label` at all and so left the visible `total` text as the
+      // accessible name).
+      aria-label={`${dayName}, ${total}, ${note}`}
     >
-      <span className="flex items-center justify-end gap-0.5">
-        {status === 'complete' || status === 'pto' ? (
-          <Check size={ICON_SIZE} aria-hidden />
-        ) : status === 'below-target' ? (
-          <AlertCircle size={ICON_SIZE} aria-hidden />
-        ) : null}
-        {status === 'pto' ? <span>{STRINGS.pto}</span> : <span>{total}</span>}
-      </span>
-      {status === 'below-target' ? (
-        <span className="block text-[10px] leading-tight">
-          {STRINGS.belowTarget}
-        </span>
-      ) : null}
+      <DayStatusIndicator
+        variant="inline"
+        status={status}
+        value={total}
+        label={note}
+        className="justify-end"
+      />
     </td>
   );
 }
@@ -255,6 +276,10 @@ function RowActions({
           <Button variant="secondary" size="sm" onClick={() => closeMenu()} disabled={removeMutation.isPending}>
             {STRINGS.cancel}
           </Button>
+          {/* Not an AC4 refused-write survivor — this is the destructive-
+              action-confirm convention (same category as the delete button
+              in LoggedToday.tsx), not a status report about a write Jira
+              rejected. AC1's time-related scope doesn't apply either. */}
           <Button
             ref={confirmRemoveRef}
             variant="ghost"
@@ -310,6 +335,7 @@ export function WeeklyGrid({
   dayStatuses,
   ptoSubtaskKey = null,
   targetHours = 8,
+  today = todayDateString(),
   onMutated,
   isMarkedDone = false,
   onMarkedDone,
@@ -324,6 +350,21 @@ export function WeeklyGrid({
   const cellEditRefs = useRef<Map<string, () => void>>(new Map());
 
   const existingKeys = new Set(grid.rows.map((r) => r.key));
+
+  // Per-day time-off seconds (D-7.6-9/38): summed from already-categorized
+  // `pto` rows so the totals cell's note can tell a half-day from a full one
+  // — presentational aggregation over the view model, not new business
+  // logic (categorization already happened in `buildWeekGrid`).
+  const timeOffSecondsByDay = useMemo(() => {
+    const totals = new Array<number>(DAYS_PER_WEEK).fill(0);
+    for (const r of grid.rows) {
+      if (r.category !== 'pto') continue;
+      for (let i = 0; i < DAYS_PER_WEEK; i++) {
+        totals[i] = (totals[i] ?? 0) + (r.cellsSeconds[i] ?? 0);
+      }
+    }
+    return totals;
+  }, [grid.rows]);
 
   const focusRowHeader = useCallback((key: string): void => {
     // Defer to the next frame so a freshly-rendered header is mounted.
@@ -436,8 +477,12 @@ export function WeeklyGrid({
               <TotalsCell
                 key={STRINGS.dayHeadersShort[i] ?? i}
                 seconds={seconds}
-                status={dayStatuses?.[i] ?? 'neutral'}
+                status={dayStatuses?.[i] ?? null}
                 dayName={STRINGS.dayNamesLong[i] ?? ''}
+                iso={grid.days[i] ?? ''}
+                today={today}
+                targetHours={targetHours}
+                timeOffSeconds={timeOffSecondsByDay[i] ?? 0}
               />
             ))}
           </tr>
@@ -476,7 +521,7 @@ export function WeeklyGrid({
                   dayName={STRINGS.dayNamesLong[i] ?? ''}
                   dayISO={grid.days[i] ?? ''}
                   cell={cell}
-                  status={dayStatuses?.[i] ?? 'neutral'}
+                  status={dayStatuses?.[i] ?? null}
                   onMutated={() => onMutated?.()}
                   registerOpenEditor={(open) => {
                     const id = `${row.key}-${i}`;

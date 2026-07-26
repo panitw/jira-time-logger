@@ -12,7 +12,7 @@ const STRINGS = {
   projectKeyLabel: 'Project key',
   projectKeyHelper: '(default)',
   projectKeyNotFound: 'Project key not found or no access — check the key and your permissions',
-  ptoLabel: 'PTO subtask',
+  ptoLabel: 'Time off subtask',
   ptoLoading: 'Loading subtasks…',
   ptoEmpty: 'No subtasks found in this project',
   ptoPlaceholder: 'Select a subtask…',

@@ -1,6 +1,8 @@
 import { useMutation } from '@tanstack/react-query';
 import { Clock } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { STATUS_TINT_CLASS } from '@/components/shared/DayStatusIndicator';
+import { isWeekend } from '@/lib/day-status';
 import {
   parseHours,
   hoursToSeconds,
@@ -27,14 +29,6 @@ const STRINGS = {
   errorPost: 'Couldn’t log time — try again',
   errorUpdate: 'Couldn’t update — try again',
   errorDelete: 'Couldn’t delete — try again',
-};
-
-/** Tailwind tint per day status, carried through to body cells (AC #9). */
-const STATUS_TINT: Record<DayStatus, string> = {
-  complete: 'bg-state-success-subtle',
-  'below-target': 'bg-state-danger-subtle',
-  pto: 'bg-state-success-subtle',
-  neutral: '',
 };
 
 type ValidationResult =
@@ -69,7 +63,7 @@ export type DayCellProps = {
   dayName: string;
   dayISO: string;
   cell: WeekGridCell;
-  status: DayStatus;
+  status: DayStatus | null;
   onMutated: () => void;
   /**
    * Optionally exposes this cell's "open editor" action to the parent so a
@@ -304,18 +298,35 @@ export function DayCell({
     [hoursInput, commit, cancelEdit],
   );
 
-  const tint = STATUS_TINT[status];
-  const tdClass = `relative px-1 py-1 text-right font-mono text-xs motion-safe:transition-colors motion-safe:duration-200 ${tint}`;
+  // Tailwind tint per day status, carried through to body cells (AC #9;
+  // D-7.6-45: consumes the ONE shared `STATUS_TINT_CLASS` registry
+  // (`DayStatusIndicator.tsx`) rather than a second local colour map — the
+  // exact per-surface re-implementation D-7.6-2 forbids. `weekend`'s tint is
+  // NOT part of that registry (D-7.6-6/46): a per-cell status cannot express
+  // "tint the whole column", so it comes from the exported `isWeekend(iso)`
+  // predicate instead — the SAME predicate the status derivation uses, so
+  // the two can't drift. A day whose STATUS carries its own tint (e.g.
+  // `time-off`, which outranks `weekend` per D-7.6-6's precedence) shows
+  // that tint rather than layering a second background on top of it; 7.7
+  // owns applying the weekend tint as "one recessive object" across
+  // header/cell/totals — this story only avoids reintroducing the
+  // half-applied, status-derived version D-7.6-46 reverted.
+  const statusTint = status ? (STATUS_TINT_CLASS[status] ?? '') : '';
+  const tint = statusTint || (isWeekend(dayISO) ? 'bg-weekend' : '');
+  const tdClass = `relative px-1 py-1 text-right tabular text-xs motion-safe:transition-colors motion-safe:duration-200 ${tint}`;
 
   // ---- Edit mode ----
   if (editing) {
     const validation = validateHours(hoursInput);
+    // Unparseable/over-limit is a VALIDATION state, not a refused write — it
+    // reads amber, never red (D-7.6-37: red means Jira actually rejected a
+    // write; nothing has been sent yet here).
     const isError = validation.kind === 'unparseable' || validation.kind === 'over-limit';
     const borderClass =
       validation.kind === 'empty'
         ? 'border-neutral-200'
         : isError
-          ? 'border-state-danger'
+          ? 'border-amber-border'
           : 'border-state-success';
     return (
       <td className={tdClass}>
@@ -331,12 +342,12 @@ export function DayCell({
           className={`h-7 w-full rounded border-2 bg-white px-1 text-right text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${borderClass}`}
         />
         {validation.kind === 'over-limit' && (
-          <p className="mt-0.5 text-[10px] leading-tight text-state-danger" role="alert" aria-live="assertive">
+          <p className="mt-0.5 text-[10px] leading-tight text-amber-ink" role="alert" aria-live="assertive">
             {STRINGS.overLimitError}
           </p>
         )}
         {validation.kind === 'unparseable' && (
-          <p className="mt-0.5 text-[10px] leading-tight text-state-danger" role="alert" aria-live="assertive">
+          <p className="mt-0.5 text-[10px] leading-tight text-amber-ink" role="alert" aria-live="assertive">
             {STRINGS.helperText}
           </p>
         )}
@@ -381,6 +392,9 @@ export function DayCell({
         </span>
       )}
       {chip?.kind === 'error' && (
+        // AC4 survivor: Jira actually refused this post/put/delete (the
+        // mutation's non-transient failure branch above sets this chip) —
+        // red is legitimate here (Finding 9).
         <span
           role="alert"
           aria-live="assertive"

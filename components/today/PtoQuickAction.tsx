@@ -19,11 +19,11 @@ const STRINGS = {
   trigger: 'Mark today as time off',
   fullDay: (h: number) => `Full day (${h}h)`,
   halfDay: (h: number) => `Half day (${formatHours(h)}h)`,
-  fullDayAria: (h: number) => `Mark today as full-day PTO (${h}h)`,
-  halfDayAria: (h: number) => `Mark today as half-day PTO (${formatHours(h)}h)`,
-  notConfiguredPrefix: 'PTO subtask not configured. Configure in ',
+  fullDayAria: (h: number) => `Mark today as full-day time off (${h}h)`,
+  halfDayAria: (h: number) => `Mark today as half-day time off (${formatHours(h)}h)`,
+  notConfiguredPrefix: 'Time off subtask not configured. Configure in ',
   settings: 'Settings',
-  postError: 'Couldn’t mark PTO — try again',
+  postError: 'Couldn’t mark time off — try again',
   pending: 'Pending — will retry',
   defaultSummary: 'PTO',
   menuLabel: 'Time off options',
@@ -275,6 +275,8 @@ export function PtoQuickAction({
           </Button>
 
           {showError && (
+            // AC4 survivor: red fires only here, when the time-off post came
+            // back non-retryable — Jira actually refused this write.
             <p className="mt-1 px-1 text-xs text-state-danger font-medium">
               {STRINGS.postError}
             </p>

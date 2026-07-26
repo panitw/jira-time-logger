@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const logFullDayPtoMock = vi.fn();
 const logHalfDayPtoMock = vi.fn();
@@ -77,7 +77,7 @@ describe('PtoQuickAction', () => {
       const btn = screen.getByText('Mark today as time off').closest('button')!;
       expect(btn.disabled).toBe(true);
     });
-    expect(screen.getByText(/PTO subtask not configured/)).toBeTruthy();
+    expect(screen.getByText(/Time off subtask not configured/)).toBeTruthy();
     const settingsLink = screen.getByText('Settings');
     fireEvent.click(settingsLink);
     expect(chrome.runtime.openOptionsPage).toHaveBeenCalled();
@@ -155,7 +155,7 @@ describe('PtoQuickAction', () => {
     fireEvent.click(await screen.findByText('Full day (8h)'));
 
     await waitFor(() => {
-      expect(screen.getByText(/Couldn.t mark PTO/)).toBeTruthy();
+      expect(screen.getByText(/Couldn.t mark time off/)).toBeTruthy();
     });
     expect(onLogged).not.toHaveBeenCalled();
     expect(enqueueOutboxMock).not.toHaveBeenCalled();
@@ -194,6 +194,43 @@ describe('PtoQuickAction', () => {
       'utf-8',
     );
     expect(source).not.toMatch(/last-logged|setLastLoggedTicket/);
+  });
+
+  // ---- AC7: the verbatim-Jira-summary trap (Story 7.6) --------------------
+  // `ptoSummary` is the REAL Jira subtask summary (`ptoSubtaskSummaryItem`)
+  // — customer data — and must render exactly as Jira returned it, even
+  // though it happens to contain the literal substring "PTO". A naive
+  // find-and-replace across the repo would corrupt this.
+  it('renders the real Jira subtask summary verbatim, even though it contains "PTO" (AC7)', async () => {
+    ptoSummaryGetValue.mockResolvedValue('KNP-99 PTO');
+    const onLogged = vi.fn();
+    renderWithProviders(<PtoQuickAction onLogged={onLogged} />);
+    fireEvent.click(await screen.findByText('Mark today as time off'));
+    fireEvent.click(await screen.findByText('Full day (8h)'));
+
+    await waitFor(
+      () => {
+        expect(onLogged).toHaveBeenCalledWith(
+          expect.objectContaining({ summary: 'KNP-99 PTO' }),
+        );
+      },
+      { timeout: 1000 },
+    );
+  });
+
+  it('falls back to the literal "PTO" default summary when the real summary has not resolved (also AC7 — the fallback stands in for the same Jira field)', async () => {
+    ptoSummaryGetValue.mockResolvedValue(null);
+    const onLogged = vi.fn();
+    renderWithProviders(<PtoQuickAction onLogged={onLogged} />);
+    fireEvent.click(await screen.findByText('Mark today as time off'));
+    fireEvent.click(await screen.findByText('Full day (8h)'));
+
+    await waitFor(
+      () => {
+        expect(onLogged).toHaveBeenCalledWith(expect.objectContaining({ summary: 'PTO' }));
+      },
+      { timeout: 1000 },
+    );
   });
 
   it('Esc closes the popover', async () => {

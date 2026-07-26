@@ -40,7 +40,7 @@ export function GapAcknowledgmentDialog({
   const n = gaps.length;
   const verb = n === 1 ? 'is' : 'are';
   const noun = n === 1 ? 'day' : 'days';
-  const body = `${n} ${noun} ${verb} below target and not marked as PTO. Submit anyway?`;
+  const body = `${n} ${noun} ${verb} short of target and not marked as time off. Submit anyway?`;
 
   // Default focus on the primary action (Radix focus-trap is inherited; we only
   // steer the *initial* focus target per AC #3).

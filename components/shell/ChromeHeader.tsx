@@ -1,4 +1,6 @@
 import { format } from 'date-fns';
+import { DayStatusIndicator } from '@/components/shared/DayStatusIndicator';
+import type { DayStatus } from '@/lib/day-status';
 import { secondsToHours } from '@/lib/hours';
 
 /**
@@ -59,6 +61,20 @@ function formatRemainingHours(hours: number): string {
   return hours.toFixed(1).replace(/\.0$/, '');
 }
 
+/**
+ * Local met/partial/attention derivation for the popup's single "today"
+ * aggregate (D-7.6-5): "the header derives met | partial | attention from
+ * seconds vs targetHours exactly as it does now." Deliberately NOT the
+ * general `dayStatusFor` — that also resolves `weekend`/`time-off`, neither
+ * of which applies to this surface (7.9 owns time off here; there's no
+ * per-weekday axis in a single "today" figure).
+ */
+function deriveHeaderStatus(seconds: number, targetSeconds: number): DayStatus {
+  if (targetSeconds > 0 && seconds >= targetSeconds) return 'met';
+  if (seconds > 0) return 'partial';
+  return 'attention';
+}
+
 export type ChromeHeaderProps = {
   /** Whether the popup is in a connected state — the figure/bar/live-region
    * only render when true (disconnected shows eyebrow + date only). */
@@ -73,6 +89,12 @@ export type ChromeHeaderProps = {
   /** True while the today total is still resolving — renders skeleton
    * placeholders in the real layout shape (never a spinner). */
   isPending: boolean;
+  /** Optional day-status override — 7.9's seam (a time-off day; `ChromeHeader`
+   * has no way to tell time off from ordinary hours on its own, D-7.6-5).
+   * When omitted, the header derives `met | partial | attention` from
+   * `seconds` vs `targetHours` exactly as it does today. Purely a prop —
+   * never a new query or storage read (NFR1: stays synchronous). */
+  status?: DayStatus;
 };
 
 export function ChromeHeader({
@@ -81,6 +103,7 @@ export function ChromeHeader({
   seconds,
   targetHours,
   isPending,
+  status,
 }: ChromeHeaderProps): React.ReactElement {
   const today = format(new Date(), 'EEE, MMM d');
   const targetSeconds = targetHours * 3600;
@@ -90,6 +113,7 @@ export function ChromeHeader({
   const note = metTarget
     ? STRINGS.targetMet(targetHours)
     : STRINGS.toGoToday(formatRemainingHours(remainingHours));
+  const dayStatus = status ?? deriveHeaderStatus(seconds, targetSeconds);
 
   return (
     <header className="bg-chrome-gradient relative shrink-0 overflow-hidden pt-[14px] px-[16px] pb-[20px]">
@@ -151,7 +175,15 @@ export function ChromeHeader({
               >
                 <div className={`h-full rounded-full bg-white ${pctToWidthClass(pct)}`} />
               </div>
-              <p className="mt-[7px] font-chrome text-[11.5px] font-medium text-white/85">{note}</p>
+              <p className="mt-[7px]">
+                <DayStatusIndicator
+                  variant="inline"
+                  tone="chrome"
+                  status={dayStatus}
+                  label={note}
+                  className="font-chrome text-[11.5px] font-medium"
+                />
+              </p>
             </>
           )}
         </div>

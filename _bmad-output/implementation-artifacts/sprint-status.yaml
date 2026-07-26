@@ -1,5 +1,5 @@
 # generated: 2026-05-11 22:45:02
-# last_updated: 2026-07-26 (Story 7-5 → done — review findings resolved: Blocker fixed (delete row stayed visible mid-flight, duplicate DELETE possible), 2 Majors given real test teeth, 1 Minor + 2 Nits fixed; 92 files / 1174 passed / 1 skipped, week surface still byte-identical)
+# last_updated: 2026-07-26 (Story 7-6 → done — 2 Blockers + 8 Majors + 11 Minors + 6 Nits triaged; 23 fixed (D-7.6-49 overruled 1 deferral to fixed), 2 deferred (canonical deferred-work.md), 1 no-change-needed; 95 files / 1273 passed / 1 skipped, all 5 guard-test mutations confirmed to redden)
 # project: jira-time-logger
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-11 22:45:02
-last_updated: 2026-07-26 (Story 7-5 → done — logged today, recently worked & the 55-ticket handoff)
+last_updated: 2026-07-26 (Story 7-6 → done — review findings triaged and closed, tests 1240→1273)
 project: jira-time-logger
 # 2026-06-21: Story 2-7 created (ready-for-dev) — completes Epic 2
 # 2026-06-21: Story 3-1 created (ready-for-dev); Epic 3 → in-progress
@@ -165,6 +165,63 @@ project: jira-time-logger
 #             checkout` on uncommitted work). Final gates: 92 files / 1174 passed / 1 skipped (dev baseline
 #             92/1169/1 + 5 tests, 0 new files), lint 0 errors/42 warnings (unchanged), build green, all 11
 #             byte-identity claims on the untouched week surface re-confirmed empty-diff against 2d1c30f.
+# 2026-07-26: Story 7-6 created (ready-for-dev) — day-status vocabulary & the time off rename, at baseline
+#             40de36d. Driven EXPLICITLY for 7.6 per SD-2 (no auto-pick). This is the story SD-2 and
+#             D-7.3-6 both single out: 7.7's week totals row and 7.8's matrix rows BOTH consume the shared
+#             component it builds, so D-7.6-3 records the 7.7/7.8 API contract as a required DELIVERABLE,
+#             not an implementation detail — and resolves the "silent mode" fork against a `silent` prop
+#             (7.8's correct approved cell renders NO indicator at all; silence is the absence of the
+#             component). Investigation found ONE day-status derivation today (lib/week-grid.ts:220) with
+#             THREE hard-coded renderers (WeeklyGrid totals, DayCell tint, ChromeHeader note) — those
+#             three unify; lib/week-gaps.ts and lib/manager-matrix.ts's CellStatus stay separate axes and
+#             lib/manager-matrix.ts is NOT modified. Carries creator decisions D-7.6-1..12 with D-7.6-30+
+#             RESERVED for orchestrator/owner rulings (the D-7.3-11 / D-7.4-17 collision lesson). FIVE
+#             ESCALATIONS are flagged rather than guessed: D-7.6-7 a future empty workday (epics.md's
+#             literal AC paints four amber cells on Monday, contradicting EXPERIENCE.md:211's "amber
+#             appears once in a normal week"); D-7.6-8 whether this is the story that reconciles the
+#             validation reds D-7.3-16 explicitly deferred (QuickLogForm, DayCell); D-7.6-9 HALF-DAY TIME
+#             OFF — the five states cannot express it, and lib/week-gaps.ts:61 additionally lets a 4h
+#             half-day week be marked done (recorded, NOT fixed here — 7.7 owns that write path);
+#             D-7.6-10 the toolbar badge's #dc2626 deficit red (lib/badge.ts:25,49) which EXPERIENCE.md:32
+#             calls "Unchanged" but AC1 calls a violation; D-7.6-31 `status-clean-on-chrome` is defined in
+#             DESIGN.md but ABSENT from styles/globals.css, and the popup header's chrome tone needs it.
+# 2026-07-26: Story 7-6 → review. Implemented per D-7.6-1..12 + owner/orchestrator rulings D-7.6-35..39
+#             already recorded in epic-7-decision-log.md. Both jobs done: shared 5-state day-status
+#             vocabulary (lib/day-status.ts + components/shared/DayStatusIndicator.tsx, D-7.6-3's API
+#             contract implemented verbatim) unifies WeeklyGrid/DayCell/ChromeHeader/ManagerMatrix,
+#             removing every time-related red; PTO -> "time off" copy rename (16 strings), zero internal
+#             identifiers renamed, AC7 verbatim-Jira-summary trap explicitly tested. Tests 1174 -> 1240
+#             (+66), zero regressions, same single pre-existing unhandled rejection. Four load-bearing
+#             behaviours RED-proved (elapsed/future boundary, half-day note, AC8 icon-deleted-readability,
+#             badge hex). Deviations flagged in the story's Completion Notes, not silently guessed:
+#             dayStatusFor/computeDayStatuses return DayStatus | null (not a sixth union member) for
+#             D-7.6-35's "no status yet" case; AC3's grep test scopes text-amber-ink around its
+#             pre-existing Story 7.3 validation-colour usage; LoggedToday.tsx's AC4 comment requirement
+#             only partially satisfied (2 of 7 locations are validation states left untouched per the
+#             story's own "leave these" instruction, a pre-existing D-7.6-37 inconsistency, flagged not
+#             fixed); status-clean-on-chrome's hand-computed contrast clears AA where it actually renders
+#             but is below AA in the theoretical worst case at the gradient's 0% stop — flagged for
+#             DESIGN.md's owner, value used verbatim.
+# 2026-07-26: Story 7-6 -> done. Finisher triaged 26 findings + 2 escalations against orchestrator
+#             rulings D-7.6-40..47: 22 fixed, 3 deferred (deferred-work.md: stacked-variant shape
+#             defects, no `size` prop, pre-existing categorize() prefix bug), 1 no-change-needed (chrome
+#             tone is white-only by design, D-7.6-40). Both Blockers closed via the D-7.6-41/42 revert --
+#             correct/approved matrix cells render a bare number again, removing the 1.00:1 invisible-text
+#             collision at the root and un-pre-empting Story 7.8. All 5 of the reviewer's guard-test
+#             mutations re-applied and confirmed to redden, then restored byte-identical (cp + md5/diff,
+#             never git checkout). A narrower residual AA sub-issue (approved+restricted cell overlay
+#             still ~1.05:1) was found independently during verification and recorded, not silently
+#             fixed or ignored. Tests 1240 -> 1271 (+31, 0 new files), same single pre-existing unhandled
+#             rejection. compile/lint/build all clean.
+# 2026-07-26: Story 7-6 follow-up per D-7.6-49/SD-6/SD-7. The restricted+approved contrast deferral was
+#             overruled -- it is a regression this story introduced (5.02:1 pre-story -> 1.05:1), and no
+#             story may regress WCAG AA, so it cannot ship deferred. Fixed with a new tone="chrome-solid"
+#             value (full-opacity white, scoped to the one approved/dark-fill cell); hand-computed result
+#             5.02:1, matching pre-story exactly. Pinned by 2 new tests, RED-proved by reverting the fix.
+#             Also corrected: deferred-work.md was mistakenly created at the repo root; merged into the
+#             pre-existing canonical `_bmad-output/implementation-artifacts/deferred-work.md` and the root
+#             copy deleted (not recreated). Tests 1271 -> 1273 (+2). compile/lint/build all clean, same
+#             single pre-existing unhandled rejection. Commit amended, not a second commit.
 project_key: NOKEY
 tracking_system: file-system
 story_location: "{project-root}/_bmad-output/implementation-artifacts"
@@ -239,7 +296,7 @@ development_status:
   7-3-resume-card-the-first-move: done
   7-4-search-as-the-browse-mechanism: done
   7-5-logged-today-recently-worked-55-ticket-handoff: done
-  7-6-day-status-vocabulary-time-off-rename: backlog
+  7-6-day-status-vocabulary-time-off-rename: done
   7-7-full-page-surface-week-review: backlog
   7-8-manager-matrix-silent-correctness-loud-exceptions: backlog
   7-9-popup-states-loading-offline-error-time-off-disconnected: backlog

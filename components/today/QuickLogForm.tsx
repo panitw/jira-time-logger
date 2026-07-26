@@ -87,11 +87,14 @@ export function QuickLogForm({
   const isError = validation.kind === 'unparseable' || validation.kind === 'over-limit';
   const isValid = validation.kind === 'valid';
 
+  // Unparseable/over-limit is a validation state, never a refused write — it
+  // reads amber, not red (D-7.6-37: red means Jira actually rejected a
+  // write; nothing has been sent yet here).
   const borderClass =
     validation.kind === 'empty'
       ? 'border-neutral-200'
       : isError
-        ? 'border-state-danger'
+        ? 'border-amber-border'
         : 'border-state-success';
 
   const selectedDate =
@@ -272,15 +275,18 @@ export function QuickLogForm({
 
       <div className="mt-1 min-h-[1.25rem]">
         {validation.kind === 'unparseable' && hoursInput.trim() && (
-          <p className="text-xs text-state-danger">{STRINGS.helperText}</p>
+          <p className="text-xs text-amber-ink">{STRINGS.helperText}</p>
         )}
         {validation.kind === 'over-limit' && (
-          <p className="text-xs text-state-danger font-medium">{STRINGS.overLimitError}</p>
+          <p className="text-xs text-amber-ink font-medium">{STRINGS.overLimitError}</p>
         )}
         {validation.kind === 'empty' && hoursInput.trim() === '' && (
           <p className="text-xs text-neutral-500">{STRINGS.empty}</p>
         )}
         {showError && (
+          // AC4 survivor: `submitState === 'error'` is set only in the
+          // mutation's non-transient failure branch above — Jira actually
+          // refused this post, so red is legitimate here (Finding 9).
           <p className="text-xs text-state-danger font-medium">{STRINGS.postError}</p>
         )}
         {showPending && (

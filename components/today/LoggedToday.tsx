@@ -809,11 +809,16 @@ function WorklogRow({
     const validation = validateHours(hoursInput);
     const isValid = validation.kind === 'valid';
     const isError = validation.kind === 'unparseable' || validation.kind === 'over-limit';
+    // D-7.6-44: this is a VALIDATION state (unparseable/over-limit input),
+    // not a refused write — amber, not red, matching D-7.6-37's
+    // `QuickLogForm`/`DayCell` conversion. D-7.6-37's own stated
+    // consequence ("a red pixel on the popup surfaces means Jira refused a
+    // write") was false as shipped until this correction closed it here.
     const borderClass =
       validation.kind === 'empty'
         ? 'border-border'
         : isError
-          ? 'border-state-danger'
+          ? 'border-amber-border'
           : 'border-state-success';
 
     const cycleRange = currentCycleRange(cycle);
@@ -903,7 +908,8 @@ function WorklogRow({
         </div>
 
         {validation.kind === 'over-limit' && (
-          <p className="mt-1 text-xs text-state-danger font-medium">
+          // D-7.6-44: validation, not a refused write — amber, not red.
+          <p className="mt-1 text-xs text-amber-ink font-medium">
             {STRINGS.overLimitError}
           </p>
         )}

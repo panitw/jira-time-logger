@@ -101,14 +101,14 @@ describe('computeWeekGaps', () => {
 });
 
 describe('gapSummary', () => {
-  it('formats "<Weekday>: <Xh> logged / <T>h target, not marked PTO"', () => {
+  it('formats "<Weekday>: <Xh> logged / <T>h target, not marked time off" (Story 7.6 copy rename)', () => {
     const summary = gapSummary({
       dayIndex: 3,
       dayName: 'Thursday',
       loggedSeconds: H(4),
       targetSeconds: H(8),
     });
-    expect(summary).toBe('Thursday: 4h logged / 8h target, not marked PTO');
+    expect(summary).toBe('Thursday: 4h logged / 8h target, not marked time off');
   });
 
   it('renders an empty day as 0h logged', () => {
@@ -118,7 +118,7 @@ describe('gapSummary', () => {
       loggedSeconds: 0,
       targetSeconds: H(8),
     });
-    expect(summary).toBe('Tuesday: 0h logged / 8h target, not marked PTO');
+    expect(summary).toBe('Tuesday: 0h logged / 8h target, not marked time off');
   });
 
   it('renders fractional logged hours one-decimal (e.g. 4.5h)', () => {
@@ -128,6 +128,6 @@ describe('gapSummary', () => {
       loggedSeconds: H(4.5),
       targetSeconds: H(8),
     });
-    expect(summary).toBe('Monday: 4.5h logged / 8h target, not marked PTO');
+    expect(summary).toBe('Monday: 4.5h logged / 8h target, not marked time off');
   });
 });

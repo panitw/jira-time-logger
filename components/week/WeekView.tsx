@@ -192,6 +192,14 @@ export function WeekView({ weekOf }: Props): React.ReactElement {
               targetHours={targetHours}
               isMarkedDone={isMarkedDone}
               onMarkedDone={handleMarkedDone}
+              // Finding 13: pass the SAME memoised `today` that derived
+              // `dayStatuses` above — `WeeklyGrid` otherwise falls back to
+              // its own default-parameter `todayDateString()`, re-evaluated
+              // on every render, so a status frozen at mount and a note
+              // re-read on a later render could disagree about "today"
+              // across a local-midnight boundary (D-7.6-35's own "how we'd
+              // know it was wrong").
+              today={today}
               {...(dayStatuses ? { dayStatuses } : {})}
             />
           </div>

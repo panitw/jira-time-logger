@@ -476,6 +476,13 @@ export function SearchPanel({
             )}
             {hasResults && <span className="text-[11px] text-faint">{STRINGS.navHint}</span>}
             {searchState.kind === 'in-flight' && (
+              // D-7.4-25 (recorded pre-emptively for Story 7.6): this
+              // `LoaderCircle` is genuine in-flight work — the search request
+              // is actually pending against Jira — NOT a day status. Story
+              // 7.6's AC5 forbids `LoaderCircle`/`EyeOff` as a day status, but
+              // that rule governs `components/shared/DayStatusIndicator.tsx`'s
+              // vocabulary; this spinner is a different, legitimate use of
+              // the same icon and is intentionally left as-is.
               <LoaderCircle
                 aria-hidden="true"
                 className="h-[13px] w-[13px] motion-safe:animate-spin text-primary"
@@ -560,6 +567,8 @@ export function SearchPanel({
                 </p>
               )}
               {isErrorMessage && (
+                // AC4 survivor: red fires only here, when `postWorklog` came
+                // back non-retryable — Jira actually refused this write.
                 <p role="alert" className="text-[11.5px] font-medium text-state-danger">
                   {STRINGS.postError}
                 </p>

@@ -3,7 +3,7 @@
  *
  * Computes the hours the worker still owes for the current week and renders
  * them on the extension's toolbar icon:
- *   deficit > 0  → red badge `<N>h`
+ *   deficit > 0  → amber badge `<N>h` (Story 7.6, D-7.6-36 — was red)
  *   deficit <= 0 → invisible badge (caught-up relief moment, UX-DR15)
  *
  * Architecture rules honoured here:
@@ -21,8 +21,17 @@ import { getAuth, hasValidAuth } from '@/lib/storage/tokens';
 import { getMarkDoneState } from '@/lib/storage/view-state';
 import { currentWeekMonday } from '@/lib/week-of';
 
-/** The `state.danger` token (styles/globals.css line 37). Single source. */
-export const BADGE_DANGER_COLOR = '#dc2626';
+/**
+ * The `status-dirty` token (`styles/globals.css` `--color-status-dirty`).
+ * Story 7.6 / D-7.6-36 (owner decision): an hours deficit is a time-related
+ * state, so AC1 ("no red is rendered for any time-related state anywhere in
+ * the product") applies to the toolbar badge too — the most-seen surface the
+ * product owns. Recoloured from `#dc2626` (status-error red) to the amber
+ * the day-status vocabulary already uses for "nothing logged" — an hours
+ * deficit is exactly that. `EXPERIENCE.md:32`'s "Unchanged" listing for the
+ * badge is overruled by this decision.
+ */
+export const BADGE_DEFICIT_COLOR = '#b45309';
 
 /**
  * Pure deficit computation for the current week.
@@ -42,11 +51,11 @@ export function computeHoursMissing(input: {
   return expected - logged;
 }
 
-/** Render a positive deficit as a red `<N>h` badge. */
+/** Render a positive deficit as an amber `<N>h` badge (D-7.6-36). */
 async function renderDeficitBadge(deficit: number): Promise<void> {
   const rounded = Math.round(deficit);
   await chrome.action.setBadgeText({ text: `${rounded}h` });
-  await chrome.action.setBadgeBackgroundColor({ color: BADGE_DANGER_COLOR });
+  await chrome.action.setBadgeBackgroundColor({ color: BADGE_DEFICIT_COLOR });
 }
 
 /** Clear the badge (caught-up / disconnected / marked-done). */

@@ -23,7 +23,7 @@ describe('GapAcknowledgmentDialog', () => {
       />,
     );
     expect(
-      screen.getByText('1 day is below target and not marked as PTO. Submit anyway?'),
+      screen.getByText('1 day is short of target and not marked as time off. Submit anyway?'),
     ).toBeTruthy();
   });
 
@@ -37,7 +37,7 @@ describe('GapAcknowledgmentDialog', () => {
       />,
     );
     expect(
-      screen.getByText('2 days are below target and not marked as PTO. Submit anyway?'),
+      screen.getByText('2 days are short of target and not marked as time off. Submit anyway?'),
     ).toBeTruthy();
   });
 
@@ -53,10 +53,10 @@ describe('GapAcknowledgmentDialog', () => {
     const items = screen.getAllByRole('listitem');
     expect(items).toHaveLength(2);
     expect(items[0]?.textContent).toBe(
-      'Tuesday: 0h logged / 8h target, not marked PTO',
+      'Tuesday: 0h logged / 8h target, not marked time off',
     );
     expect(items[1]?.textContent).toBe(
-      'Thursday: 4h logged / 8h target, not marked PTO',
+      'Thursday: 4h logged / 8h target, not marked time off',
     );
   });
 

@@ -22,7 +22,7 @@ const STRINGS = {
   catchAllNotConfiguredPrefix:
     'Catch-all not configured. Configure in ',
   settings: 'Settings',
-  catchAllNotConfiguredSuffix: ' to log Admin/Meetings/PTO.',
+  catchAllNotConfiguredSuffix: ' to log Admin/Meetings/time off.',
   syncedToast: (n: number) =>
     n === 1 ? 'Synced 1 pending worklog' : `Synced ${n} pending worklogs`,
   dismissToast: 'Dismiss',

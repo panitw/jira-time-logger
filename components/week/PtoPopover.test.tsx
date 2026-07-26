@@ -65,7 +65,7 @@ function renderPopover(overrides: Overrides = {}) {
 function openPopover() {
   fireEvent.click(
     screen.getByRole('button', {
-      name: /PTO and worklog actions for Thursday, May 15/,
+      name: /Time off and worklog actions for Thursday, May 15/,
     }),
   );
 }
@@ -88,7 +88,7 @@ describe('PtoPopover', () => {
   it('renders a labelled trigger button inside the header', () => {
     renderPopover();
     const trigger = screen.getByRole('button', {
-      name: 'PTO and worklog actions for Thursday, May 15',
+      name: 'Time off and worklog actions for Thursday, May 15',
     });
     expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
@@ -100,8 +100,8 @@ describe('PtoPopover', () => {
     renderPopover();
     openPopover();
     expect(screen.getByText('Thursday')).toBeTruthy();
-    expect(screen.getByRole('menuitem', { name: /Mark full-day PTO \(8h\)/ })).toBeTruthy();
-    expect(screen.getByRole('menuitem', { name: /Mark half-day PTO \(4h\)/ })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: /Mark full-day time off \(8h\)/ })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: /Mark half-day time off \(4h\)/ })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: /Add a worklog/ })).toBeTruthy();
     expect(screen.getByText(/Currently: 4h logged/)).toBeTruthy();
   });
@@ -115,7 +115,7 @@ describe('PtoPopover', () => {
   it('Mark full-day PTO posts via logFullDayPto for the CLICKED day, fires badge + onMutated, closes', async () => {
     const { onMutated } = renderPopover();
     openPopover();
-    fireEvent.click(screen.getByRole('menuitem', { name: /Mark full-day PTO/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Mark full-day time off/ }));
 
     await waitFor(() => {
       expect(logFullDayPtoMock).toHaveBeenCalledWith('KNP-99', 8, expect.any(String));
@@ -128,14 +128,14 @@ describe('PtoPopover', () => {
     expect(sendMessageMock).toHaveBeenCalledWith('badge-update', { hoursMissing: 0 });
     await waitFor(() => expect(onMutated).toHaveBeenCalled());
     await waitFor(() => {
-      expect(screen.queryByRole('menuitem', { name: /Mark full-day PTO/ })).toBeNull();
+      expect(screen.queryByRole('menuitem', { name: /Mark full-day time off/ })).toBeNull();
     });
   });
 
   it('Mark half-day PTO posts via logHalfDayPto', async () => {
     renderPopover();
     openPopover();
-    fireEvent.click(screen.getByRole('menuitem', { name: /Mark half-day PTO/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Mark half-day time off/ }));
     await waitFor(() => {
       expect(logHalfDayPtoMock).toHaveBeenCalledWith('KNP-99', 8, expect.any(String));
     });
@@ -145,7 +145,7 @@ describe('PtoPopover', () => {
     logFullDayPtoMock.mockResolvedValueOnce({ kind: 'network', cause: 'offline' });
     const { onMutated } = renderPopover();
     openPopover();
-    fireEvent.click(screen.getByRole('menuitem', { name: /Mark full-day PTO/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Mark full-day time off/ }));
 
     await waitFor(() => {
       expect(screen.getByText('Pending — will retry')).toBeTruthy();
@@ -165,10 +165,10 @@ describe('PtoPopover', () => {
     logFullDayPtoMock.mockResolvedValueOnce({ kind: 'forbidden' });
     const { onMutated } = renderPopover();
     openPopover();
-    fireEvent.click(screen.getByRole('menuitem', { name: /Mark full-day PTO/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Mark full-day time off/ }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Couldn.t mark PTO/)).toBeTruthy();
+      expect(screen.getByText(/Couldn.t mark time off/)).toBeTruthy();
     });
     expect(onMutated).not.toHaveBeenCalled();
     expect(sendMessageMock).not.toHaveBeenCalled();
@@ -178,11 +178,11 @@ describe('PtoPopover', () => {
   it('PTO unconfigured → PTO buttons disabled + Settings link; Add a worklog stays enabled', () => {
     const { onAddWorklog } = renderPopover({ ptoSubtaskKey: null });
     openPopover();
-    const full = screen.getByRole('menuitem', { name: /Mark full-day PTO/ }) as HTMLButtonElement;
-    const half = screen.getByRole('menuitem', { name: /Mark half-day PTO/ }) as HTMLButtonElement;
+    const full = screen.getByRole('menuitem', { name: /Mark full-day time off/ }) as HTMLButtonElement;
+    const half = screen.getByRole('menuitem', { name: /Mark half-day time off/ }) as HTMLButtonElement;
     expect(full.disabled).toBe(true);
     expect(half.disabled).toBe(true);
-    expect(screen.getByText(/PTO subtask not configured/)).toBeTruthy();
+    expect(screen.getByText(/Time off subtask not configured/)).toBeTruthy();
 
     fireEvent.click(screen.getByText('Settings'));
     expect(chrome.runtime.openOptionsPage).toHaveBeenCalled();
@@ -213,16 +213,16 @@ describe('PtoPopover', () => {
   it('Esc closes the popover', () => {
     renderPopover();
     openPopover();
-    expect(screen.getByRole('menuitem', { name: /Mark full-day PTO/ })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: /Mark full-day time off/ })).toBeTruthy();
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(screen.queryByRole('menuitem', { name: /Mark full-day PTO/ })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /Mark full-day time off/ })).toBeNull();
   });
 
   it('click-outside closes the popover', () => {
     renderPopover();
     openPopover();
-    expect(screen.getByRole('menuitem', { name: /Mark full-day PTO/ })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: /Mark full-day time off/ })).toBeTruthy();
     fireEvent.pointerDown(document.body);
-    expect(screen.queryByRole('menuitem', { name: /Mark full-day PTO/ })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /Mark full-day time off/ })).toBeNull();
   });
 });

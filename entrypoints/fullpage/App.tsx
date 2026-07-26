@@ -32,7 +32,7 @@ const STRINGS = {
   disconnectedBody: 'Connect your Jira Cloud account to start logging time.',
   connectCta: 'Connect to Jira',
   settingsBody:
-    'Manage your Jira connection, catch-all project, PTO subtask, and reminders.',
+    'Manage your Jira connection, catch-all project, time off subtask, and reminders.',
   openSettings: 'Open settings',
 };
 

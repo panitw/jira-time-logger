@@ -716,4 +716,28 @@ describe('LoggedToday', () => {
       expect(runOutboxRetryPassMock).toHaveBeenCalled();
     });
   });
+
+  // ---- D-7.6-44 / Escalation 2: the inline editor's VALIDATION states are
+  // amber, not red — D-7.6-37's "a red pixel on the popup surfaces means
+  // Jira refused a write" claim was false here until this correction. -----
+
+  it('an unparseable hours value in the inline editor renders amber, not the danger red reserved for a refused write', () => {
+    renderWithProviders(<LoggedToday entries={[{ ...baseEntry }]} />);
+    fireEvent.click(screen.getByLabelText('Edit PROJ-1, 2.5h'));
+    const input = screen.getByLabelText('Hours');
+    fireEvent.change(input, { target: { value: 'abc' } });
+    expect(input.className).toContain('border-amber-border');
+    expect(input.className).not.toContain('border-state-danger');
+  });
+
+  it('an over-limit hours value renders its helper text in amber, not red, and the input border is amber', () => {
+    renderWithProviders(<LoggedToday entries={[{ ...baseEntry }]} />);
+    fireEvent.click(screen.getByLabelText('Edit PROJ-1, 2.5h'));
+    const input = screen.getByLabelText('Hours');
+    fireEvent.change(input, { target: { value: '30' } });
+    expect(input.className).toContain('border-amber-border');
+    const helper = screen.getByText(/Hours per entry can.t exceed 24/);
+    expect(helper.className).toContain('text-amber-ink');
+    expect(helper.className).not.toContain('text-state-danger');
+  });
 });

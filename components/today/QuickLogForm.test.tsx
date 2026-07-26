@@ -1,6 +1,6 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const postWorklogMock = vi.fn();
 
@@ -81,7 +81,7 @@ describe('QuickLogForm', () => {
     expect(input.className).toContain('border-state-success');
   });
 
-  it('shows red border + helper text when unparseable', () => {
+  it('shows amber border (not red) + helper text when unparseable (D-7.6-37)', () => {
     renderWithProviders(
       <QuickLogForm
         ticketKey="PROJ-1"
@@ -92,11 +92,12 @@ describe('QuickLogForm', () => {
     );
     const input = screen.getByLabelText('Hours');
     fireEvent.change(input, { target: { value: 'abc' } });
-    expect(input.className).toContain('border-state-danger');
+    expect(input.className).toContain('border-amber-border');
+    expect(input.className).not.toContain('border-state-danger');
     expect(screen.getByText('Use formats like 2.5h, 2h 30m, or 2:30')).toBeTruthy();
   });
 
-  it('hard-blocks hours > 24 with error message and disabled Log button', () => {
+  it('hard-blocks hours > 24 with amber (not red) error message and disabled Log button (D-7.6-37)', () => {
     renderWithProviders(
       <QuickLogForm
         ticketKey="PROJ-1"
@@ -107,7 +108,8 @@ describe('QuickLogForm', () => {
     );
     const input = screen.getByLabelText('Hours');
     fireEvent.change(input, { target: { value: '25h' } });
-    expect(input.className).toContain('border-state-danger');
+    expect(input.className).toContain('border-amber-border');
+    expect(input.className).not.toContain('border-state-danger');
     expect(
       screen.getByText("Hours per entry can\u2019t exceed 24. Split into multiple entries if needed."),
     ).toBeTruthy();

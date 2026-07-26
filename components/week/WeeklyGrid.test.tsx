@@ -103,6 +103,40 @@ function emptyGrid(): WeekGrid {
   };
 }
 
+/** A grid whose only row is a full-day time-off (`pto` category) worklog on
+ * Tuesday, for the time-off vocabulary tests. */
+function gridWithPtoRow(): WeekGrid {
+  const cells: WeekGridCell[] = [
+    singleCell(0, '', ''),
+    singleCell(hoursToSeconds(8), 'w-tue-pto', '2026-06-16T09:00:00.000+0000'),
+    singleCell(0, '', ''),
+    singleCell(0, '', ''),
+    singleCell(0, '', ''),
+    singleCell(0, '', ''),
+    singleCell(0, '', ''),
+  ];
+  const cellsSeconds = cells.map((c) => c.seconds);
+  return {
+    days: DAYS,
+    rows: [
+      {
+        // Finding 26: this fixture stands in for a REAL Jira subtask
+        // summary (AC7 — rendered verbatim, never rewritten by this story's
+        // copy rename). A real customer's subtask is still literally called
+        // "PTO"; renaming the fixture drifts it away from the field it
+        // models, exactly the class of mistake AC7 exists to guard against.
+        key: 'KNP-1',
+        summary: 'PTO',
+        category: 'pto',
+        cells,
+        cellsSeconds,
+        rowTotalSeconds: hoursToSeconds(8),
+      },
+    ],
+    dayTotalsSeconds: cellsSeconds,
+  };
+}
+
 function renderGrid(ui: React.ReactElement) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -197,77 +231,60 @@ describe('WeeklyGrid', () => {
     ).toBeNull();
   });
 
-  it('colors a complete day green with a Check icon and aria-label', () => {
-    const statuses: DayStatus[] = [
-      'complete',
-      'neutral',
-      'neutral',
-      'neutral',
-      'neutral',
-      'neutral',
-      'neutral',
-    ];
-    renderGrid(<WeeklyGrid grid={gridWithOneRow()} dayStatuses={statuses} />);
-    const cell = screen.getByLabelText('Monday, complete');
+  it('colors a met day green with a CircleCheck icon and aria-label (AC2)', () => {
+    const statuses: (DayStatus | null)[] = ['met', null, null, null, null, null, null];
+    renderGrid(
+      <WeeklyGrid grid={gridWithOneRow()} dayStatuses={statuses} today="2026-06-20" />,
+    );
+    // Finding 10: the note states the actual hours logged, verbatim per
+    // D-7.6-12 ("Target met — 8h logged") — gridWithOneRow's Monday total is
+    // 4h, so the note reads "Target met — 4h logged". Finding 21: the
+    // aria-label now also carries the figure itself ("4.0"), not just the
+    // note.
+    const cell = screen.getByLabelText('Monday, 4.0, Target met — 4h logged');
     expect(cell).toBeTruthy();
-    expect(cell.querySelector('svg')).toBeTruthy(); // lucide Check
-    expect(cell.className).toContain('text-state-success');
+    expect(cell.querySelector('svg')).toBeTruthy(); // lucide CircleCheck
+    expect(cell.querySelector('span')?.className).toContain('text-status-clean');
     expect(cell.textContent).toContain('4.0'); // numeric total preserved
   });
 
-  it('colors a below-target day red with AlertCircle + visible "below target" text', () => {
-    const statuses: DayStatus[] = [
-      'below-target',
-      'neutral',
-      'neutral',
-      'neutral',
-      'neutral',
-      'neutral',
-      'neutral',
-    ];
-    renderGrid(<WeeklyGrid grid={gridWithOneRow()} dayStatuses={statuses} />);
-    const cell = screen.getByLabelText('Monday, below target');
+  it('colors a partial day with a ChartPie icon + the shortfall note — never "below target" (AC1/AC2)', () => {
+    const statuses: (DayStatus | null)[] = ['partial', null, null, null, null, null, null];
+    renderGrid(
+      <WeeklyGrid grid={gridWithOneRow()} dayStatuses={statuses} today="2026-06-20" />,
+    );
+    const cell = screen.getByLabelText('Monday, 4.0, 4h short');
     expect(cell).toBeTruthy();
-    expect(cell.querySelector('svg')).toBeTruthy(); // lucide AlertCircle
-    expect(cell.className).toContain('text-state-danger');
-    expect(within(cell).getByText('below target')).toBeTruthy();
+    expect(cell.querySelector('svg')).toBeTruthy(); // lucide ChartPie
+    expect(cell.className).not.toContain('state-danger');
+    expect(cell.textContent).not.toContain('below target');
+    expect(within(cell).getByText('4h short')).toBeTruthy();
   });
 
-  it('renders a PTO day green with a PTO label and aria-label', () => {
-    const statuses: DayStatus[] = [
-      'neutral',
-      'pto',
-      'neutral',
-      'neutral',
-      'neutral',
-      'neutral',
-      'neutral',
-    ];
-    renderGrid(<WeeklyGrid grid={gridWithOneRow()} dayStatuses={statuses} />);
-    const cell = screen.getByLabelText('Tuesday, PTO');
+  it('renders a time-off day with a Diamond icon and "Full-day time off" — never "PTO" (AC2/AC6)', () => {
+    const statuses: (DayStatus | null)[] = [null, 'time-off', null, null, null, null, null];
+    renderGrid(
+      <WeeklyGrid grid={gridWithPtoRow()} dayStatuses={statuses} today="2026-06-20" />,
+    );
+    const cell = screen.getByLabelText('Tuesday, 8.0, Full-day time off');
     expect(cell).toBeTruthy();
-    expect(cell.className).toContain('text-state-success');
-    expect(within(cell).getByText('PTO')).toBeTruthy();
+    expect(cell.querySelector('span')?.className).toContain('text-legacy-purple');
+    expect(within(cell).getByText('Full-day time off')).toBeTruthy();
+    expect(cell.textContent).not.toContain('PTO');
   });
 
-  it('leaves a neutral (future/weekend) day uncolored with no status icon or label', () => {
-    const statuses: DayStatus[] = [
-      'neutral',
-      'neutral',
-      'neutral',
-      'neutral',
-      'neutral',
-      'neutral',
-      'neutral',
-    ];
-    renderGrid(<WeeklyGrid grid={emptyGrid()} dayStatuses={statuses} />);
-    expect(screen.queryByLabelText(/below target/)).toBeNull();
-    expect(screen.queryByLabelText(/, complete/)).toBeNull();
+  it('leaves a day with no status (future workday, D-7.6-35) uncolored with no status icon or label', () => {
+    const statuses: (DayStatus | null)[] = [null, null, null, null, null, null, null];
+    renderGrid(
+      <WeeklyGrid grid={emptyGrid()} dayStatuses={statuses} today="2026-06-20" />,
+    );
+    expect(screen.queryByLabelText(/short/)).toBeNull();
+    expect(screen.queryByLabelText(/, Target met/)).toBeNull();
     const totalsRow = screen.getByRole('row', { name: /Daily totals/i });
     expect(totalsRow.querySelector('svg')).toBeNull(); // no status icons
   });
 
-  it('renders neutral totals when dayStatuses is omitted (back-compat)', () => {
+  it('renders bare (no-status) totals when dayStatuses is omitted (back-compat)', () => {
     renderGrid(<WeeklyGrid grid={gridWithOneRow()} />);
     const totalsRow = screen.getByRole('row', { name: /Daily totals/i });
     expect(within(totalsRow).getByText('4.0')).toBeTruthy();
@@ -307,16 +324,8 @@ describe('WeeklyGrid', () => {
     await waitFor(() => expect(onMutated).toHaveBeenCalled());
   });
 
-  it('tints body data cells by their day status (carry-through, AC #9)', () => {
-    const statuses: DayStatus[] = [
-      'complete',
-      'neutral',
-      'below-target',
-      'neutral',
-      'neutral',
-      'neutral',
-      'neutral',
-    ];
+  it('tints body data cells by their day status (carry-through, AC #9) — amber, never danger-red', () => {
+    const statuses: (DayStatus | null)[] = ['met', null, 'attention', null, null, null, null];
     renderGrid(<WeeklyGrid grid={gridWithOneRow()} dayStatuses={statuses} />);
     const monCell = screen
       .getByLabelText('Hours for Monday, PROJ-1 Build the grid')
@@ -326,7 +335,8 @@ describe('WeeklyGrid', () => {
     const wedCell = screen
       .getByLabelText('Hours for Wednesday, PROJ-1 Build the grid')
       .closest('td')!;
-    expect(wedCell.className).toContain('bg-state-danger-subtle');
+    expect(wedCell.className).toContain('bg-amber-soft');
+    expect(wedCell.className).not.toContain('state-danger');
   });
 
   it('keeps body cells in native left-to-right DOM order (Tab order, AC #10)', () => {
@@ -354,14 +364,14 @@ describe('WeeklyGrid', () => {
     expect(deleteWorklogMock).not.toHaveBeenCalled();
   });
 
-  it('renders a PTO/worklog popover trigger on each day header that opens on click', () => {
+  it('renders a time-off/worklog popover trigger on each day header that opens on click', () => {
     renderGrid(<WeeklyGrid grid={gridWithOneRow()} ptoSubtaskKey="PTO-1" targetHours={8} />);
     const trigger = screen.getByRole('button', {
-      name: /PTO and worklog actions for Monday, Jun 15/,
+      name: /Time off and worklog actions for Monday, Jun 15/,
     });
     expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
     fireEvent.click(trigger);
-    expect(screen.getByRole('menuitem', { name: /Mark full-day PTO \(8h\)/ })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: /Mark full-day time off \(8h\)/ })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: /Add a worklog/ })).toBeTruthy();
     // The 4.2 totals row and 4.3 body cells still render alongside the popover.
     expect(screen.getByRole('row', { name: /Daily totals/i })).toBeTruthy();
@@ -373,7 +383,7 @@ describe('WeeklyGrid', () => {
   it('header "Add a worklog…" opens the day-scoped picker', () => {
     renderGrid(<WeeklyGrid grid={emptyGrid()} ptoSubtaskKey="PTO-1" targetHours={8} />);
     fireEvent.click(
-      screen.getByRole('button', { name: /PTO and worklog actions for Monday, Jun 15/ }),
+      screen.getByRole('button', { name: /Time off and worklog actions for Monday, Jun 15/ }),
     );
     fireEvent.click(screen.getByRole('menuitem', { name: /Add a worklog/ }));
     // The TicketPicker (mocked) is now shown.
@@ -402,17 +412,9 @@ describe('WeeklyGrid', () => {
 
   describe('a11y scan (Story 6.1 AC1)', () => {
     it('a populated grid with colored day statuses has zero Critical/Serious violations', async () => {
-      const statuses: DayStatus[] = [
-        'complete',
-        'below-target',
-        'neutral',
-        'neutral',
-        'neutral',
-        'neutral',
-        'neutral',
-      ];
+      const statuses: (DayStatus | null)[] = ['met', 'partial', 'attention', 'time-off', 'weekend', null, null];
       const { container } = renderGrid(
-        <WeeklyGrid grid={gridWithOneRow()} dayStatuses={statuses} />,
+        <WeeklyGrid grid={gridWithOneRow()} dayStatuses={statuses} today="2026-06-20" />,
       );
       const results = await scan(container);
       expect(criticalOrSerious(results.violations)).toEqual([]);

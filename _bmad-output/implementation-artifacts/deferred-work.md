@@ -117,3 +117,159 @@
 ## Deferred from: code review of story-7.4 (2026-07-26)
 
 - Truncation line off-by-one: when a search returns *exactly* `MAX_RESULTS` matches, the "showing the first N" line renders even though nothing was actually truncated. Fails in the safe direction (over-warns rather than silently hiding results, so D-7.4-14's "never a silent cap" rule still holds). A correct fix means over-fetching `MAX_RESULTS + 1` and slicing — a wire-contract change judged not worth reopening the story for. **No story owns this**; pick it up in 7.5 or a dedicated follow-up if it becomes user-visible. [hooks/useTicketSearch.ts, components/today/SearchPanel.tsx]
+
+## Deferred from: code review of story-7.6 (2026-07-26)
+
+### `status-clean` and `state-success` are the same hex — a latent trap for any future story composing a `status-*` token inside a `state-*` surface
+
+**Where:** `styles/globals.css` — `--color-status-clean: #15803d;` and
+`--color-state-success: #15803d;` are byte-identical.
+
+**What happened because of it (Blocker 1/2, this story):** `ManagerMatrix.tsx`
+routed `approved`/`on-target` cells through `DayStatusIndicator`, whose
+`text-status-clean` collided with the `<td>`'s own `bg-state-success` at a
+measured **1.00:1** — invisible white-on-green text. Fixed by reverting those
+cells to a bare number (D-7.6-41/42) rather than by deduplicating the tokens,
+per that decision's explicit instruction.
+
+**Why not deduplicated here:** `status-clean` and `state-success` are two
+different AXES (day-status vocabulary vs. matrix `CellStatus`) that happen to
+share a value today. Merging them into one token would be a `styles/`
+foundation change affecting every consumer of either name, which is out of
+this story's scope (a copy-and-vocabulary story, not a token-layer
+refactor).
+
+**Recommended follow-up:** the next story that composes a `status-*` token
+inside a `state-*`-coloured surface (or vice versa) should check contrast by
+hand first — the axe harness cannot catch this class of failure (jsdom has no
+`color-contrast` rule support), and a shared hex behind two differently-named
+tokens is exactly the trap that produced this story's Blocker.
+
+### `restricted` on an `approved` cell measured ~1.05:1 — **RESOLVED, D-7.6-49** (was recorded here as deferred; the deferral was overruled)
+
+**Where:** `components/manager/ManagerMatrix.tsx` — `MatrixCell`'s `locked`
+branch renders `<DayStatusIndicator variant="inline" status="restricted" />`,
+which unconditionally used `text-faint` (`#6B6B72`). This rendered correctly
+against every OTHER cell background (`bg-state-success-subtle`,
+`bg-state-warning-subtle`, plain white) but is independent of `status` — so
+an `approved` cell (`bg-state-success`, `#15803D`) that ALSO had
+`restrictedCount > 0` paired `text-faint` on `#15803D`, hand-computed at
+**~1.05:1** — essentially invisible, the same failure class as Blocker 1.
+
+**Why this was originally deferred, and why that was wrong:** the finisher's
+first pass reasoned this needed either a new on-dark-surface token or a
+structural change belonging to Story 7.8's chip restyle, and deferred it
+rather than guess. **D-7.6-49 overruled the deferral**: this is a regression
+Story 7.6 itself introduced (pre-story the overlay was a bare, `aria-hidden`
+`Lock` icon inheriting the `<td>`'s ambient `text-white`, at **5.02:1**), and
+the epic's standing constraint — no story may regress WCAG 2.1 AA — is a hard
+gate that cannot ship deferred, regardless of which future story "owns" the
+eventual, fuller redesign.
+
+**The fix, in 7.6 (D-7.6-49 part 1):** `DayStatusIndicator` gained a third
+`tone` value, `'chrome-solid'` (full-opacity `text-white` — the SAME white
+already used throughout `ChromeHeader.tsx`, zero new hex/token; distinct from
+`tone="chrome"`'s 85%-opacity variant, which was calibrated for the purple
+gradient and measures only ≈4.09:1 against this much darker green — not
+enough). `ManagerMatrix.tsx`'s restricted overlay now passes
+`tone={status === 'approved' ? 'chrome-solid' : 'data'}` — scoped to the one
+cell background (`approved`, the only DARK fill in the matrix) that actually
+needs it; every other cell's `text-faint` default already clears AA there.
+Restored to **5.02:1** (hand-computed, full white on `#15803D`), matching the
+pre-story value exactly. Pinned by two new `ManagerMatrix.test.tsx` tests
+(approved+restricted renders `text-white`, not `text-faint`; a non-approved
+restricted cell keeps the default `text-faint`) — both RED-proved by
+reverting the `tone` override and confirming the pinning test fails.
+
+**Still owned by Story 7.8 (D-7.6-49 part 2, unchanged from the original
+note):** the DESIGNED restricted chip, per `imports/jira-time-logger.dc.html:534`
+— its own `#F4F4F7` background, `#E4E3EC` border, `#6B6B72` text,
+`border-radius:5px`, `padding:3px 7px`. That chip carries its own light
+background, so it never sits directly on the cell fill and the `tone`
+workaround becomes unnecessary — 7.8 should remove
+`tone="chrome-solid"`/the `status === 'approved'` conditional once the real
+chip ships. **Also noted for 7.8 from the same design source:** approval is a
+row-level property there (`:571`, a green `✓ approved` label) and matrix
+cells are plain numbers (`:852-858`) — there is no green cell fill for
+`approved` at all in the design. The current `bg-state-success` fill is
+pre-existing Epic 5 code for 7.8's restyle to reconcile.
+
+**The underlying cause remains open:** the duplicate-hex trap above
+(`status-clean` == `state-success` == `#15803D`) is still what makes ANY
+`text-status-clean`/AC3-vocabulary colour collide with this cell's fill.
+
+### `variant="stacked"` (Finding 11) — two shape defects, un-fixed because it has zero production call sites in this story
+
+**Where:** `components/shared/DayStatusIndicator.tsx`'s `stacked` branch.
+
+1. **Bar width is siblings-relative, not container-relative.** The wrapper is
+   `inline-flex flex-col items-end`, so `w-full` on the bar resolves to the
+   width of the widest sibling LINE (value+icon, or the note text) — the
+   same `percent` renders a different pixel length depending on how long the
+   note is that render.
+2. **Quantisation rounds to the extremes too eagerly.** `Math.round(pct / 5)`
+   maps 97.6% → `w-full` (looks done) and 2.4% → `w-0` (looks empty).
+
+**Why not fixed here:** `WeeklyGrid.tsx`'s `TotalsCell` uses `variant="inline"`
+exclusively — `stacked` is exercised only by this story's own unit tests, not
+by any real layout. Fixing the width defect blind, without Story 7.7's actual
+totals-cell container to lay it out against, risks guessing wrong and
+shipping a DIFFERENT bug into the "frozen" D-7.6-3 contract. The fix is
+cheap (a definite width on the wrapper; `Math.floor` + a non-zero floor
+instead of `Math.round`) but needs a real consumer to verify against.
+
+**Recommended follow-up:** Story 7.7, which is the first real consumer of
+`variant="stacked"`, must give it a real call site early and verify the bar
+renders a consistent, correctly-quantised length before treating the
+contract as final.
+
+### No `size` prop (Finding 17) — 7.7/7.8 both need icon geometry the frozen contract can't express
+
+**Where:** `components/shared/DayStatusIndicator.tsx` — `ICON_SIZE = 12` is a
+module constant, not a prop.
+
+Story 7.7's AC requires an 11px filled `Diamond` for time-off cells; Story
+7.8 needs its own chip geometry. Not added speculatively in this pass — the
+concrete sizes needed aren't yet pinned down by an AC this story owns, and
+guessing a `size?: 11 | 12 | 13` union without a confirmed consumer risks
+picking the wrong shape for the "frozen" contract twice.
+
+**Recommended follow-up:** add `size` to `DayStatusIndicatorProps` (and to
+D-7.6-3's canonical block in `epic-7-decision-log.md`) the moment 7.7 or 7.8
+needs it, with the real value pinned by that story's own AC.
+
+### `categorize()`'s prefix match (Finding 25) — pre-existing, unrelated to this story's scope
+
+**Where:** `lib/week-grid.ts`'s `categorize()` —
+`key.startsWith(ptoSubtaskKey)` is a PREFIX match, not equality. A time-off
+subtask `KKP-123` would also swallow ordinary work logged to `KKP-1234` as
+`'pto'` category.
+
+**Why not fixed here:** pre-existing (not introduced by Story 7.6), and this
+story's `dayStatusFor` now gives `timeOffSeconds > 0` absolute precedence
+(D-7.6-6), which makes the existing bug's blast radius larger than before —
+a suppressed `attention` status and a false "time off" claim on a day that
+was actually just mis-categorised work. Still out of scope: fixing a
+categorisation bug inside a copy-and-vocabulary story is exactly the kind of
+scope leak this epic has been burned by (see `epic-7-decision-log.md`'s
+Story 7.4 `TicketPicker` scrolling regression, and the JQL-widening leak).
+
+**Recommended follow-up:** change the match to `key === ptoSubtaskKey` or
+`key.startsWith(ptoSubtaskKey + '-')`. Cheap, but needs its own story/PR so
+the fix is attributable and tested in isolation.
+
+### `lib/week-gaps.ts:61` — a half-day-off week can be marked done while genuinely short (pre-existing, explicitly D-7.6-38's hand-off)
+
+**Where:** `lib/week-gaps.ts`'s `computeWeekGaps` — `if (ptoDays[i]) continue`
+treats ANY time-off seconds that day as "not a gap," so a 4-hour half-day off
+(with nothing else logged) lets the week be marked done while genuinely 4
+hours short of target.
+
+**Why not fixed here:** D-7.6-38 (owner/orchestrator ruling) explicitly
+assigned this to Story 7.7, which owns the gap dialog and the mark-done write
+path — a write-path change inside a copy-and-vocabulary story is out of
+scope by design. Recorded here again as the consolidated deferred-work
+tracking point; the code-level pointer lives in `lib/week-gaps.ts`'s own
+comment above `ptoDays`.
+
+**Owner:** Story 7.7 — must close it or explicitly re-defer with a reason.

@@ -142,6 +142,16 @@
   --color-error-border: #f3c9c9;
   --color-error-ink: #991b1b;
 
+  /* NOT a day-status colour (D-7.6-40, correcting D-7.6-39's original
+   * rationale) — the chrome gradient renders day status in white/opacity
+   * ONLY, for every status including "met". This token's real consumer is
+   * Story 7.10's connection-status dot (`epics.md:2044`). It is a MISSING
+   * token from Story 7.1, not a new colour value (same class of fix as
+   * D-7.2-3's spacing scale) — the addition itself still stands, value from
+   * DESIGN.md, nothing invented; only its originally-stated purpose was
+   * mistaken. */
+  --color-status-clean-on-chrome: #8fe0a8;
+
   /* ---------------------------------------------------------------------
    * Legacy aliases — remapped onto KKP values so the ~330 existing
    * `text-neutral-*` / `bg-accent-*` / `text-state-*` usages inherit the

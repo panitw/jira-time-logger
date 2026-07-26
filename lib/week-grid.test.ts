@@ -278,82 +278,100 @@ function gridOf(
   return { days: DAYS, rows, dayTotalsSeconds };
 }
 
-describe('computeDayStatuses', () => {
+describe('computeDayStatuses (Story 7.6: five-state vocabulary via dayStatusFor)', () => {
   const TARGET = 8;
 
-  it('marks a day complete when the total is above target', () => {
+  it('marks a day met when the total is above target', () => {
     const grid = gridOf([hoursToSeconds(9), 0, 0, 0, 0, 0, 0]);
     const statuses = computeDayStatuses(grid, {
       targetHours: TARGET,
       today: '2026-06-21',
     });
-    expect(statuses[0]).toBe('complete');
+    expect(statuses[0]).toBe('met');
   });
 
-  it('marks a day complete at the exact target boundary (== target is green)', () => {
+  it('marks a day met at the exact target boundary (== target)', () => {
     const grid = gridOf([hoursToSeconds(8), 0, 0, 0, 0, 0, 0]);
     const statuses = computeDayStatuses(grid, {
       targetHours: TARGET,
       today: '2026-06-21',
     });
-    expect(statuses[0]).toBe('complete');
+    expect(statuses[0]).toBe('met');
   });
 
-  it('marks a past workday below target as below-target (red)', () => {
+  it('marks a past workday with some but under-target hours as partial', () => {
     // Mon has 3h, today is Wed → Mon is a past workday and under target.
     const grid = gridOf([hoursToSeconds(3), 0, 0, 0, 0, 0, 0]);
     const statuses = computeDayStatuses(grid, {
       targetHours: TARGET,
       today: '2026-06-17',
     });
-    expect(statuses[0]).toBe('below-target');
+    expect(statuses[0]).toBe('partial');
   });
 
-  it('treats today (== today) as eligible-for-red, not future', () => {
-    // Today is Wed with 0h logged → below-target, not neutral.
+  it('treats today (== today) with 0h as ELAPSED → attention, not null (D-7.6-35)', () => {
+    // Today is Wed with 0h logged → attention (in progress, not neutral).
     const grid = gridOf([0, 0, 0, 0, 0, 0, 0]);
     const statuses = computeDayStatuses(grid, {
       targetHours: TARGET,
       today: '2026-06-17',
     });
-    expect(statuses[2]).toBe('below-target');
+    expect(statuses[2]).toBe('attention');
   });
 
-  it('leaves a zero-hour future workday neutral (NOT red)', () => {
-    // Today is Wed; Thu/Fri are future workdays with 0h → neutral.
+  it('a past workday with 0h is attention', () => {
     const grid = gridOf([0, 0, 0, 0, 0, 0, 0]);
     const statuses = computeDayStatuses(grid, {
       targetHours: TARGET,
       today: '2026-06-17',
     });
-    expect(statuses[3]).toBe('neutral'); // Thu future
-    expect(statuses[4]).toBe('neutral'); // Fri future
+    expect(statuses[0]).toBe('attention'); // Mon, past
   });
 
-  it('leaves a zero-hour past weekend neutral (NOT red)', () => {
-    // Today is past the whole week; Sat/Sun with 0h → neutral, not red.
+  it('leaves a zero-hour FUTURE workday with no status at all (null, NOT amber) — D-7.6-35', () => {
+    // Today is Wed; Thu/Fri are future workdays with 0h → null.
+    const grid = gridOf([0, 0, 0, 0, 0, 0, 0]);
+    const statuses = computeDayStatuses(grid, {
+      targetHours: TARGET,
+      today: '2026-06-17',
+    });
+    expect(statuses[3]).toBeNull(); // Thu future
+    expect(statuses[4]).toBeNull(); // Fri future
+  });
+
+  it('a Monday-morning grid renders exactly one attention cell (today), not five', () => {
+    const grid = gridOf([0, 0, 0, 0, 0, 0, 0]);
+    const statuses = computeDayStatuses(grid, {
+      targetHours: TARGET,
+      today: '2026-06-15', // Monday
+    });
+    expect(statuses.slice(0, 5)).toEqual(['attention', null, null, null, null]);
+  });
+
+  it('a zero-hour weekend (past or future) is `weekend`, never null or attention', () => {
     const grid = gridOf([0, 0, 0, 0, 0, 0, 0]);
     const statuses = computeDayStatuses(grid, {
       targetHours: TARGET,
       today: '2026-06-28',
     });
-    expect(statuses[5]).toBe('neutral'); // Sat past, empty
-    expect(statuses[6]).toBe('neutral'); // Sun past, empty
+    expect(statuses[5]).toBe('weekend'); // Sat, past, empty
+    expect(statuses[6]).toBe('weekend'); // Sun, past, empty
   });
 
-  it('marks a day with an under-target PTO worklog as pto (PTO wins → green)', () => {
-    // Tue has a half-day PTO worklog (4h) under the 8h target → pto, not red.
+  it('marks a day with an under-target time-off worklog as time-off (wins outright)', () => {
+    // Tue has a half-day time-off worklog (4h) under the 8h target → time-off.
     const ptoRow = row('pto', [0, hoursToSeconds(4), 0, 0, 0, 0, 0]);
     const grid = gridOf([0, hoursToSeconds(4), 0, 0, 0, 0, 0], [ptoRow]);
     const statuses = computeDayStatuses(grid, {
       targetHours: TARGET,
       today: '2026-06-21',
     });
-    expect(statuses[1]).toBe('pto');
+    expect(statuses[1]).toBe('time-off');
   });
 
-  it('still awards green to a weekend that meets target or has PTO', () => {
-    // Sat (index 5) hits target → complete; Sun (index 6) has PTO → pto.
+  it('weekend now wins over meeting target — a Saturday hitting target is `weekend`, not `met` (D-7.6-6)', () => {
+    // Sat (index 5) hits target but is still `weekend`; Sun (index 6) has
+    // time off, which wins over weekend too.
     const ptoRow = row('pto', [0, 0, 0, 0, 0, 0, hoursToSeconds(8)]);
     const grid = gridOf(
       [0, 0, 0, 0, 0, hoursToSeconds(8), hoursToSeconds(8)],
@@ -363,8 +381,8 @@ describe('computeDayStatuses', () => {
       targetHours: TARGET,
       today: '2026-06-28',
     });
-    expect(statuses[5]).toBe('complete');
-    expect(statuses[6]).toBe('pto');
+    expect(statuses[5]).toBe('weekend');
+    expect(statuses[6]).toBe('time-off');
   });
 
   it('returns a 7-element array indexed Monday..Sunday', () => {

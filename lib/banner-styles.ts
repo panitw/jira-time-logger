@@ -24,6 +24,9 @@ export const ACCENT_SUBTLE = '#e9e6f3';
 export const NEUTRAL_700 = '#334155';
 export const NEUTRAL_500 = '#64748b';
 export const WHITE = '#ffffff';
+// AC4 survivor: DANGER is applied only to the guest rail's failed-write slot
+// (`lib/banner-dom.ts`'s `errorTextStyle`, `role="alert"`) — red fires only
+// when Jira actually refused a worklog write, never for time itself.
 export const DANGER = '#dc2626';
 
 /** Stable id for the single banner host element (idempotency guard, AC #1). */

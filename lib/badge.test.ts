@@ -41,7 +41,7 @@ const {
   computeHoursMissing,
   getWeekHoursMissing,
   getWeekDeficit,
-  BADGE_DANGER_COLOR,
+  BADGE_DEFICIT_COLOR,
 } = await import('./badge');
 const { secondsToHours, hoursToSeconds } = await import('./hours');
 const { workdaysSoFar } = await import('./cycle-range');
@@ -157,7 +157,7 @@ describe('updateBadge orchestration', () => {
     vi.setSystemTime(new Date(2026, 5, 17, 10, 0, 0));
   }
 
-  it('renders a red <N>h badge when behind (deficit > 0)', async () => {
+  it('renders an amber <N>h badge when behind (deficit > 0) — D-7.6-36, never red', async () => {
     pinWednesday();
     fetchWeekMock.mockResolvedValue({
       kind: 'ok',
@@ -166,8 +166,8 @@ describe('updateBadge orchestration', () => {
     await updateBadge();
     // 3*8 - 10 = 14
     expect(badgeText).toBe('14h');
-    expect(badgeColor).toBe(BADGE_DANGER_COLOR);
-    expect(BADGE_DANGER_COLOR).toBe('#dc2626');
+    expect(badgeColor).toBe(BADGE_DEFICIT_COLOR);
+    expect(BADGE_DEFICIT_COLOR).toBe('#b45309');
   });
 
   it('clears the badge (no color) when caught up (deficit <= 0)', async () => {
@@ -181,7 +181,7 @@ describe('updateBadge orchestration', () => {
     expect(badgeColor).toBeUndefined();
   });
 
-  it('clears the badge (no red "0h") when deficit rounds to 0', async () => {
+  it('clears the badge (no amber "0h") when deficit rounds to 0', async () => {
     pinWednesday();
     // 24 expected - 23.7 logged = 0.3 deficit → rounds to 0 → must clear.
     fetchWeekMock.mockResolvedValue({
@@ -208,7 +208,7 @@ describe('updateBadge orchestration', () => {
     fetchWeekMock.mockResolvedValue({ kind: 'ok', value: [] });
     await updateBadge();
     expect(badgeText).toBe('24h'); // 3 * 8
-    expect(badgeColor).toBe(BADGE_DANGER_COLOR);
+    expect(badgeColor).toBe(BADGE_DEFICIT_COLOR);
   });
 
   it('Monday morning resets to a full single-day deficit', async () => {
@@ -257,7 +257,7 @@ describe('updateBadge orchestration', () => {
     fetchWeekMock.mockResolvedValue({ kind: 'ok', value: [] }); // 24h deficit
     await updateBadge();
     expect(badgeText).toBe('24h');
-    expect(badgeColor).toBe(BADGE_DANGER_COLOR);
+    expect(badgeColor).toBe(BADGE_DEFICIT_COLOR);
   });
 
   it('null marked-done flag renders the live deficit', async () => {

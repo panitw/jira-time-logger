@@ -1754,3 +1754,839 @@ functional after the teardown flush had already handed the delete to the durable
 the entire in-flight period, not just the undo window itself. D-7.5-18's own verdict (deferred delete,
 outbox teardown flush) is unchanged; only the implementation's premature state-clearing was corrected.
 See the story file's "Finding Resolutions" section for the full detail.
+
+---
+
+## Story 7.6 — Day-Status Vocabulary & the Time Off Rename
+
+*Story file `7-6-day-status-vocabulary-time-off-rename.md`, `review`, baseline commit `40de36d`,
+implemented 2026-07-26. The creator's `D-7.6-1 … D-7.6-12` are folded in below per D-7.3-11 (the
+creator reserved `D-7.6-30+` for orchestrator/owner rulings so they could not collide; those rulings
+were recorded as `D-7.6-35 … D-7.6-39`, kept in their original numbering below).*
+
+**Why this story carries more weight than its size suggests.** It is the only story in Epic 7 that two
+later stories both depend on — 7.7's week totals row and 7.8's matrix rows both consume the shared
+day-status component, and 7.6's own ACs forbid building it twice. A wrong API here is inherited twice.
+It is also the widest-reaching change in the epic, touching status rendering and user-facing strings
+across the popup, week and manager surfaces simultaneously.
+
+### D-7.6-1 — Where day status is computed today: ONE source, three renderers
+
+*Investigated at `40de36d`.* There is exactly **one** derivation and **three** places that paint it.
+
+**The single derivation:** `lib/week-grid.ts:220` `computeDayStatuses(grid, { targetHours, today })`
+→ `DayStatus[]` (7 entries, index 0 = Monday). Pure; the clock is injected. It is called from exactly
+one place: `components/week/WeekView.tsx:124`.
+
+**The three renderers, each with its own hard-coded map — this is what gets unified:**
+
+| Surface | File:line | What it hard-codes |
+|---|---|---|
+| Week totals cell | `components/week/WeeklyGrid.tsx:87–140` | `STATUS_CLASSES` map, `Check`/`AlertCircle` icons, `STRINGS.belowTarget`/`statusComplete`/`pto` |
+| Week body-cell tint | `components/week/DayCell.tsx:33–38` | `STATUS_TINT` map |
+| Popup progress note | `components/shell/ChromeHeader.tsx:14–18, 90–92` | its own `toGoToday`/`targetMet` strings, **no icon at all** |
+
+**A second, adjacent derivation exists and is NOT unified:** `lib/week-gaps.ts:43`
+`computeWeekGaps(grid, { targetHours })`. Its own header comment explains why it is deliberately
+distinct from `computeDayStatuses` (it evaluates **all** Mon–Fri regardless of `today`, because marking
+a week done is an end-of-week act). **It stays separate.** Merging them would change the
+mark-week-as-done write path, which is 7.7's territory. This story only updates its **copy** (see
+D-7.6-9).
+
+**A third, unrelated status axis exists and is NOT unified:** `lib/manager-matrix.ts:72` `CellStatus`
+(`approved | on-target | gap | dirty | unapproved-neutral`). See D-7.6-4.
+
+**Concretely, what gets unified:** the three renderer maps above collapse into one component.
+**What stays:** `computeWeekGaps`, `CellStatus`, and `buildWeekGrid`'s `WeekGridCategory` (`'pto'` is
+an internal identifier — AC6 leaves it alone).
+
+---
+
+### D-7.6-2 — Two files: a pure vocabulary module and one React component
+
+**Verdict.**
+
+**`lib/day-status.ts` (new, pure — zero React, zero `lucide-react`):**
+
+```ts
+/** The five-state day vocabulary. Keys mirror DESIGN.md's `icons:` block verbatim. */
+export type DayStatus = 'met' | 'partial' | 'attention' | 'time-off' | 'weekend';
+
+/** The five day statuses PLUS the three things that are explicitly NOT day statuses.
+ *  Registered here so no surface hard-codes LoaderCircle / EyeOff / CircleX either. */
+export type StatusKind = DayStatus | 'restricted' | 'loading' | 'error';
+
+export const DAY_STATUSES: readonly DayStatus[];        // exhaustiveness fixture
+export const STATUS_LABEL: Record<StatusKind, string>;  // "Met" | "Partially logged" | ...
+
+/** Sat/Sun from a local YYYY-MM-DD. Exported so 7.7 tints the column from the
+ *  SAME predicate the status is derived from — see D-7.6-6. */
+export function isWeekend(iso: ISODate): boolean;
+
+/** Single-day derivation, pure. Used by ChromeHeader (which has no WeekGrid). */
+export function dayStatusFor(input: {
+  iso: ISODate;
+  loggedSeconds: number;
+  timeOffSeconds: number;   // 0 when the day has no time-off worklog
+  targetSeconds: number;
+}): DayStatus;
+
+/** The plain-language note. `today` is injected; the note — not the status —
+ *  is what varies for a future day (D-7.6-7). */
+export function dayStatusNote(input: {
+  status: DayStatus;
+  loggedSeconds: number;
+  timeOffSeconds: number;
+  targetSeconds: number;
+  iso: ISODate;
+  today: ISODate;
+}): string;
+```
+
+**`components/shared/DayStatusIndicator.tsx` (new, the ONE React component):** owns the **only**
+`Record<StatusKind, LucideIcon>` map and the **only** `Record<StatusKind, colourClass>` map in the
+product. Nothing else in `components/` may contain either.
+
+**Why two files.** `lib/` is framework-agnostic by architecture rule (`lib/pto.ts:5`,
+`lib/week-grid.ts:8` both say so). Importing `lucide-react` React components into `lib/` would break
+that. Splitting also lets `ChromeHeader` — which has no `WeekGrid` at all, only `seconds` and
+`targetHours` — derive a status without pulling in the grid builder.
+
+**Why `computeDayStatuses` stays in `lib/week-grid.ts`.** It needs `WeekGrid`. It is **rewritten in
+place** to return the new five-member union by delegating to `dayStatusFor`, and it re-exports
+`DayStatus` from `lib/day-status.ts` so existing imports in `WeeklyGrid.tsx:18` and `DayCell.tsx:17`
+keep compiling. Moving the function would churn three files and their tests for no benefit.
+
+---
+
+### D-7.6-3 — **THE 7.7 / 7.8 API CONTRACT** (the deliverable, not an implementation detail)
+
+**This is the section 7.7 and 7.8 code against. Changing it later is a breaking change to two stories.**
+
+```ts
+export type DayStatusIndicatorProps = {
+  /** Which vocabulary entry to render. Icon and colour are derived from this and
+   *  are NOT overridable — that is the whole point of the component. */
+  status: StatusKind;
+
+  /** Layout.
+   *  'inline'  — icon + label on one line. Popup progress note; matrix exception chip.
+   *  'stacked' — line 1: `value` + icon · line 2: 3px progress bar · line 3: `note`.
+   *              This is 7.7's week totals cell anatomy (DESIGN.md:471–473). */
+  variant?: 'inline' | 'stacked';
+
+  /** Line-one figure, e.g. `6.5 / 8h`. Rendered with the `tabular` utility.
+   *  Omit for a chip that carries no number. */
+  value?: React.ReactNode;
+
+  /** Overrides the visible text label. Defaults to STATUS_LABEL[status].
+   *  Used by 7.8 to say "Edited after approval" for the SAME `attention` token
+   *  the week grid uses for "Nothing logged" — same icon, same colour, different
+   *  axis, different words. NEVER used to change a status's colour or icon. */
+  label?: string;
+
+  /** 'stacked' line three — the plain-language note ("2.5h short"). Comes from
+   *  `dayStatusNote()`; passed in because only the caller knows the seconds. */
+  note?: string;
+
+  /** 'stacked' only, 0–100. The bar is `aria-hidden`; the note carries the meaning.
+   *  Quantised to 5% steps the same way ChromeHeader.tsx:24–52 already does, because
+   *  Tailwind's build-time scanner cannot see a runtime-interpolated width class. */
+  percent?: number;
+
+  /** 'data' (default) or 'chrome'. See D-7.6-5 — status-clean has no contrast on
+   *  the purple gradient, so the popup header needs the chrome variant. */
+  tone?: 'data' | 'chrome';
+
+  className?: string;
+};
+```
+
+**Amendment (finisher pass, Finding 12): `status` is `DayStatus | null`, not a bare `DayStatus`.**
+`computeDayStatuses`/`dayStatusFor` return `null` for a future workday with
+nothing logged yet (D-7.6-35) — there is no sixth vocabulary member, `null`
+means "no day status to render." `DayStatusIndicatorProps.status` itself
+stays `StatusKind` (non-nullable, matching `STATUS_ICON`/`STATUS_COLOR_CLASS`,
+which have no `null` key) — the null guard lives at the CALL SITE, mirroring
+the same "correct/no-status cell → plain number" rule this section already
+gives 7.8 for an approved matrix cell below. This section originally showed
+the pre-null signature and 7.7 sample, which would not have typechecked as
+written; corrected here rather than left stale for 7.7 to discover.
+
+**7.7's call site (week totals cell):**
+
+```tsx
+{status ? (
+  <DayStatusIndicator
+    variant="stacked"
+    status={status}
+    value={`${logged} / ${target}h`}
+    percent={pct}
+    note={dayStatusNote({ status, loggedSeconds, timeOffSeconds, targetSeconds, iso, today })}
+  />
+) : (
+  <span className="tabular">{`${logged} / ${target}h`}</span>
+)}
+```
+
+**7.8's call sites (matrix):**
+
+```tsx
+// exception — edited after approval
+<DayStatusIndicator variant="inline" status="attention" label="Edited after approval" />
+// exception — restricted visibility. No `label` override needed — lowercase
+// "hidden" is now STATUS_LABEL.restricted's own default (Finding 10; was
+// "Hidden" before this pass corrected the copy-drift from D-7.6-12).
+<DayStatusIndicator variant="inline" status="restricted" />
+// correct, approved cell → RENDERS NO INDICATOR AT ALL. See below.
+```
+
+#### The "silent mode" question, resolved explicitly
+
+7.8's AC requires that *a correct, approved cell renders as a bare `tabular` number with no fill, no
+border and no icon*. Two designs were considered:
+
+- **Rejected — a `silent` prop on `DayStatusIndicator`.** A component whose documented behaviour is
+  "render nothing" has no visual contract, is trivially left on by accident, and makes AC3
+  **untestable**: from the DOM you cannot distinguish a silent indicator from a missing one, so the
+  grep test that enforces "no surface hard-codes an icon" would pass for a surface that renders
+  nothing correct *and* for one that renders nothing at all.
+- **CHOSEN — silence is the absence of the component.** 7.8's correct-approved cell renders a plain
+  `<span className="tabular">` and imports nothing from this story. That is legitimate and does not
+  violate AC3, because **AC3 governs how a status is rendered, not whether one is.** A correct approved
+  cell has no *day* status to render — it is `CellStatus='approved'` on the manager axis (D-7.6-4).
+
+**Written as a rule for 7.8's author:** *if the cell is correct, render a number. If it is an
+exception, render `DayStatusIndicator`. There is no third path and no silent mode.*
+
+---
+
+### D-7.6-4 — `CellStatus` is a different axis and is NOT merged into `DayStatus`
+
+**Verdict.** `lib/manager-matrix.ts:72` `CellStatus` (`approved | on-target | gap | dirty |
+unapproved-neutral`) stays exactly as it is. **`lib/manager-matrix.ts` is not modified by this story.**
+
+**Why this is not a dodge of AC3.** `DESIGN.md:234` defines the `attention` token as
+`Circle # fill="currentColor"; nothing logged, **or edited after approval**` — the spec deliberately
+gives one token two meanings on two axes. That is why the registry keys are named after
+**DESIGN.md's icon keys** (`attention`) rather than after the day meaning (`none-logged`): 7.8 reusing
+`attention` for "edited after approval" is the spec's intent, not a semantic abuse. The `label` prop
+carries the axis-specific words.
+
+**What this story DOES change in the matrix:** `components/manager/ManagerMatrix.tsx:96`'s
+`gap: 'bg-state-danger-subtle text-state-danger'` — a **time-related red** — and the `Check`/
+`AlertCircle` icons at lines 805/807. Those route through `DayStatusIndicator`. The `dirty` stripe,
+the streaming behaviour, the approval logic and `computeCellStatus` are untouched.
+
+---
+
+### D-7.6-5 — The popup header IS a consumer, and it needs a chrome tone
+
+**Verdict.** Yes, `ChromeHeader` consumes the shared component. It is the "popup progress note" AC3
+names by hand.
+
+Today `components/shell/ChromeHeader.tsx:90–92` computes `"5.5h to go today"` /
+`"Target met — 8h logged"` itself, with **no icon and no status colour**. Under this story the note
+becomes `<DayStatusIndicator variant="inline" tone="chrome" status={…} />`.
+
+**The trap this exposes.** `DESIGN.md` frontmatter:
+
+```
+# status-clean has no contrast on the purple gradient — chrome-only variant.
+status-clean-on-chrome: '#8FE0A8'
+```
+
+`--color-status-clean-on-chrome` is **not present in `styles/globals.css`** at `40de36d` (verified —
+the file has `status-clean`, `status-dirty`, `status-recomputing`, `status-error` and the amber/error
+tints, but no chrome variant). So the `chrome` tone requires adding that one token.
+
+**This is not a new colour value** — it is a spec-defined token that Story 7.1 did not add. But it is a
+`styles/globals.css` edit, which is 7.1's foundation. **→ D-7.6-31 (ESCALATION), below — resolved as D-7.6-39.**
+
+**Forward seam for 7.9.** `ChromeHeader` cannot tell time off from ordinary hours — it only receives
+`seconds` and `targetHours` (`entrypoints/popup/App.tsx:241–246`). 7.9 owns the popup's time-off state.
+So this story adds an **optional** `status?: DayStatus` prop to `ChromeHeader`; when omitted the header
+derives `met | partial | attention` from `seconds` vs `targetHours` exactly as it does now. 7.9 later
+passes `time-off`. **NFR1: this must stay synchronous — no new query, no new storage read on the
+first-paint path.**
+
+---
+
+### D-7.6-6 — Weekend is a day *status*, and the column tint is a separate axis
+
+**Verdict.** `weekend` is one of the five `DayStatus` members (both `DESIGN.md:236` and
+`EXPERIENCE.md:204` list it as one), supplying `Minus`, `faint`, the label "Weekend", the note
+"weekend", **no target and no progress bar**. The **`bg-weekend` column tint is NOT part of the
+status** — it is applied by the week grid in 7.7 from a separate boolean.
+
+**Why split them.** The tint spans header + cell + totals "as one recessive object"
+(`DESIGN.md:384`, and 7.7's own AC). A per-cell status value cannot express "tint the whole column",
+and the popup and the matrix have no day columns at all. This story exports `isWeekend(iso)` from
+`lib/day-status.ts` so 7.7 derives the tint from the **same predicate** the status came from — that is
+what keeps them from drifting.
+
+**Precedence.** `time-off` > `weekend` > `met` > `partial` > `attention`.
+
+- `time-off` beats `weekend`: a deliberately booked day is information, and today's code already gives
+  PTO absolute precedence (`lib/week-grid.ts:241`). Preserving that avoids a silent behaviour change.
+- `weekend` beats `met`: a target-relative status is meaningless without a target, and `DESIGN.md:236`
+  says the weekend column has "no status of its own". **This IS a visible behaviour change** — today a
+  Saturday with ≥ target renders `complete` green (`lib/week-grid.ts:245` has no weekend guard on the
+  complete branch). After this story it renders `weekend`, with the hours still shown. **Pin it with a
+  test** so a reviewer sees it was chosen, not dropped.
+- `attention` is last, so a weekday with 0h and no time off is the only amber.
+
+---
+
+### D-7.6-7 — A **future** empty workday — **ESCALATION — RESOLVED by D-7.6-35 (owner)**
+
+**The fork.** `epics.md`'s AC says `Circle` filled = "workday with nothing logged", with no
+future/past qualifier. But `EXPERIENCE.md:211` says *"Amber appears **once** in a normal week."* Those
+two cannot both hold: on Monday morning, four future workdays have nothing logged, and a literal
+reading paints four amber cells — precisely the "five chips in a row" defect this story exists to kill,
+in a different colour.
+
+Today's code sidesteps it: `lib/week-grid.ts:249–254` reds only `pastOrToday && !isWeekend`.
+
+**Options:**
+
+| | Behaviour | Cost |
+|---|---|---|
+| **A (literal)** | `attention` for any workday with 0h, past or future | Four amber cells on Monday. Contradicts EXPERIENCE.md:211. |
+| **B (recommended)** | Status is `attention` regardless — **the note differentiates**: past/today → "Nothing logged"; future → "Nothing logged yet". Five states preserved, `today` enters only `dayStatusNote()`, never `dayStatusFor()`. | Amber still appears on future days, just with softer words. |
+| **C** | Keep the `pastOrToday` gate; a future empty workday resolves to `partial` | `partial` = "partially logged"; 0h is not partial. Mislabels the state and puts a clock read back into the pure derivation. |
+| **D** | A sixth state | Violates AC2's "exactly one of" five. Rejected outright. |
+
+**Creator's recommendation: B**, because it keeps `dayStatusFor` clock-free (the property that makes it
+testable), keeps the union at five, and honours EXPERIENCE.md's *intent* (don't scold about a day that
+hasn't happened) through the words rather than through a state explosion. **If the owner wants amber
+suppressed entirely on future days, that requires option C and a ruling — do not choose it silently.**
+
+**→ Needs a ruling before Task 3 is written. Record as D-7.6-30 — resolved as D-7.6-35.**
+
+---
+
+### D-7.6-8 — Does this story reconcile the *validation* reds D-7.3-16 deferred? — **ESCALATION — RESOLVED by D-7.6-37 (orchestrator)**
+
+D-7.3-16 ruled unparseable/over-limit hour input is amber, applied it in `ResumeCard`, and said the
+other surfaces "intentionally differ **until a future story reconciles them**".
+
+The surviving validation reds — **all time-related**, all arguably in AC1's scope:
+
+- `components/today/QuickLogForm.tsx:94, 275, 278` — border + helper + over-limit
+- `components/week/DayCell.tsx:318, 334, 339` — border + over-limit + unparseable
+
+**Creator's recommendation: YES, include them.** They are token-only, single-line changes; AC1 says
+"no red is rendered for **any** time-related state anywhere in the product"; and D-7.3-16 named a future
+story for exactly this. `text-state-danger` → `text-amber-ink`, `border-state-danger` →
+`border-amber-border`.
+
+**Explicitly OUT of scope either way — Settings, owned by 7.10:**
+`components/settings/TargetHoursField.tsx:74,76` · `ReminderTimeField.tsx:67,69` ·
+`CatchAllProjectField.tsx:111,118` · `ManagerDisplay.tsx:42` · `ApiTokenSetup.tsx:138`. These are
+form-validation and connection errors, not time-related states, and 7.10 restyles that whole surface.
+
+**→ Record as D-7.6-32 — resolved as D-7.6-37.**
+
+---
+
+### D-7.6-9 — Half-day time off: the five states **cannot** express it — **ESCALATION — RESOLVED by D-7.6-38 (orchestrator)**
+
+**The problem, concretely.** `lib/pto.ts:27` `logHalfDayPto` posts `targetHours / 2`. Both
+`PtoQuickAction` (Story 2.5) and `PtoPopover` (Story 4.4) expose it. But every downstream consumer
+treats *any* time-off seconds as a whole day:
+
+- `lib/week-grid.ts:232` — `if ((r.cellsSeconds[i] ?? 0) > 0) ptoDays[i] = true` → status `pto`, which
+  wins over everything.
+- `lib/week-gaps.ts:61` — `if (ptoDays[i]) continue` → **a half-day time-off day is never a gap**.
+
+So a day with 4h of time off and nothing else renders as a settled full day, **and the week can be
+marked done with 4h on it.** The AC lists only "full-day time off"; the vocabulary as written would
+print "full-day time off" under a half day. That is a false statement about the user's own data.
+
+**Options:**
+
+| | Approach | Verdict |
+|---|---|---|
+| **1 (recommended)** | Status stays `time-off`; the **note** is computed from `timeOffSeconds` vs `targetSeconds` → "Full-day time off" / "Half-day time off", and when `loggedSeconds < targetSeconds` it appends the shortfall: `"Half-day time off · 2.5h short"`. Zero new states, zero new icons, honest. | `WeekGrid` already carries `category: 'pto'` per row, so `computeDayStatuses` can sum time-off seconds per day with no new data source. |
+| **2** | A sixth state `time-off-partial` | Violates AC2's "exactly one of" five. |
+| **3** | Half-day resolves to `partial` | Loses the `Diamond`; contradicts "settled and intentional" (`EXPERIENCE.md:203`). |
+
+**Separately, and NOT fixed here:** `lib/week-gaps.ts:61`'s "any time-off seconds ⇒ not a gap" is a
+**pre-existing correctness bug** on the mark-week-as-done write path. This story records it and does
+**not** fix it — 7.7 owns the gap dialog and the mark-done flow, and changing a write path inside a
+copy-and-vocabulary story is exactly the kind of scope leak this epic has been burned by. **Hand it to
+7.7 explicitly.**
+
+**→ Record as D-7.6-33 — resolved as D-7.6-38.**
+
+---
+
+### D-7.6-10 — The toolbar badge is red for a time-related state — **ESCALATION — RESOLVED by D-7.6-36 (owner)**
+
+`lib/badge.ts:25` `BADGE_DANGER_COLOR = '#dc2626'`, applied at `lib/badge.ts:49` to a `<N>h` deficit
+badge. **That is red for a time-related state, in the product, on the toolbar** — a literal violation of
+AC1's "anywhere in the product".
+
+**But:** `EXPERIENCE.md:32` lists the toolbar badge as **"Unchanged"** in the surface inventory, and
+neither `DESIGN.md` nor any Epic 7 story's ACs mention it. No other story picks it up — 7.9 is popup
+states, 7.11 is the guest rail.
+
+**Options:** (a) recolour to `--color-status-dirty` `#b45309` (the amber the vocabulary already owns —
+"nothing logged" is exactly what a deficit is); (b) leave it, on EXPERIENCE.md's "Unchanged"; (c) defer
+to a post-epic item.
+
+**Creator's recommendation: (a).** It is a two-line change in a file with a dedicated test
+(`lib/badge.test.ts:169–170` pins the hex, so the change is provably complete), and leaving a red `8h`
+on the toolbar makes AC1 false on the most-visible surface the product owns.
+
+**→ Record as D-7.6-34 — resolved as D-7.6-36.**
+
+**Not in scope either way:** `lib/banner-styles.ts:27` `DANGER = '#dc2626'` is applied only to
+`errorTextStyle` (`lib/banner-styles.ts:154`), used at `lib/banner-dom.ts:154` for the guest rail's
+**failed-write** slot (`role="alert"`). That is red's one legitimate job. The guest rail is 7.11's.
+
+---
+
+### D-7.6-11 — `Lock` → `EyeOff` in the matrix: register now, re-render in 7.8
+
+**Verdict.** This story **registers** `restricted → EyeOff` in `STATUS_ICON` and **does** swap
+`components/manager/ManagerMatrix.tsx:2, 818`'s `Lock` for the shared component, but does **not**
+restyle the cell into 7.8's `status-chip-restricted` chip.
+
+**Why swap now.** AC5 says "restricted visibility uses `EyeOff`". Leaving `Lock` hard-coded in
+`ManagerMatrix` also violates AC3 ("no surface hard-codes an icon"), and the grep test in AC3 would
+have to carve out an exception for it — an exception that would then quietly survive 7.8.
+
+**Why not restyle now.** The chip geometry, the dashed "no hours" chip, and the near-silent correct
+cell are all 7.8's ACs. This story changes the icon and the colour token; the layout is 7.8's.
+
+**Consequence:** `docs/a11y-audit-2026-06-27.md` row 4 names the icon set
+`(Check/AlertCircle/RefreshCw/Lock/Clock)` verbatim, and row 6 describes the Lock as decorative. Both
+go stale the moment this lands. **Updating those two rows is a task (Task 9)** — the audit is a gate
+that must still pass at the end of the epic, and this is the story most likely to move that needle.
+
+---
+
+### D-7.6-12 — Copy: the exact strings, taken from EXPERIENCE.md
+
+`EXPERIENCE.md:99–101` is binding: **strings never contain their icon.** The icon is a sibling element.
+These go into `STRINGS` / `STATUS_LABEL` verbatim.
+
+| Situation | Copy | Source |
+|---|---|---|
+| Met | "Target met — 8h logged" | EXPERIENCE.md:110 |
+| Progress, mid-day | "5.5h to go today" | EXPERIENCE.md:109 |
+| Partial (week grid) | "2.5h short" · "in progress" | EXPERIENCE.md:114, epics.md AC |
+| Nothing logged | "Workday with nothing logged" | EXPERIENCE.md:115 |
+| Time-off day | "Full-day time off" / "Half-day time off" (D-7.6-9) | epics.md AC, EXPERIENCE.md:111 |
+| Weekend | "Weekend" | epics.md AC |
+| Partial, legend | "Partially logged — normal, not an error" | EXPERIENCE.md:116 |
+
+**Never** "below target". **Never** "incomplete". `EXPERIENCE.md:90`: *state the fact, not the verdict.*
+
+---
+
+---
+
+### D-7.6-35 — Future workdays are neutral, not amber; the status derivation becomes clock-aware
+**Owner decision** (asked — two authoritative specs disagreed, and the answer changes what the grid
+looks like for most of every week).
+
+**Verdict.** Only **elapsed** workdays with nothing logged render `attention` (filled amber `Circle`).
+Workdays that have not happened yet render a neutral/empty status. `dayStatusFor` therefore takes
+"today" as an **input** and is no longer a pure function of a single day's data.
+
+**Situation.** Read literally, the AC says any workday with nothing logged is `attention`. On Monday
+morning that paints **all five** weekdays amber, because Tuesday through Friday also have nothing logged
+— they have not happened yet. `EXPERIENCE.md:211` states the opposite intent: amber should appear
+**once** in a normal week. The conflict is real and neither document is obviously wrong; the AC
+describes the state machine, the experience spec describes the result.
+
+**In simple terms.** Priya opens the week grid at 9:05 on Monday having logged nothing yet. Under the
+literal rule she sees five amber "nothing logged" cells — the grid looks like a wall of problems, four
+of which are simply days that have not arrived. Amber is supposed to mean *this needs your attention*;
+applied to Thursday on a Monday it means nothing at all, and a signal that fires constantly stops being
+a signal. Under the chosen rule she sees one amber cell for today and four quiet empty ones, and amber
+still means something when it appears on Wednesday.
+
+**Options considered.** (a) *Amber everywhere, differentiate only the wording* — past days read "Nothing
+logged", future days "Nothing logged yet". This was the creator's recommendation, and its real merit is
+that `dayStatusFor` stays **clock-free**: a pure function of one day's data, trivially testable, with no
+"today" to inject or freeze. Rejected because it keeps the exact visual `EXPERIENCE.md` warns against —
+changing the label does not change that the grid is mostly amber. (b) *Future workdays neutral* — chosen.
+
+**Why this wins, and what it costs.** It preserves the epic's central premise: this revamp exists to
+make a half-finished week read as *unfinished* rather than *wrong*, and five amber cells on a Monday is
+the accusatory reading in a new colour. The accepted cost is genuine and must not be waved away: the
+derivation becomes **clock-dependent**, which is strictly harder to test and a classic source of flaky,
+timezone-sensitive tests.
+
+**Consequences.** "Today" is passed in explicitly as a parameter — **never read from a clock inside the
+derivation** — so tests inject it rather than mocking global time. Every test touching day status pins a
+fixed date. The boundary cases must be pinned deliberately: **today itself** with nothing logged is
+elapsed (it is in progress, so it is amber, not neutral), and the transition at local midnight must be
+defined against the user's local timezone, not UTC. Weekend precedence is unaffected.
+
+**How we'd know it was wrong.** Flaky tests around midnight or in non-local timezones would mean "today"
+is leaking in from a clock somewhere instead of being injected. Users reporting they were never warned
+about a day they missed would mean the elapsed boundary is off by one.
+
+### D-7.6-36 — The toolbar badge's deficit red is recoloured
+**Owner decision** (asked — two authoritative specs disagreed on the most-seen surface in the product).
+
+**Verdict.** `lib/badge.ts` stops painting `#dc2626` for an hours deficit; the deficit renders in
+`status-dirty` amber. `EXPERIENCE.md:32`'s "Unchanged" listing for the badge is overruled.
+
+**Situation.** AC1 says no red is rendered for **any** time-related state anywhere in the product, and an
+hours deficit is exactly that. `lib/badge.ts:25,49` paints the toolbar badge red for it — a literal AC1
+violation that had gone unnoticed until this story's blast-radius audit, precisely because the badge was
+listed as out of scope.
+
+**In simple terms.** The badge is the one piece of this product a user sees without opening anything —
+it sits in the browser toolbar all day. A red badge announcing you are behind on hours is the single
+most persistent accusatory signal the product emits, and retiring exactly that reading is why Epic 7
+exists. Leaving it red would mean the epic's headline change stopped at the edge of the surface people
+actually look at.
+
+**Options considered.** (a) *Recolour to `status-dirty`* — chosen. (b) *Leave it red*, honouring
+`EXPERIENCE.md:32` literally and keeping the badge's blast radius at zero — rejected because it makes
+AC1's "no red anywhere" false, with the exception living on the most visible surface.
+
+**Why this wins.** The badge is the clearest case AC1 was written for, not an edge of it. The accepted
+cost is a deviation from a spec line that said the badge was untouched, and a slightly wider blast radius
+for this story.
+
+**Consequences.** `lib/badge.test.ts:169-170` already pins the hex, so the change is **provably**
+complete rather than best-effort — that test must be updated, not deleted. Badge contrast must be
+recomputed by hand against the toolbar, not assumed: amber-on-white and amber-on-dark-toolbar are
+different problems, and the automated axe harness cannot see a browser-chrome badge at all. *Action for
+the EXPERIENCE.md owner:* line 32 should be amended, alongside line 140's resume-card seeding (D-7.5-11),
+the result-row redraw (D-7.4-12) and the `/70` → `/85` chrome eyebrow (Story 7.2).
+
+**How we'd know it was wrong.** The badge becoming hard to read at 16 px against a dark toolbar theme —
+that is a contrast failure, and the fix is a different amber, not a return to red.
+
+### D-7.6-37 — Validation reds in `QuickLogForm` and `DayCell` go amber now
+**Orchestrator decision** (routine — it applies a principle already settled in Story 7.3 to the two
+places that were left inconsistent).
+
+**Verdict.** The unparseable-input reds at `QuickLogForm.tsx:94,275,278` and `DayCell.tsx:318,334,339`
+become amber in this story. Settings-surface validation reds stay red for now and belong to **Story
+7.10**, which owns that surface.
+
+**Situation.** Story 7.3 already ruled that unparseable input renders **amber, not red**, on the grounds
+that red is reserved for a write Jira actually refused — and deliberately left `QuickLogForm`'s
+pre-existing red alone to keep 7.3's diff scoped. That deferral was correct then and expires now: 7.6 is
+the story whose entire job is making red mean exactly one thing.
+
+**In simple terms.** Typing "abc" in an hours box is not a failure — nothing was sent anywhere, and
+nothing is wrong yet. Red says *the system rejected this*; amber says *this isn't usable yet*. Leaving
+the resume card amber and the quick-log form red for the identical mistake is incoherent, and whichever
+one a user meets first teaches them the wrong meaning for the other.
+
+**Why this wins.** It is the same condition, so it gets the same treatment. Leaving it would ship AC4
+("`status-error` fires only on a refused write") as false in two files this story is already auditing.
+Deferring the Settings surface keeps 7.10's diff clean and does not weaken the rule, because Settings
+validation is a different surface with its own story.
+
+**Consequences.** After this story, a red pixel anywhere on the popup or week surfaces means Jira
+refused a write — full stop. The Settings exception is **named and owned** by 7.10 rather than left
+implicit; if 7.10 does not close it, the epic ships with a documented inconsistency.
+
+### D-7.6-38 — Half-day time off is expressed in the note, not as a sixth status
+**Orchestrator decision** (routine — the current behaviour states something factually untrue about the
+user's data, and the fix is additive).
+
+**Verdict.** A half-day of time off keeps `status: 'time-off'`. The **note** differentiates it — e.g.
+"Half-day time off · 2.5h short" — computed from the `category:'pto'` seconds `WeekGrid` already carries.
+**No sixth state is added**, and the five-state vocabulary is unchanged.
+
+**Situation.** `logHalfDayPto` posts `targetHours / 2`, but `week-grid.ts:232` treats *any* time-off
+seconds as a whole day. So a 4-hour half-day currently renders the note "full-day time off" — the product
+asserting something about the user's data that is simply false. The five states cannot express a half day,
+which is why this was flagged rather than assumed.
+
+**In simple terms.** You take Friday afternoon off and log four hours in the morning. The grid tells you
+Friday was a full day of time off. It was not — you worked half of it, and you are half a day short of
+target. The status "time off" is still correct; only the sentence underneath is a lie.
+
+**Why this wins.** The status axis is about *what kind of day this was*, and a half-day off is still a
+time-off day — adding a sixth state would push a quantity into a categorical vocabulary that 7.7 and 7.8
+both consume, widening the API for one case. The note already exists to carry specifics. Zero new states,
+zero API change for the two downstream stories.
+
+**Consequences.** The note becomes a function of the time-off **seconds**, not merely of the time-off
+flag. A test must pin a half-day rendering both the correct note and the correct shortfall.
+
+**A separate pre-existing bug is NOT fixed here and is hereby assigned to Story 7.7.** `week-gaps.ts:61`
+skips any day carrying time-off seconds, so a week containing a 4-hour half-day can be marked done while
+genuinely short. That is a **write path** — it gates "Mark week as done" — and it belongs with 7.7's gap
+dialog, which owns that flow. It is recorded here so it cannot be lost: **7.7 must close it or explicitly
+defer it with a reason.**
+
+### D-7.6-39 — `status-clean-on-chrome` is added to the token layer
+**Orchestrator decision** (routine — a defect against an authoritative spec, same class as D-7.2-3's
+spacing-scale fix).
+
+**Verdict.** Add `status-clean-on-chrome` to `styles/globals.css`. It is specified in `DESIGN.md` but
+absent from the token layer, so it is a **missing** token rather than a new colour value, and adding it
+does not breach the epic's zero-new-colours rule.
+
+**Situation.** The chrome header renders on the purple gradient, where the ordinary `status-clean` green
+has insufficient contrast. `DESIGN.md` anticipated this and specifies an on-chrome variant; Story 7.1
+simply did not emit it. Without it the chrome surface has no compliant way to render a "met" status —
+and D-7.6's own routing of `ChromeHeader`'s progress note through the shared component needs one.
+
+**Why this wins.** The alternative is a one-off hex at the call site, which breaks the token discipline
+7.1 and 7.2 established and which D-7.3-14 already ruled against for the resume-card border.
+
+**Consequences.** This edits Story 7.1's token foundation, so it is called out rather than slipped in —
+the same treatment D-7.2-3 got. Contrast against **both** gradient stops must be computed by hand, since
+the axe harness cannot evaluate a gradient background. Value comes from `DESIGN.md`; no colour is
+invented.
+
+### D-7.6-40 — On the purple chrome, status is white-only; there is no per-status colour there
+**Owner-directed decision.** The owner declined the three options offered and instead pointed at the
+original Claude Design source. That was the right move: the design answers the question outright, and
+**both** options the orchestrator had recommended against were wrong.
+
+**Verdict.** On the chrome gradient, day status renders in **white / white-at-opacity only** — no
+per-status colour. `DESIGN.md:172` states the general recipe verbatim: `on-chrome: 'background
+rgba(255,255,255,.16), color #fff'`. The chrome **progress bar fill is plain `#fff`**, not tinted by day
+status. The progress note renders at `rgba(255,255,255,.85)`.
+
+**Evidence (design source, `imports/jira-time-logger-round2.dc.html:497-521`).** Every element on the
+gradient is white or translucent white — eyebrow `rgba(255,255,255,.72)`, date `#fff`, logged figure
+`#fff`, `/ 8h` `rgba(255,255,255,.72)`, bar track `rgba(255,255,255,.2)` with fill `#fff`, and the
+day-status progress note `rgba(255,255,255,.85)`. **Not one status colour appears on the gradient
+anywhere in the design.** The live `claude.ai/design` URL is not machine-fetchable (403 — only
+`/code/artifact/` URLs are), but the vendored round-2 import is the same artifact.
+
+**In simple terms.** The question assumed the chrome header needed a coloured status and we were missing
+four colours for it. The design's answer is that the chrome header was never meant to carry status
+colour at all. On purple, colour cues would fight the brand surface, so the design carries meaning there
+with **size, weight and wording** instead — the big white figure, the white bar, a plain-language note.
+The colour vocabulary belongs to the white canvas below. Nothing was missing; the premise was wrong.
+
+**Why the alternatives were wrong.** Deriving four on-chrome variants would have invented colours the
+design deliberately does not use — not merely a zero-new-colours breach but a direct contradiction of
+design intent. Blocking on the DESIGN.md owner would have waited for an answer that already existed.
+And the orchestrator's own "recommended" option, while it lands in the right place, justified itself on
+WCAG grounds rather than on the design's actual intent — right answer, wrong reason.
+
+**This corrects D-7.6-39.** That entry justified adding `status-clean-on-chrome` (`DESIGN.md:50`,
+`#8FE0A8`) as the token the chrome header needed for a "met" **day status**. That rationale was wrong.
+The token's real consumer is `epics.md:2044` — **Story 7.10's connection-status dot** ("`status-clean-on-chrome`
+dot + email"), which is a connection indicator, not a day status. The token still belongs in the layer,
+so **the verdict of D-7.6-39 stands and the addition is correct**; only its stated purpose was mistaken.
+It must not be used for day status.
+
+**Consequences.** `tone="chrome"` legitimately maps every status to white/opacity — the developer's
+"drops 4 of 5 AC2 tokens" is **correct behaviour, not a defect**, and the finding against it should be
+resolved as no-change-needed with this reasoning recorded. AA is satisfied by white on the gradient, and
+the epic's colour-is-never-the-sole-signal rule is satisfied by the icon and the visible text label.
+**Story 7.9 is unblocked on the same terms**: time off on chrome does **not** need `legacy-purple` — it
+renders white with its filled `Diamond` and its label. Note the design's `.85` for the progress note
+independently corroborates Story 7.2's `/70` → `/85` contrast ruling.
+
+**How we'd know it was wrong.** Users unable to tell an at-target day from a short one when looking only
+at the chrome header. The fix would then be wording or the icon, **not** colour.
+
+### D-7.6-41 — Correct matrix cells revert to a bare number; `restricted` keeps its label
+**Orchestrator decision** (routine — the story violated a contract it authored; the reviewer's fix
+reduces the diff rather than growing it).
+
+**Verdict.** `ManagerMatrix.tsx:817-823` must stop routing `approved` and `on-target` through
+`DayStatusIndicator`. Those are **correct** cells and render as a bare `tabular` number — no fill, no
+border, no icon, no label. `gap` keeps the indicator (it is a genuine exception). `restricted` keeps
+`EyeOff` **plus its visible "hidden" label**, because Story 7.8's own AC specifies exactly that
+("`EyeOff` + 'hidden'"). The chip restyle remains 7.8's work.
+
+**Situation.** D-7.6-3, authored by this story, states the rule: *correct cell → plain number; exception
+→ indicator; no third path.* The implementation then applied the indicator to `approved` and `on-target`,
+adding a visible label word on top of a pre-existing fill, border and icon. Story 7.8's central premise
+is "the two wrong cells should be the only decorated things on screen"; decorating every correct cell
+inverts it.
+
+**In simple terms.** Marco opens the matrix with seven reports and ~600 cells. The point of the design is
+that his eye lands on the two cells that need him. If every correct cell also carries a green icon and
+the word "approved", nothing stands out and he is back to scanning — which is the exact problem the
+screen exists to solve.
+
+**Why this wins.** It is what the story's own contract already said, and the contract does **not** need a
+"silent mode" to express it — D-7.6-3 was right that a render-nothing prop has no visual contract and
+makes AC3 untestable. Silence is the *absence* of the component. The fix removes call sites rather than
+adding API surface.
+
+**Consequences.** `DayStatusIndicator` gains no no-render path. A test must assert an approved cell
+contains **no** icon and no status label — that assertion is what stops 7.8 inheriting this. See D-7.6-42:
+reverting these call sites also removes the AA blocker outright.
+
+### D-7.6-42 — BLOCKER: `status-clean` on `bg-state-success` renders invisible text
+**Orchestrator decision** (routine — a hard AA gate failure; no judgement required).
+
+**Verdict.** Must be fixed. `--color-status-clean` and `--color-state-success` are **the same hex,
+`#15803D`**. `DayStatusIndicator` asserts its own `text-status-clean` inside the matrix's
+`bg-state-success text-white` `<td>`, producing **1.00:1 — green text on an identical green background,
+literally invisible**. The approved+locked `restricted` chip measures **1.05:1**. Before this story the
+same cell measured 5.02:1.
+
+**In simple terms.** The approved cells in the manager matrix render their hours in a green that exactly
+matches the green behind them. The number is still in the DOM and a screen reader still reads it, but a
+sighted user sees an empty green box where their report's approved hours should be. All three independent
+review layers found this separately, which is how large the failure is.
+
+**Why no test caught it.** `ManagerMatrix.test.tsx:467` still passes while asserting
+`.bg-state-success.text-white` with the comment *"approved is dark-green bg + white text"* — a statement
+the change made false. The test checks the container's classes, not what colour the text inside actually
+resolves to. **The axe harness cannot catch this class of failure**, exactly as in Story 7.2's review.
+
+**Consequences.** D-7.6-41's revert removes this at the root, since the indicator stops rendering in those
+cells at all — **fix it that way rather than by patching the colour**, so the two findings resolve
+together. `ManagerMatrix.test.tsx:467`'s comment must be corrected to match reality. The duplicate hex
+(`status-clean` == `state-success` == `#15803D`) is a **latent trap for any future story** that composes a
+`status-*` token inside a `state-*` surface; record it in `deferred-work.md` rather than deduplicating the
+tokens inside this story.
+
+### D-7.6-43 — The AC3 guard test must actually bite
+**Orchestrator decision** (routine — a guard that does not guard).
+
+**Verdict.** The grep guard must redden for all the mutations that currently pass. The reviewer ran five
+and **four came back GREEN**: hard-coding a `bg-*` status colour; hard-coding the **`Circle` icon** (simply
+absent from `BANNED_ICONS`); adding a colour map inside allowlisted `DayCell.tsx`; and re-adding
+`belowTarget: 'below target'`. Only `text-status-clean` was caught.
+
+The `DayCell.tsx` allowlist is the core error: it was justified as a carve-out for Story 7.3's
+**validation** colour convention, and the reviewer confirmed that baseline claim is true — but allowlisting
+the whole file turned a validation carve-out into a **day-status** carve-out on a governed surface. Narrow
+it to the validation usage, complete `BANNED_ICONS`, and catch re-added status strings. AC8's
+icon-deleted-readability suite must also exercise a path production actually uses — the reviewer found it
+tests a fallback no call site reaches, which is the seventh-plus toothless test this epic has produced.
+
+### D-7.6-44 — D-7.6-37 is amended to cover `LoggedToday.tsx:816,906`
+**Orchestrator decision** — a correction to my own earlier ruling, kept alongside the original per this
+log's no-rewriting-history rule.
+
+D-7.6-37 named only `QuickLogForm` and `DayCell`, and closed with the claim that after this story *"a red
+pixel anywhere on the popup or week surfaces means Jira refused a write, full stop."* The reviewer
+verified that claim is **false as shipped**: `LoggedToday.tsx:816` and `:906` are genuinely validation
+states, not refused writes. The developer flagged this rather than silently fixing or falsely commenting
+it, which is the correct behaviour. The gap was in my ruling, not the implementation. **Those two become
+amber in this story**; the remaining five reds in that file are refused-write states and stay red.
+
+### D-7.6-45 — `DayCell`'s second status→colour map is removed
+**Orchestrator decision** (routine). D-7.6-2 forbids a per-surface colour map **by name**, and the
+implementation added a second `Record<DayStatus, colourClass>` in `DayCell` without disclosing it. It is
+the precise duplication AC3 exists to prevent, and it is what the allowlist in D-7.6-43 was hiding.
+`DayCell` consumes the shared registry.
+
+### D-7.6-46 — `bg-weekend` returns to being a separate axis
+**Orchestrator decision** (routine). D-7.6-6 explicitly ruled the weekend **column tint** is a separate
+axis from day status, because a per-cell status value cannot express "tint header, cell and totals as one
+recessive object" (7.7's AC). The implementation derived the tint from the status and applied it to body
+cells only — so the column is visibly *not* one object, which is the failure D-7.6-6 predicted. Revert to
+deriving the tint from the exported `isWeekend(iso)` predicate. 7.7 applies it at header, cell and totals
+level.
+
+### D-7.6-47 — Two note-accuracy bugs the tests do not cover
+**Orchestrator decision** (routine — both make the product state something untrue about the user's data,
+the same defect class D-7.6-38 was written to fix).
+
+1. **Future days get a past-tense shortfall.** `dayStatusNote` uses `iso === today` where the status
+   derivation uses `<= today`, so a day that has not happened can render a shortfall note. Reachable today
+   by **booking time off in advance**.
+2. **"Half-day time off" prints for any sub-target amount**, not only an actual half day — including
+   retroactively when the work-day target is raised.
+
+Both must be fixed and pinned. D-7.6-38 accepted a note-only representation for half days precisely
+because the note would be accurate; these two undermine that basis.
+
+### SD-6 — The vendored design imports are the reference of record; check work against them
+**Owner decision, 2026-07-26** (added mid-epic, at the owner's instruction: *"you can keep checking the
+reference from claude design link to make sure everything comes out as designed."*)
+
+**Verdict.** Every remaining story (7.7 → 7.11) verifies its output against the original Claude Design
+source, not only against `DESIGN.md` / `EXPERIENCE.md` prose. The source of record is the vendored pair:
+`.../ux-jira-time-logger-2026-07-25/imports/jira-time-logger.dc.html` (popup, week grid, **manager
+matrix**) and `imports/jira-time-logger-round2.dc.html` (Settings, guest rail, popup states).
+
+**Why this is now explicit.** The live `claude.ai/design` URL **cannot be fetched by tooling** (HTTP 403 —
+only `claude.ai/code/artifact/` URLs are machine-readable), so the vendored `.dc.html` files are the
+usable form of the same artifact. This does **not** overturn the standing rule that the spines win over
+the mockups on conflict: the spines still win on *intent*. But where the spines are **silent or
+ambiguous**, the design source frequently contains the literal answer, and two decisions this epic were
+made without consulting it and got the reasoning wrong (D-7.6-39's stated purpose, and D-7.6-40's initial
+framing — both corrected only after the owner pointed at the source).
+
+**How to use it.** Grep it for the concrete value (`grep -nE "hidden|approved|chrome-gradient"` etc.) and
+quote the line. Inline styles carry exact hexes, sizes and opacities. **Cite the file and line number** in
+the story when a decision rests on it, so the next reader can check it.
+
+### SD-7 — Provenance: the PTO → "time off" rename is an owner requirement
+**Owner clarification, 2026-07-26** (*"I'm the one who asked to change from PTO -> Time off"*).
+
+Recorded because it is **not derivable from the code or the specs**, and a future reader could reasonably
+mistake Story 7.6's rename for a stylistic choice an agent made, or for a spec artifact that could be
+traded away under schedule pressure. It cannot. The rename originates with the product owner, and it is
+the reason the requirement is copy-only-but-total: **every** user-facing string, label, tooltip and
+accessible name reads "time off", while internal identifiers (`ptoSubtask`, `PtoQuickAction`,
+`PtoPopover`, storage keys, the `pto.posted` / `pto.post.failed` log events) deliberately do not change.
+
+Two consequences carry forward to 7.7 → 7.11: any **new** user-facing string must say "time off" from the
+outset rather than being renamed later, and where a Jira subtask's own summary is displayed **verbatim**
+(e.g. `KNP-99 PTO`, and `STRINGS.defaultSummary` which stands in for that same field) it **stays
+verbatim** — that is real Jira data, not our copy.
+
+### D-7.6-49 — The `restricted` overlay's AA regression is fixed now; the designed chip is 7.8's
+**Orchestrator decision** (routine in outcome, but it closes a hard-gate regression this story
+introduced, so it is not deferred).
+
+**Verdict.** Two parts. **(1) Now, in 7.6:** the `restricted` overlay stops rendering `text-faint` when it
+sits on a filled cell, restoring its pre-story contrast. It uses the **`tone` mechanism D-7.6-40 already
+legitimised** — the same device that maps status to white on the chrome gradient — so no colour is
+invented and D-7.6-3's "colour is not overridable per call site" is respected, because `tone` is part of
+the contract rather than an escape hatch. **(2) Story 7.8 owns the designed chip** and must implement it
+as drawn.
+
+**Situation.** The finisher found, during its own verification rather than from the review list, that
+D-7.6-41's revert does **not** close the whole contrast failure. `MatrixCell`'s `locked` branch is a
+**separate conditional** from `status`, so it still renders `DayStatusIndicator status="restricted"` on an
+`approved` cell. That indicator uses `text-faint` (`#6B6B72`) unconditionally, which on the approved
+cell's `bg-state-success` (`#15803D`) measures **~1.05:1 — effectively invisible**. Before this story the
+overlay was a bare `aria-hidden` `Lock` inheriting the `<td>`'s ambient `text-white`, at 5.02:1. **So this
+is a regression 7.6 introduced**, and the epic's standing constraint is that no story may regress WCAG
+2.1 AA. It cannot ship deferred.
+
+**What the design actually specifies** — checked per SD-6, `imports/jira-time-logger.dc.html:534`:
+
+```
+background:#F4F4F7; border:1px solid #E4E3EC; color:#6B6B72; border-radius:5px; padding:3px 7px  …  ◐ hidden
+```
+
+The restricted chip carries **its own light background and border**. It never sits directly on the cell
+fill, which is precisely why the design has no contrast problem here. The finisher had hypothesised this
+without being able to confirm it; the source confirms it.
+
+**In simple terms.** The chip is meant to be a small grey label sitting *on top of* the cell, like a
+sticker — grey text on its own pale background. The implementation instead painted grey text straight onto
+a dark green cell, where it disappears. The design already solved this; we just had not looked.
+
+**Why split it this way.** The full chip — own background, border, radius, padding, the `◐` glyph — is
+part of Story 7.8's matrix restyle, and building it here would pre-empt the story that owns it, which is
+the mistake D-7.6-41 just finished correcting. But leaving a 1.05:1 contrast failure in shipped code until
+7.8 lands violates a hard gate. So: restore compliance now by the **minimal** means, and hand 7.8 the
+design-sourced target with the evidence attached. The accepted cost is that the restricted overlay looks
+slightly different for one story.
+
+**Consequences.** **Story 7.8 must implement the chip as `imports/jira-time-logger.dc.html:534` draws it**
+(own `#F4F4F7` background, `#E4E3EC` border, `#6B6B72` text) — at which point it composes safely over any
+cell fill and the `tone` workaround can be removed. A test must pin the restricted-on-approved pairing so
+the regression cannot silently return. **Also noted for 7.8 from the same source:** in the design, approval
+is a **row-level** property (`:571` renders a green `✓ approved` label) and matrix cells are plain numbers
+(`:852-858`) — there is **no green cell fill for approved at all**. The current `bg-state-success` fill is
+pre-existing Epic 5 code that 7.8's restyle should reconcile.
+
+**How we'd know it was wrong.** Any hand-computed pair under 4.5:1 in the matrix. The duplicate-hex trap
+recorded in `deferred-work.md` (`status-clean` == `state-success` == `#15803D`) is the underlying cause
+and remains open.

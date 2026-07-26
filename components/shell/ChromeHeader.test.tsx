@@ -97,4 +97,56 @@ describe('ChromeHeader', () => {
     expect(container.querySelector('[role="status"]')).toBeNull();
     expect(screen.getByText('Time Logger')).toBeTruthy();
   });
+
+  // --- Story 7.6: the progress note now routes through DayStatusIndicator --
+
+  it('the progress note now carries an icon (AC3) — the popup used to have none', () => {
+    const { container } = render(
+      <ChromeHeader connected userInitial="J" seconds={8 * 3600} targetHours={8} isPending={false} />,
+    );
+    const status = container.querySelector('[role="status"]') as HTMLElement;
+    // Two aria-hidden decorations live in the region: the bar and the note's icon.
+    const decorations = status.querySelectorAll('[aria-hidden="true"]');
+    expect(decorations.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('at/above target uses the same translucent-white chrome tone as every other status (D-7.6-40, correcting D-7.6-39\'s "met"-only on-chrome exception)', () => {
+    const { container } = render(
+      <ChromeHeader connected userInitial="J" seconds={8 * 3600} targetHours={8} isPending={false} />,
+    );
+    expect(screen.getByText('Target met — 8h logged')).toBeTruthy();
+    const noteSpans = container.querySelectorAll('p > span');
+    const rootClass = noteSpans[noteSpans.length - 1]?.className ?? '';
+    expect(rootClass).toContain('text-white/85');
+    expect(rootClass).not.toContain('text-status-clean-on-chrome');
+  });
+
+  it('below target uses the translucent-white chrome default, not status-clean', () => {
+    const { container } = render(
+      <ChromeHeader connected userInitial="J" seconds={2 * 3600} targetHours={8} isPending={false} />,
+    );
+    expect(screen.getByText('6h to go today')).toBeTruthy();
+    const noteSpans = container.querySelectorAll('p > span');
+    const rootClass = noteSpans[noteSpans.length - 1]?.className ?? '';
+    expect(rootClass).toContain('text-white/85');
+    expect(rootClass).not.toContain('text-status-clean');
+  });
+
+  it('an explicit `status` prop overrides the derived met/partial/attention (7.9 seam)', () => {
+    const { container } = render(
+      <ChromeHeader
+        connected
+        userInitial="J"
+        seconds={2 * 3600}
+        targetHours={8}
+        isPending={false}
+        status="time-off"
+      />,
+    );
+    // The note text is still the header's own copy (label overrides the
+    // default STATUS_LABEL) — only icon/colour come from `status`.
+    expect(screen.getByText('6h to go today')).toBeTruthy();
+    const noteSpans = container.querySelectorAll('p > span');
+    expect(noteSpans[noteSpans.length - 1]?.className).toContain('text-white/85');
+  });
 });

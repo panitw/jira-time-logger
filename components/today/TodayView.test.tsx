@@ -251,9 +251,13 @@ describe('TodayView', () => {
   // --- Story 7.2 Finding 3: externally-owned entries (the action bar's -----
   // --- relocated PtoQuickAction) keep a working in-popup correction path ---
 
+  // Finding 26: `summary` stands in for a REAL Jira subtask summary (AC7 —
+  // rendered verbatim, never rewritten by the copy rename); reverted from
+  // "Time off" back to "PTO" so the fixture doesn't drift from the field it
+  // models.
   const PTO_ENTRY = {
     key: 'PTO-1',
-    summary: 'Time off',
+    summary: 'PTO',
     hoursDisplay: '8h',
     started: '2026-01-01',
     seconds: 28800,
@@ -375,7 +379,7 @@ describe('TodayView', () => {
 
     renderWithProviders(<TodayView />);
     expect(await screen.findByText(/Catch-all not configured/)).toBeTruthy();
-    expect(screen.getByText(/to log Admin\/Meetings\/PTO/)).toBeTruthy();
+    expect(screen.getByText(/to log Admin\/Meetings\/time off/)).toBeTruthy();
   });
 
   // --- Story 6.1 AC1: axe a11y scan of the Today view --------------------

@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { DayStatus } from '@/lib/day-status';
 import { hoursToSeconds } from '@/lib/hours';
 import type { WeekGridCell } from '@/lib/week-grid';
 
@@ -48,7 +49,7 @@ function multiCell(): WeekGridCell {
   };
 }
 
-function renderCell(cell: WeekGridCell, onMutated = vi.fn(), status: 'neutral' | 'complete' | 'below-target' | 'pto' = 'neutral') {
+function renderCell(cell: WeekGridCell, onMutated = vi.fn(), status: DayStatus | null = null) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -134,7 +135,7 @@ describe('DayCell', () => {
     });
   });
 
-  it('hard-blocks over-24 hours: shows error, no network call, stays editing on Enter', async () => {
+  it('hard-blocks over-24 hours: shows amber error (not red), no network call, stays editing on Enter (D-7.6-37)', async () => {
     renderCell(emptyCell());
     fireEvent.click(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'));
     const input = screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid');
@@ -144,16 +145,18 @@ describe('DayCell', () => {
     ).toBeTruthy();
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(postWorklogMock).not.toHaveBeenCalled();
-    // Still in edit mode.
-    expect(input.className).toContain('border-state-danger');
+    // Still in edit mode — amber now, never red (validation, not a refused write).
+    expect(input.className).toContain('border-amber-border');
+    expect(input.className).not.toContain('border-state-danger');
   });
 
-  it('rejects unparseable input: red border, Enter is a no-op (no POST)', () => {
+  it('rejects unparseable input: amber border (not red), Enter is a no-op (no POST) (D-7.6-37)', () => {
     renderCell(emptyCell());
     fireEvent.click(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'));
     const input = screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid');
     fireEvent.change(input, { target: { value: 'abc' } });
-    expect(input.className).toContain('border-state-danger');
+    expect(input.className).toContain('border-amber-border');
+    expect(input.className).not.toContain('border-state-danger');
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(postWorklogMock).not.toHaveBeenCalled();
   });
@@ -208,12 +211,20 @@ describe('DayCell', () => {
     expect(enqueueOutboxMock).not.toHaveBeenCalled();
   });
 
-  it('applies the carry-through tint for a complete day', () => {
-    renderCell(singleCell(hoursToSeconds(8)), vi.fn(), 'complete');
+  it('applies the carry-through tint for a met day', () => {
+    renderCell(singleCell(hoursToSeconds(8)), vi.fn(), 'met');
     const btn = screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid');
     const td = btn.closest('td')!;
     expect(td.className).toContain('bg-state-success-subtle');
     expect(td.className).toContain('motion-safe:transition-colors');
+  });
+
+  it('applies the amber tint for an attention day — never the old danger-red', () => {
+    renderCell(emptyCell(), vi.fn(), 'attention');
+    const btn = screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid');
+    const td = btn.closest('td')!;
+    expect(td.className).toContain('bg-amber-soft');
+    expect(td.className).not.toContain('state-danger');
   });
 
   it('Enter then the blur fired by closing the editor does not double-submit', async () => {

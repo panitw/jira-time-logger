@@ -462,9 +462,111 @@ describe('ManagerMatrix', () => {
     };
     approvalsMock.mockReturnValue(approvalsState([approval]));
     const { container } = renderMatrix();
-    expect(screen.getByLabelText(/Bob, PROJ-1, 64 hours, approved/)).toBeTruthy();
-    // Approved is dark-green bg + white text.
+    const cell = screen.getByLabelText(/Bob, PROJ-1, 64 hours, approved/);
+    // Approved is dark-green bg + white text — inherited by the cell's own
+    // bare number (D-7.6-41 revert: no icon, no DayStatusIndicator, no
+    // second `text-status-clean` colour class fighting the td's `text-white`
+    // — that collision was Blocker 1/2, both `#15803D` at 1.00:1).
     expect(container.querySelector('.bg-state-success.text-white')).toBeTruthy();
+    expect(within(cell).getByText('64')).toBeTruthy();
+  });
+
+  it('an approved cell renders a bare number — no icon, no status label (D-7.6-41; stops Story 7.8 inheriting the pre-emption)', () => {
+    reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+    rowMock.mockReturnValue(
+      rowState({
+        status: 'success',
+        data: [
+          epic('PROJ-1', 64 * 3600, {
+            worklogs: [
+              {
+                ticketKey: 'PROJ-1-1',
+                ticketSummary: 's',
+                seconds: 64 * 3600,
+                updated: '2026-05-10T00:00:00.000Z',
+              },
+            ],
+          }),
+        ],
+      }),
+    );
+    const approval: ApprovalComment = {
+      v: 1,
+      user: 'r-bob',
+      cycle: '2026-05',
+      by: 'mgr',
+      at: '2026-05-20T00:00:00.000Z',
+      restrictedCount: 0,
+      checksum: 'x',
+    };
+    approvalsMock.mockReturnValue(approvalsState([approval]));
+    renderMatrix();
+    const cell = screen.getByLabelText(/Bob, PROJ-1, 64 hours, approved/);
+    expect(cell.querySelector('svg')).toBeNull();
+    expect(within(cell).queryByText('approved')).toBeNull();
+    expect(within(cell).queryByText('on target')).toBeNull();
+  });
+
+  it('an approved+restricted cell renders its "hidden" overlay in full white, not the default text-faint (D-7.6-49: text-faint on bg-state-success measures ~1.05:1)', () => {
+    reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+    rowMock.mockReturnValue(
+      rowState({
+        status: 'success',
+        data: [
+          epic('PROJ-1', 64 * 3600, {
+            restrictedCount: 2,
+            worklogs: [
+              {
+                ticketKey: 'PROJ-1-1',
+                ticketSummary: 's',
+                seconds: 64 * 3600,
+                updated: '2026-05-10T00:00:00.000Z',
+              },
+            ],
+          }),
+        ],
+      }),
+    );
+    const approval: ApprovalComment = {
+      v: 1,
+      user: 'r-bob',
+      cycle: '2026-05',
+      by: 'mgr',
+      at: '2026-05-20T00:00:00.000Z',
+      restrictedCount: 2,
+      checksum: 'x',
+    };
+    approvalsMock.mockReturnValue(approvalsState([approval]));
+    const { container } = renderMatrix();
+    const cell = screen.getByLabelText(
+      /Bob, PROJ-1, 64 hours, approved, restricted visibility/,
+    );
+    // The cell fill is still the dark, filled approved green (D-7.6-41
+    // reverted the STATUS indicator, not the td's own bg-state-success).
+    expect(container.querySelector('.bg-state-success.text-white')).toBeTruthy();
+    // The restricted overlay renders EyeOff + "hidden" in `text-white`
+    // (tone="chrome-solid"), never the default `text-faint` — that pairing
+    // is the ~1.05:1 regression this test pins.
+    const restrictedWrapper = within(cell).getByText('hidden').parentElement;
+    expect(restrictedWrapper?.className).toContain('text-white');
+    expect(restrictedWrapper?.className).not.toContain('text-faint');
+  });
+
+  it('a restricted cell on a NON-approved (light) background keeps the default text-faint — the override is scoped to approved only', () => {
+    reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
+    rowMock.mockReturnValue(
+      rowState({
+        status: 'success',
+        data: [epic('PROJ-1', 64 * 3600, { restrictedCount: 2 })],
+      }),
+    );
+    renderMatrix();
+    const cell = screen.getByLabelText(
+      'Bob, PROJ-1, 64 hours, short of target, restricted visibility',
+    );
+    const restrictedWrapper = within(cell).getByText('hidden').parentElement;
+    expect(restrictedWrapper?.className).toContain('text-faint');
+    expect(restrictedWrapper?.className).not.toContain('text-white');
   });
 
   it('renders a dirty cell (RefreshCw + needs re-approval) when a worklog changed after approval', () => {
@@ -661,16 +763,19 @@ describe('ManagerMatrix', () => {
     );
   });
 
-  it('renders a below-target row with AlertCircle + "below target"', () => {
+  it('renders a gap row amber with the shared Circle icon + "short of target" — never "below target" or red (AC1/D-7.6-4)', () => {
     reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
     // 10h is far below 8h × ~22 May workdays → gap.
     rowMock.mockReturnValue(
       rowState({ status: 'success', data: [epic('PROJ-1', 10 * 3600)] }),
     );
     const { container } = renderMatrix();
-    expect(screen.getByText('below target')).toBeTruthy();
-    expect(screen.getByLabelText(/below target/)).toBeTruthy();
-    expect(container.querySelector('.bg-state-danger-subtle')).toBeTruthy();
+    expect(screen.getByText('short of target')).toBeTruthy();
+    expect(screen.getByLabelText(/short of target/)).toBeTruthy();
+    expect(screen.queryByText('below target')).toBeNull();
+    expect(container.querySelector('.bg-state-danger-subtle')).toBeNull();
+    expect(container.innerHTML).not.toContain('state-danger');
+    expect(container.querySelector('.bg-state-warning-subtle')).toBeTruthy();
   });
 
   it('keeps an empty cell neutral with the "no hours logged" label (never red)', () => {
@@ -686,7 +791,7 @@ describe('ManagerMatrix', () => {
     expect(screen.getByLabelText('Bob, PROJ-2, no hours logged')).toBeTruthy();
   });
 
-  it('shows a Lock overlay on a restricted cell AND the row chip "⚠ N restricted"', () => {
+  it('shows an EyeOff overlay (D-7.6-11, was Lock) on a restricted cell AND the row chip "⚠ N restricted"', () => {
     reportsMock.mockReturnValue(reportsOk([{ accountId: 'r-bob', displayName: 'Bob' }]));
     rowMock.mockReturnValue(
       rowState({
@@ -694,11 +799,18 @@ describe('ManagerMatrix', () => {
         data: [epic('PROJ-1', 64 * 3600, { restrictedCount: 2 })],
       }),
     );
-    renderMatrix();
+    const { container } = renderMatrix();
     // Cell aria-label appends ", restricted visibility" to the cell label.
-    expect(
-      screen.getByLabelText('Bob, PROJ-1, 64 hours, below target, restricted visibility'),
-    ).toBeTruthy();
+    const cell = screen.getByLabelText(
+      'Bob, PROJ-1, 64 hours, short of target, restricted visibility',
+    );
+    expect(cell).toBeTruthy();
+    // Visible "hidden" text now accompanies the EyeOff icon (shared
+    // registry) — lowercase per DESIGN.md's status-chip-restricted/Story
+    // 7.8's AC (Finding 10 copy drift: was capitalised "Hidden").
+    expect(within(cell).getByText('hidden')).toBeTruthy();
+    expect(container.querySelector('svg.lucide-lock')).toBeNull();
+    expect(container.querySelector('svg.lucide-eye-off')).toBeTruthy();
     // Row chip beside the name.
     expect(screen.getByText('⚠ 2 restricted')).toBeTruthy();
   });

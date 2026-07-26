@@ -1,8 +1,9 @@
 import { parse, parseISO, isValid } from 'date-fns';
-import { Check, AlertCircle, RefreshCw, Lock } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApproveButton } from './ApproveButton';
 import { DrillDownPanel } from './DrillDownPanel';
+import { DayStatusIndicator } from '@/components/shared/DayStatusIndicator';
 import { Button } from '@/components/ui/button';
 import { useCanApprove } from '@/hooks/useCanApprove';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -45,7 +46,9 @@ const STRINGS = {
   errorBody: 'Check your connection and try again.',
   tryAgain: 'Try again',
   // Status copy (UX-DR30/31): honest, descriptive, no exclamation marks.
-  belowTarget: 'below target',
+  // Story 7.6 / D-7.6-12: never "below target" — state the fact, not the
+  // verdict.
+  shortOfTarget: 'short of target',
   needsReapproval: 'needs re-approval',
   approved: 'approved',
   onTarget: 'on target',
@@ -58,7 +61,7 @@ const STRINGS = {
   ariaOnTarget: (person: string, epicKey: string, hours: string) =>
     `${person}, ${epicKey}, ${hours} hours, on target`,
   ariaGap: (person: string, epicKey: string, hours: string) =>
-    `${person}, ${epicKey}, ${hours} hours, below target`,
+    `${person}, ${epicKey}, ${hours} hours, short of target`,
   ariaDirty: (person: string, epicKey: string, hours: string) =>
     `${person}, ${epicKey}, ${hours} hours, approved but worklogs changed, needs re-approval`,
   ariaNeutral: (person: string, epicKey: string, hours: string) =>
@@ -89,11 +92,18 @@ const DIRTY_STRIPE_STYLE: React.CSSProperties = {
     'repeating-linear-gradient(45deg, transparent 0 6px, rgba(202,138,4,0.18) 6px 8px)',
 };
 
-/** Tailwind bg/text token pair per colored status (HYPHENATED `state-*`). */
+/**
+ * Tailwind bg/text token pair per colored status (HYPHENATED `state-*`).
+ * Story 7.6 / D-7.6-4: `gap`'s red is gone — it now shares `dirty`'s amber
+ * treatment (`state-warning`, the same hue as the day-status vocabulary's
+ * `attention`), differentiated only by icon (`Circle` vs `RefreshCw`) and
+ * label. `lib/manager-matrix.ts`'s `CellStatus` itself is untouched
+ * (D-7.6-4 — a different axis, frozen file).
+ */
 const STATUS_CLASSES: Record<CellStatus, string> = {
   approved: 'bg-state-success text-white border border-state-success',
   'on-target': 'bg-state-success-subtle text-state-success',
-  gap: 'bg-state-danger-subtle text-state-danger',
+  gap: 'bg-state-warning-subtle text-state-warning',
   dirty: 'bg-state-warning-subtle text-state-warning',
   'unapproved-neutral': 'text-neutral-900',
 };
@@ -775,18 +785,17 @@ function MatrixCell({
             : STRINGS.ariaNeutral(report.displayName, epicKey, display);
   const ariaLabel = locked ? `${baseAria}${STRINGS.ariaRestrictedSuffix}` : baseAria;
 
-  const statusText =
-    status === 'gap'
-      ? STRINGS.belowTarget
-      : status === 'dirty'
-        ? STRINGS.needsReapproval
-        : null;
+  // `dirty` is the one status this story leaves entirely alone (D-7.6-4) —
+  // its own below-text line stays. `approved`/`on-target`/`gap` now carry
+  // their word inline via `DayStatusIndicator`'s `label`, so they no longer
+  // need a second line.
+  const statusText = status === 'dirty' ? STRINGS.needsReapproval : null;
 
   const cellStyle = status === 'dirty' ? DIRTY_STRIPE_STYLE : undefined;
 
   return (
     <td
-      className={`relative p-0 text-right font-mono motion-safe:transition-colors motion-safe:duration-200 ${STATUS_CLASSES[status]}`}
+      className={`relative p-0 text-right tabular motion-safe:transition-colors motion-safe:duration-200 ${STATUS_CLASSES[status]}`}
       style={cellStyle}
     >
       {/* The cell is an interactive trigger that opens the drill-down panel
@@ -802,21 +811,65 @@ function MatrixCell({
       >
         <span className="flex items-center justify-end gap-1">
           {status === 'approved' || status === 'on-target' ? (
-            <Check size={ICON_SIZE} aria-hidden />
+            // Story 7.6 / D-7.6-3/41 (revert): `approved`/`on-target` are the
+            // CORRECT cells. D-7.6-3's own rule is "if the cell is correct,
+            // render a number. If it is an exception, render
+            // DayStatusIndicator. There is no third path and no silent
+            // mode." Routing these through the indicator (a) pre-empted
+            // Story 7.8, whose AC requires a correct/approved cell to be a
+            // bare `tabular` number with no fill/border/icon, and (b) was
+            // the root cause of Blocker 1/2: the indicator's own
+            // `text-status-clean` collided with the `<td>`'s
+            // `bg-state-success` (both `#15803D`) at 1.00:1 — invisible.
+            // Silence is the absence of the component (D-7.6-3) — this is
+            // not a third "silent" mode, it is the plain number the cell's
+            // own `STATUS_CLASSES` fill/border already convey the state
+            // through (colour + the cell's own aria-label + this text).
+            <span className={isEmpty ? 'text-neutral-500' : undefined}>{display}</span>
           ) : status === 'gap' ? (
-            <AlertCircle size={ICON_SIZE} aria-hidden />
+            // The time-related red is gone (AC1) — `gap` now reuses the
+            // `attention` token (same icon/colour DAY status uses for
+            // "nothing logged"), with axis-specific words via `label`.
+            <DayStatusIndicator
+              variant="inline"
+              status="attention"
+              value={display}
+              label={STRINGS.shortOfTarget}
+            />
           ) : status === 'dirty' ? (
-            <RefreshCw size={ICON_SIZE} aria-hidden />
-          ) : null}
-          <span className={isEmpty ? 'text-neutral-500' : undefined}>{display}</span>
+            <>
+              <RefreshCw size={ICON_SIZE} aria-hidden />
+              <span>{display}</span>
+            </>
+          ) : (
+            <span className={isEmpty ? 'text-neutral-500' : undefined}>{display}</span>
+          )}
           {locked ? (
-            // Decorative only: the "restricted visibility" meaning is carried
-            // verbally in the cell button's aria-label (ariaRestrictedSuffix),
-            // so the Lock glyph is hidden from AT to avoid a double / contradictory
-            // announcement. (`role="img"` + `aria-hidden` was contradictory.)
-            <span className="inline-flex shrink-0 text-neutral-500" aria-hidden>
-              <Lock size={ICON_SIZE} aria-hidden />
-            </span>
+            // D-7.6-11: `Lock` → `EyeOff` via the shared registry (AC5 —
+            // restricted visibility never shares an icon with an in-flight
+            // state). The chip restyle (status-chip-restricted) stays 7.8's;
+            // this only swaps the icon/colour source, not the layout.
+            //
+            // D-7.6-49: on an `approved` cell (the one dark, filled
+            // background — `bg-state-success` `#15803D`), the indicator's
+            // default `text-faint` measures ≈1.05:1 — a regression this
+            // story introduced (pre-story the bare `Lock` inherited the
+            // `<td>`'s ambient `text-white` at 5.02:1). `tone="chrome-solid"`
+            // restores that same full white via the existing `tone`
+            // mechanism (D-7.6-40) rather than a per-call-site colour
+            // override. Every OTHER cell background here is light enough
+            // that `text-faint`'s default already clears AA, so the override
+            // is scoped to `approved` only. Story 7.8 owns the DESIGNED chip
+            // (`imports/jira-time-logger.dc.html:534` — its own
+            // `#F4F4F7`/`#E4E3EC` background+border, which composes safely
+            // over any cell fill); once it ships, this `tone` override can
+            // be removed.
+            <DayStatusIndicator
+              variant="inline"
+              status="restricted"
+              tone={status === 'approved' ? 'chrome-solid' : 'data'}
+              className="shrink-0"
+            />
           ) : null}
         </span>
         {statusText ? (
