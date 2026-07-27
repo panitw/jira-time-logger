@@ -4432,3 +4432,270 @@ is the creator's ORIGINAL pre-dev recommendation, kept for context, not a re-ope
   (the same trap `font-mono` nearly fell into, D-7.7-21f). Implemented: `QuickLogForm.tsx`, `PtoQuickAction.tsx`
   (×2, including a second raw `'✓'` the count in this entry's original text missed), `LoggedToday.tsx`,
   `TicketPicker.tsx` all migrated to `LoaderCircle`/`Check`.
+
+---
+
+## Story 7.10 — Settings on the Full Page
+
+*Story file `7-10-settings-on-the-full-page.md`, `ready-for-dev`, baseline `b434c81`. The creator recorded
+`D-7.10-1 … D-7.10-13`; per D-7.3-11 those fold into this log at finisher stage. Rulings below start at
+**D-7.10-30** as the creator requested, leaving room for the fold-in.*
+
+**The SD-1 scope trap held.** "Re-authenticate" is **not built and nothing is substituted** — three sources
+agree (SD-1, `EXPERIENCE.md:403-405`, `epics.md:2076`), and the creator verified the codebase has only
+`startOAuthFlow` / `validateApiToken` / `disconnectAll`. It also supplied the concrete reason a substitute
+would be *worse* than absence here: a Disconnect-then-Connect "re-auth" would **destroy every local setting**
+behind a button promising a refresh. Renamed stand-ins ("Reconnect", "Sign in again") are banned, and a grep
+test pins the absence — because D-7.8-18's deliberate absence was left undefended.
+
+**A non-obvious `font-mono` finding worth preserving:** `ManagerDisplay.tsx:55,63` go to **nothing**, not
+`tabular`. `round2:257,261` render manager names in the plain body face, and `tabular` is Kanit +
+`tabular-nums` — a person's name is not a numeric. The other four become `tabular` or vanish with their
+markup. All four `ALLOWLIST` entries drop to `{}`, which is D-7.7-21f's precondition for marking epic-7 done.
+
+### D-7.10-30 — One shared `SectionTabs`, rendered on all three full-page surfaces
+**Owner decision** (asked — it is navigation architecture and it amends two shipped stories).
+
+**Verdict.** A single `SectionTabs` component is used by the **Settings, Week and Manager** chrome headers,
+replacing Story 7.2's interim full-page nav. The design source draws the tab row only on Surface 5; that
+omission is treated as **illustrative**, because the AC states the intent and the spines win on intent (SD-6).
+
+**Situation.** `epics.md` AC1 calls the tab row *"the mechanism that folds two pages into one"*. But
+`round2.dc.html` shows it only on Settings — the creator checked Surfaces 2 (`:790-812`) and 3 (`:911-935`)
+and found **no tab row** on either. Meanwhile 7.2 already shipped working `?section=` routing with its own
+nav (D-7.2-5).
+
+**In simple terms.** A navigation that appears on one of three sections is not a navigation. You could reach
+Settings and then have no way back the way you came, and the product would carry two different mechanisms for
+the same job — 7.2's interim nav on Week and Manager, a tab row on Settings — which reads as unfinished
+rather than designed.
+
+**Options considered.** *Settings-only, exactly as drawn* — zero risk to shipped surfaces, but ships the
+incoherence and leaves AC1's central claim unmet. *Settings-only now, unify later* — rejected because this
+epic has already demonstrated that work without an owning story gets lost: the `font-mono` violations nearly
+reached release exactly that way (D-7.7-21f), and every story that could have fixed them had shipped.
+
+**Why this wins, and the risk being accepted.** It is the only option that makes AC1 true and leaves one
+navigation mechanism. The accepted cost is real and must be handled with care: it is an **additive edit to
+`WeekChromeHeader` and `MatrixChromeHeader`, both already shipped** (7.7, 7.8) — and shared-seam changes have
+burned this epic three times. Mitigation: follow the pattern of the epic's **one clean** shared-component
+change, `button.tsx`'s `chrome` variant, which 7.7's review proved inert **because every call site passed an
+explicit variant**. Make `SectionTabs` purely additive, verify each host surface behaviourally rather than
+through mocks, and run a transitive import-closure analysis.
+
+**Consequences.** 7.2's interim nav is removed, not left alongside. The active section must be conveyed by
+more than colour (WCAG), and the tab row must be keyboard-navigable with a visible focus indicator that
+pairs `ring-focus` **with a 1.5 px border** (`EXPERIENCE.md:257`; the ring alone is 1.22:1 — a blocker in
+7.9). Tests must prove all three surfaces render the same component and that navigating between any two
+works.
+
+**How we'd know it was wrong.** A regression in the week or matrix chrome header — those surfaces were
+signed off in 7.7 and 7.8 and this is the only thing reopening them.
+
+### D-7.10-31 — The disconnected state uses a non-interactive silhouette, not dimmed controls
+**Orchestrator decision** (routine — a hard AA gate the AC itself anticipated).
+
+The creator hand-computed AC8's dimmed logging-defaults block at **3.28:1 / 2.08:1** — failing AA, exactly as
+the AC warned ("halving the opacity of a compliant control usually does not"). Use the design's own
+**non-interactive silhouette** — shapes only, **no dimmed text at all** — rather than reduced-opacity live
+controls. Nothing that must remain legible is dimmed, so nothing fails. Also fix the four other measured
+failures: `.72` = 4.04:1 and `.62` = 3.44:1 both go to `/85` (4.91:1). That is the **seventh** hand-computed
+contrast catch of the epic; the axe harness has caught none of them.
+
+### D-7.10-32 — Do not invent a connection date
+**Orchestrator decision** (routine).
+
+The design shows "Signed in · 12 Jun 2026", but **no `connectedAt` is stored anywhere**. Show the **method
+only** (OAuth vs API token) and **fabricate no date**. Displaying an invented or approximated timestamp on a
+security-adjacent facts block is worse than omitting it — a user could reasonably act on it. If the date is
+wanted later, it needs a storage write at connect time, which is new functionality and belongs in its own
+story.
+
+### D-7.10-33 — The Disconnect copy must state that settings are destroyed too
+**Orchestrator decision** (routine — an honesty fix on a destructive, irreversible action).
+
+The AC requires the body copy to state **what is and isn't destroyed**, and the shipped wording says
+credentials and cached worklogs. The creator found that **`disconnectAll()` calls
+`chrome.storage.local.clear()`, which wipes every setting as well** — catch-all project, time-off subtask,
+work-day target, reminder, approval cycle. The copy is therefore **understated on the one screen where
+precision matters most**.
+
+Correct it to state all three: credentials, cached worklogs **and every configured setting** are destroyed;
+**hours already written to Jira are untouched**. Keep the confirmation dialog. A test must pin the copy
+against the actual behaviour of `disconnectAll()`, so the two cannot drift apart again.
+
+### D-7.10-34 — `ApiTokenSetup:138` — red for a genuine rejection, amber for a transient failure
+**Orchestrator decision** (routine).
+
+The standing rule is *"red fires only for a write Jira actually refused."* The creator correctly noticed this
+is a refused **read**, not a write. The rule's purpose is that **no time-related state renders red** — an
+authentication failure is not a time state, so red is not automatically wrong here. Apply the distinction the
+creator proposed: **red for `invalid-credentials` / `forbidden`** (Jira genuinely rejected the credential —
+the user must act), **amber for `network` / `parse-error`** (transient or our problem, and retrying may just
+work).
+
+**Separately and unconditionally:** `#DC2626` on `#FEF2F2` measures **4.42:1** and must become `error-ink`
+`#991B1B` (**7.60:1**) regardless of which branch renders — the same fix D-7.9-18(b) applied on the popup.
+
+### D-7.10-35 — Endorsed as recorded
+`entrypoints/options/` **redirects rather than being removed** (creator's D-7.10-3): `wxt.config.ts:25`
+derives `options_ui` from the directory and is **fenced** under SD-5, and eight `openOptionsPage()` call sites
+depend on it — four on the time-off write path. **The real bug the creator caught must be fixed:**
+post-redirect, `fullpage/App.tsx:134-142` opens a tab that **redirects back to itself**. Also endorsed:
+`ConnectButton`'s `bg-brand-gradient` hero is dropped (two stacked purple surfaces), and `CycleField` renders
+normally with its single option — **invent no second cycle**.
+
+### D-7.10-36 — The 7.10 review rulings
+**Orchestrator decisions** (routine; each settled by a rule or spec already in force, so none went to the
+owner).
+
+**Context first, because it explains two of the blockers.** The reviewer found the **Settings surface lost
+100% of its axe coverage**: the a11y test was retargeted at the *redirect*, and `fullpage/App.test.tsx` mocks
+`SettingsView` away — so **six of seven new components have zero render coverage** on the epic's largest new
+surface. That is exactly how a **Critical** accessibility defect shipped undetected. Coverage that is
+retargeted rather than replaced is coverage removed.
+
+**(a) R-5 — restoring the Settings axe scan BLOCKS this story.** D-7.7-21f set the precedent that an
+epic-done precondition is enforced by the story owning the surface. Six unrendered components behind a
+mock is the same "work without an owning story gets lost" risk D-7.10-30 cited, and it is not hypothetical
+here — it already cost a Critical finding. The scan must render the **real** `SettingsView`, not a mock.
+
+**(b) Blocker 2 — the accessible-name failure is a hard-gate WCAG regression.** `FieldLabel` renders a
+`<span>`, not `<label htmlFor>`; each file went **2 → 0** `<label>` elements against baseline, and
+`#catchall-pto-select` has **no accessible name at all**. The untouched `ApiTokenSetup.tsx:217` still does it
+correctly — so the correct pattern was present in the same codebase and was replaced with a worse one. Fix
+all five controls.
+
+**(c) Blocker 1 — the catch-all field can brick itself.** `CatchAllProjectField.tsx:133`'s
+`if (trimmed === committedKey) return;` guard uses a `committedKey` that only advances **on success**. Type a
+typo, correct it back to the original, and the field stays amber-invalid **permanently** with the dependent
+time-off select bricked. Reproduced live by the reviewer. This also makes AC6's "only a settled invalid key
+renders amber" false, since a *valid* key renders amber forever.
+
+**(d) The `<nav>` removal produced two navigation regressions.** Removing the shell `<nav>` from **outside**
+the auth/loading ternary means `?section=manager` while `hasDirectReports()` is pending renders
+`textContent === ""` with **zero buttons** — a blank, escape-proof page. `SectionTabs` itself is sound (see
+below); the *deletion* was placed wrongly. Restore navigation in the loading and unauthenticated states.
+
+**(e) R-1 — the 1180 px widening is correct, but must be owned and actually work.** `epics.md` AC2 states the
+full page **is** a 1180 px shell and `round2:790` draws Surface 2 at 1180, so widening Week and Manager from
+`max-w-3xl` is right — it was simply undeclared. **It is hereby declared**, and 7.7/7.8's sign-off is amended
+to include it. But the reviewer proved the shell **renders at 1148 px, not 1180**: `max-w-[1180px] px-4` on
+the parent with `w-[1180px] max-w-full` on the child, under `border-box`, subtracts the padding. Fix the CSS
+and **pin the width**.
+
+**(f) R-2 — use `shadow-lift`; the exclusivity guard has been over-reaching since Story 7.3.** The developer
+substituted `shadow-raised` because `ResumeCard.test.tsx:447-469` asserts `shadow-lift` appears in exactly
+one file across **all** of `components/` and `entrypoints/`. Its reasoning was sound and the reviewer verified
+it — but **the guard is broader than the AC it enforces.** Story 7.3's AC1 says the resume card *"carries
+`shadow-lift` — and is the only element **in the popup** that does."* **In the popup.** A full-page Settings
+card is not in the popup, so it never violated AC1.
+
+The substitute is not equivalent: design `round2:205` specifies `0 18px 40px rgba(74,65,99,.10)`;
+`--shadow-lift` matches closely while `--shadow-raised` is `0 10px 26px rgba(...,0.08)` — **44% less
+y-offset, 35% less blur, 20% less alpha.** So the over-broad guard was silently degrading the design.
+**Narrow the guard to popup files** (matching AC1's actual wording) and use `shadow-lift` in Settings.
+Re-verify the narrowed guard still reddens if a second popup element takes `shadow-lift`.
+
+**(g) R-3 — fix all three duplicate-tab call sites here.** 7.10 created them by introducing the redirect, and
+one sits on the **time-off write path**. A story does not get to leave behind bugs its own change created
+because the affected files belong to earlier stories.
+
+**(h) R-4 — do NOT change the shared `Result` contract; make the UI stop asserting what it cannot know.**
+The skip-level conflation's root cause is in `lib/manager-resolution.ts`, untouched by this story and
+**shared with the approval path**. Changing a shared contract at finisher stage is how this epic was burned
+three times. But shipping a row that states something false is not acceptable either. **Where the data
+cannot distinguish manager from skip-level, the UI must say less rather than say wrong** — render the honest
+"not set in Jira"/unknown treatment rather than attributing a name to the wrong role. Record the root cause
+in `deferred-work.md` **with a named owner**.
+
+**(i) The vacuous tests must be closed.** All **14** shell tests survive `SectionTabs → null`; AC7's headline
+test passes even when "Not set in Jira" renders as an **error** (the exact thing the AC forbids);
+"mid-typing is neutral" is GREEN under **five** mutations *including deleting the very line the Dev Record
+cites as proof*; the `lastCallId` race guard is undefended in all three. Close them and RED-prove each.
+
+**(j) Two independently-found defects also fix.** `inert=""` is **stripped by React 19** (the reviewer probed
+it with the project's own `react-dom`), so the silhouette is **not inert** and the `@ts-expect-error` masks
+that — it must genuinely prevent interaction. And two keyboard controls still ship a **1.22:1** focus
+indicator while three siblings in the same card do it correctly — **the Completion Notes name those two as
+fixed**, which is the fourth scope-widened claim this epic. `ring-focus` pairs with a 1.5 px border,
+everywhere, no exceptions.
+
+**(k) The vanished skipped test is fine — record it.** `CatchAllProjectField.test.tsx:95`'s
+`it.skip('shows (default) helper when key is KNP')` was deleted along with the `projectKeyHelper` it covered.
+It never executed, so no coverage was lost, and the other three baseline tests were replaced 1:1. Only the
+silence was wrong. Note it in the Dev Record.
+
+**Credited, and not to be re-litigated:** `SectionTabs` is **safer than the `button.tsx` precedent** — that
+variant was inert because every call site *happened* to pass an explicit prop, whereas here all three props
+are **required** on all five hosts, so omission is a hard `tsc` error (`TS2739`, proven). Import closure
+recomputed independently: popup, background and content module sets **byte-identical** to baseline; only
+`fullpage` grew. Six seam mutations, **none escaped**. All four contrast rulings landed and survive
+re-derivation, and **every shipped text pairing passes AA**. The SD-1 scope trap **held** — no
+Re-authenticate button, no renamed stand-in, and `startOAuthFlow` has exactly one caller. **`font-mono` is
+now zero outside tests repo-wide**, closing D-7.7-21f's precondition for marking epic-7 done.
+
+## Story 7.10 — creator decisions folded (D-7.3-11 pattern)
+
+*Folded by the bmad-story-finisher pass that closed Story 7.10, per D-7.3-11: the story-local creator
+decisions `D-7.10-1 … D-7.10-13` are renumbered `D-7.10-37 … D-7.10-49` here and become canonical, so they
+do not collide with this review's own orchestrator/owner rulings at `D-7.10-30 … D-7.10-36`. Every
+`D-7.10-1…13` citation in the story file and in source comments (`components/settings/ConnectionBlock.tsx`,
+`components/settings/SettingsChromeHeader.tsx` (×2), `components/settings/CatchAllProjectField.tsx`,
+`components/settings/ManagerDisplay.tsx` + `.test.tsx`, `components/settings/CycleField.tsx`,
+`components/settings/DisconnectAction.tsx`, `components/settings/SettingsPrimitives.tsx`,
+`components/settings/SettingsView.tsx`, `components/week/WeekView.tsx`, `components/week/WeeklyGrid.tsx`,
+`components/week/PtoPopover.tsx`, `components/manager/ManagerMatrix.tsx`, `lib/connection-meta.ts`,
+`lib/no-reauth.grep.test.ts`, `lib/settings-fact-blocks.grep.test.ts`,
+`lib/settings-disconnect-copy.grep.test.ts`, `lib/no-monospace.grep.test.ts`,
+`entrypoints/fullpage/App.tsx` + `.test.tsx`, `entrypoints/options/App.tsx` + `.a11y.test.tsx`) was
+repointed to its `D-7.10-37…49` equivalent in one mechanical pass — none left dangling. No behaviour
+changed by this fold-in — documentation only. The story's own text originally mis-stated the creator
+range's upper bound as `D-7.10-19`; only 13 creator decisions were ever recorded, corrected here.
+
+- **D-7.10-37 — "Re-authenticate" is NOT built, and nothing is substituted for it.** Three sources agree
+  (SD-1, `EXPERIENCE.md:403-405`, `epics.md:2076`). The Connection footer keeps its reassurance copy
+  without the button, carries a source comment, and the absence is pinned by a grep test. D-7.2-5 /
+  D-7.8-18 precedent: honest absence beats dead UI.
+- **D-7.10-38 — The tab row lives in the Settings chrome header; the shell's plain `<nav>` is hidden on
+  Settings.** Verified: the design source draws a tab row on **Surface 5 only** (`:219-223`); Surfaces 2
+  and 3 (`:790-812`, `:911-935`) have none. D-7.7-22's established pattern is that chrome lives **inside
+  the section component**, restated at `MatrixChromeHeader.tsx:15-17`. Superseded in practice by
+  **D-7.10-30**'s owner ruling (one shared `SectionTabs` on all three surfaces), but the underlying design
+  citation stands.
+- **D-7.10-39 — `entrypoints/options/` REDIRECTS; it is not removed.** `wxt.config.ts:25` (a fenced file)
+  derives `options_ui` from the directory, and eight `openOptionsPage()` call sites — four on the time-off
+  write path — keep working untouched. **Endorsed, D-7.10-35.**
+- **D-7.10-40 — `entrypoints/fullpage/App.tsx:134-142`'s `handleConnect` must stop calling
+  `openOptionsPage()`.** Once options redirects to the full page, that button opens a new tab that
+  redirects straight back to the page you are already on. It becomes `setSection('settings')`. **A real
+  bug if missed** — and the review found three MORE call sites with the identical bug outside this
+  story's own fix (Finding 9, closed by the finisher pass: `WeekView.tsx`'s and `ManagerMatrix.tsx`'s
+  session-expired CTAs, and `PtoPopover.tsx`'s "Configure in Settings" link).
+- **D-7.10-41 — Chrome-header opacities are raised from `.72`/`.62` to `/85`.** Hand-computed 4.04:1 and
+  3.44:1 vs AA's 4.5:1 at the gradient's lightest stop. The identical fix is already documented at
+  `ChromeHeader.tsx:99-107` and `WeekChromeHeader.tsx:88-96`.
+- **D-7.10-42 — AC6's three signalling states reuse the frozen `DayStatusIndicator` registry**
+  (`met` / `attention` / `loading`), so no colour-allowlist widens. Two of three are byte-exact matches to
+  the design source; the third's `text-primary` vs `#6B6B72` is an accepted deviation.
+- **D-7.10-43 — `ManagerDisplay`'s `font-mono` is removed, not swapped to `tabular`.** `round2:257,261`
+  render names in the plain body face. `tabular` is for numerics; a person's name is not one.
+- **D-7.10-44 — Work-day target / Daily reminder / Approval cycle get consequence lines this story
+  authors.** AC9 requires one under every label; the design source supplies copy for only the first two
+  (`:275`, `:288`) plus a `hours per day` suffix (`:302`). Write plain, consequence-shaped sentences in
+  the same voice; do not invent behaviour, and do not use a tooltip.
+- **D-7.10-45 — `disconnectAll()` is not modified.** It calls `chrome.storage.local.clear()`
+  (`lib/disconnect.ts:37`), which also wipes every **setting** (catch-all key, target hours, reminder,
+  cycle, cached manager names). **Superseded by D-7.10-33's fuller ruling** (the Disconnect copy must
+  state that settings are destroyed too) — the function itself stays byte-identical, as this entry
+  recommended.
+- **D-7.10-46 — `CycleField` keeps its single option and renders normally.** Not hidden, not disabled, no
+  second cycle invented. **Endorsed, D-7.10-35.**
+- **D-7.10-47 — The Disconnect button's red is legitimate and does NOT breach D-7.6-37.** That rule
+  governs *status* colour; this is a destructive action, and the design specifies `error-ink` explicitly
+  (`:354`). Same class as `WeeklyGrid.tsx`'s documented row-remove survivor.
+- **D-7.10-48 — Log event names (`options.myself.*`, `options.connected-meta.error`, etc.) move
+  verbatim.** Renaming operator-facing log keys is churn with no user value.
+- **D-7.10-49 — Fact-row metrics follow the design source (`11px 16px`), not `DESIGN.md:145-147`'s
+  `list-row`.** The spine's `list-row` describes popup/data lists; the spines are silent on settings row
+  metrics, so SD-6 governs. Recorded so it is not read as drift.

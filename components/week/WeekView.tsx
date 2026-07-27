@@ -7,6 +7,7 @@ import { WeeklyGrid } from '@/components/week/WeeklyGrid';
 import { useWeekWorklogs } from '@/hooks/useWeekWorklogs';
 import { log } from '@/lib/log';
 import { sendMessage } from '@/lib/messages';
+import type { FullPageSection } from '@/lib/open-full-page';
 import {
   targetHoursItem,
   catchAllProjectKeyItem,
@@ -29,6 +30,12 @@ type Props = {
    * that, not swallow it. */
   onPrevWeek: () => void;
   onNextWeek: () => void;
+  /** Story 7.10, D-7.10-30: the shared Week/Manager/Settings tab row, now
+   * mounted inside `WeekChromeHeader` instead of the shell's (removed)
+   * plain `<nav>`. */
+  section: FullPageSection;
+  onSectionChange: (section: FullPageSection) => void;
+  showManagerTab: boolean;
 };
 
 /** Local `YYYY-MM-DD` (not UTC) so today/future comparisons match local days. */
@@ -51,14 +58,13 @@ const STRINGS = {
   undoLabel: 'Undo mark week as done',
 };
 
-function openOptions(): void {
-  chrome.runtime.openOptionsPage();
-}
-
 export function WeekView({
   weekOf,
   onPrevWeek,
   onNextWeek,
+  section,
+  onSectionChange,
+  showManagerTab,
 }: Props): React.ReactElement {
   const [targetHours, setTargetHours] = useState(8);
   const [catchAllProjectKey, setCatchAllProjectKey] = useState('');
@@ -140,6 +146,9 @@ export function WeekView({
        * relocated, sole) "Mark week as done" CTA gate on `grid`. */}
       <WeekChromeHeader
         weekOf={weekOf}
+        section={section}
+        onSectionChange={onSectionChange}
+        showManagerTab={showManagerTab}
         grid={grid}
         targetHours={targetHours}
         today={today}
@@ -172,7 +181,7 @@ export function WeekView({
           <WeekSkeleton />
         ) : query.isError ? (
           (query.error as { kind: string }).kind === 'auth-expired' ? (
-            <ConnectFallback />
+            <ConnectFallback onSectionChange={onSectionChange} />
           ) : (
             <WeekErrorState onRetry={() => void query.refetch()} />
           )
@@ -191,6 +200,7 @@ export function WeekView({
             <WeeklyGrid
               grid={grid}
               onMutated={handleMutated}
+              onSectionChange={onSectionChange}
               ptoSubtaskKey={ptoSubtaskKey || null}
               targetHours={targetHours}
               // Finding 13: pass the SAME memoised `today` that derived
@@ -233,7 +243,18 @@ function WeekSkeleton(): React.ReactElement {
   );
 }
 
-function ConnectFallback(): React.ReactElement {
+// Finding 9: this session-expired CTA used to call
+// `chrome.runtime.openOptionsPage()`, which now (D-7.10-39) opens an options
+// tab that immediately redirects to `fullpage.html?section=settings` — a
+// SECOND, duplicate full-page tab, since Week already lives on the full
+// page post-7.7. `onSectionChange('settings')` switches in place instead,
+// matching the fix D-7.10-40 already applied to the shell's own disconnected
+// gate.
+function ConnectFallback({
+  onSectionChange,
+}: {
+  onSectionChange: (section: FullPageSection) => void;
+}): React.ReactElement {
   return (
     <div className="text-center">
       <h3 className="text-base font-semibold text-neutral-900">
@@ -241,7 +262,7 @@ function ConnectFallback(): React.ReactElement {
       </h3>
       <p className="mt-2 text-sm text-neutral-500">{STRINGS.connectBody}</p>
       <div className="mt-4">
-        <Button variant="primary" onClick={openOptions}>
+        <Button variant="primary" onClick={() => onSectionChange('settings')}>
           {STRINGS.connectCta}
         </Button>
       </div>

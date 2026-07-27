@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { hoursToSeconds, secondsToCellDisplay } from '@/lib/hours';
 import { log } from '@/lib/log';
 import { sendMessage } from '@/lib/messages';
+import type { FullPageSection } from '@/lib/open-full-page';
 import { logFullDayPto, logHalfDayPto } from '@/lib/pto';
 import { enqueue as enqueueOutbox } from '@/lib/storage/outbox';
 import { formatStartedISO } from '@/lib/worklog-date';
@@ -46,6 +47,12 @@ type Props = {
   targetHours: number;
   onAddWorklog: () => void;
   onMutated?: () => void;
+  /** Finding 9: the "Configure in Settings" link switches the full page to
+   * the Settings section in place, rather than calling
+   * `chrome.runtime.openOptionsPage()` — which, post-D-7.10-39, opens a
+   * duplicate `fullpage.html?section=settings` tab and leaves this one
+   * behind stale. This sits on the time-off write path (D-7.3-12). */
+  onSectionChange: (section: FullPageSection) => void;
   /** Story 7.7, AC3/D-7.7-31: the weekend column tint applies at header,
    * cell, AND totals level as one recessive object — the header's TEXT
    * (not just its background) dims to `text-faint` for Sat/Sun
@@ -64,6 +71,7 @@ export function PtoPopover({
   targetHours,
   onAddWorklog,
   onMutated,
+  onSectionChange,
   weekend = false,
 }: Props): React.ReactElement {
   const [open, setOpen] = useState(false);
@@ -204,10 +212,6 @@ export function PtoPopover({
     onAddWorklog();
   }, [closePopover, onAddWorklog]);
 
-  function openOptions(): void {
-    chrome.runtime.openOptionsPage();
-  }
-
   const halfHours = targetHours / 2;
   const ptoConfigured = Boolean(ptoSubtaskKey);
 
@@ -276,7 +280,7 @@ export function PtoPopover({
               {STRINGS.notConfiguredPrefix}
               <button
                 type="button"
-                onClick={openOptions}
+                onClick={() => onSectionChange('settings')}
                 className="text-accent hover:underline"
               >
                 {STRINGS.settings}

@@ -64,6 +64,20 @@ export const JiraIssueSchema = z.object({
 export type JiraIssue = z.infer<typeof JiraIssueSchema>;
 
 /**
+ * `GET /rest/api/3/project/{key}` response shape (Story 7.10 / AC6): used
+ * both to confirm a catch-all project key resolves to a real project (a 404
+ * means it doesn't) and to read the project's display name for the
+ * settled-valid confirmation ("<project name> — N subtasks"). Tolerant of
+ * every other field Jira returns.
+ */
+export const JiraProjectSchema = z.object({
+  key: z.string(),
+  name: z.string(),
+});
+
+export type JiraProject = z.infer<typeof JiraProjectSchema>;
+
+/**
  * Jira `POST /rest/api/3/issue` create-issue response shape.
  *
  * NOTE: Jira returns only `{ id, key, self }` on create — no `fields`.

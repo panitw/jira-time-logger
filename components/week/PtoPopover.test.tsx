@@ -30,6 +30,7 @@ type Overrides = Partial<React.ComponentProps<typeof PtoPopover>>;
 function renderPopover(overrides: Overrides = {}) {
   const onAddWorklog = overrides.onAddWorklog ?? vi.fn();
   const onMutated = overrides.onMutated ?? vi.fn();
+  const onSectionChange = overrides.onSectionChange ?? vi.fn();
   const props: React.ComponentProps<typeof PtoPopover> = {
     dayIndex: 3,
     dayName: 'Thursday',
@@ -40,6 +41,7 @@ function renderPopover(overrides: Overrides = {}) {
     targetHours: 8,
     onAddWorklog,
     onMutated,
+    onSectionChange,
     ...overrides,
   };
   const client = new QueryClient({
@@ -176,7 +178,8 @@ describe('PtoPopover', () => {
   });
 
   it('PTO unconfigured → PTO buttons disabled + Settings link; Add a worklog stays enabled', () => {
-    const { onAddWorklog } = renderPopover({ ptoSubtaskKey: null });
+    const onSectionChange = vi.fn();
+    const { onAddWorklog } = renderPopover({ ptoSubtaskKey: null, onSectionChange });
     openPopover();
     const full = screen.getByRole('menuitem', { name: /Mark full-day time off/ }) as HTMLButtonElement;
     const half = screen.getByRole('menuitem', { name: /Mark half-day time off/ }) as HTMLButtonElement;
@@ -184,8 +187,11 @@ describe('PtoPopover', () => {
     expect(half.disabled).toBe(true);
     expect(screen.getByText(/Time off subtask not configured/)).toBeTruthy();
 
+    // Finding 9: switches section IN PLACE — must NOT open a duplicate tab
+    // via chrome.runtime.openOptionsPage().
     fireEvent.click(screen.getByText('Settings'));
-    expect(chrome.runtime.openOptionsPage).toHaveBeenCalled();
+    expect(onSectionChange).toHaveBeenCalledWith('settings');
+    expect(chrome.runtime.openOptionsPage).not.toHaveBeenCalled();
 
     const add = screen.getByRole('menuitem', { name: /Add a worklog/ }) as HTMLButtonElement;
     expect(add.disabled).toBe(false);

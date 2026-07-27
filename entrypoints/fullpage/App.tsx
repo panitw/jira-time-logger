@@ -1,63 +1,50 @@
 import { addWeeks, format, parseISO } from 'date-fns';
 import { useCallback, useEffect, useState } from 'react';
 import { ManagerView } from '@/components/manager/ManagerView';
+import { SettingsView } from '@/components/settings/SettingsView';
+import { SectionTabs } from '@/components/shared/SectionTabs';
 import { Button } from '@/components/ui/button';
 import { WeekView } from '@/components/week/WeekView';
 import { getCurrentCycleId } from '@/lib/cycle-range';
-import { log } from '@/lib/log';
 import { hasDirectReports } from '@/lib/manager-resolution';
+import type { FullPageSection } from '@/lib/open-full-page';
 import { approvalCycleItem } from '@/lib/storage/settings';
 import { getAuth, hasValidAuth } from '@/lib/storage/tokens';
 import type { ISODate } from '@/lib/storage/view-state';
 import { currentWeekMonday } from '@/lib/week-of';
 
 /**
- * Full-page host shell (Story 7.2, AC5/AC7, ORCHESTRATOR DECISION D-7.2-1):
- * a THIN shell only — Week/Manager/Settings section routing. Removing the
- * popup's tabs orphans them; this is where they now live. No router library
- * — a discriminated-union view state seeded from `?section=` on the URL
- * (architecture.md > View routing). The nav, the URL contract, and the
- * `WeekView`/`ManagerView` MOUNT POINTS are unchanged (D-7.7-22) —
- * `ManagerView`/`ManagerMatrix` are still untouched.
+ * Full-page host shell (Story 7.2, AC5/AC7; Story 7.10, D-7.10-30): a THIN
+ * shell only — Week/Manager/Settings section routing. No router library —
+ * a discriminated-union view state seeded from `?section=` on the URL
+ * (architecture.md > View routing).
  *
- * Story 7.7 gives the Week section its KKP chrome header, the revamped week
- * grid, cell anatomy, totals row, and the gap dialog — all INSIDE
- * `WeekView`/`WeeklyGrid` themselves (D-7.7-22's verdict: this shell adds no
- * chrome of its own above the section content). The one genuinely new piece
- * of state here is `weekOf`, lifted so the chrome header's prev/next nav has
- * somewhere to live (D-7.7-25) — `WeekView` still receives it as a prop,
- * exactly as it always has.
+ * Story 7.10 removes this shell's own plain `<nav>` (Story 7.2's interim
+ * tab row) entirely — the shared `SectionTabs` component now lives INSIDE
+ * each section's own chrome header (`WeekChromeHeader`, `MatrixChromeHeader`,
+ * `SettingsChromeHeader`), following the established D-7.7-22 pattern that
+ * chrome lives inside the section component, not this shell. `section` /
+ * `setSection` / `managesReports` are threaded down as props instead.
+ *
+ * Settings now mounts the real `SettingsView` (Story 7.10) — the D-7.2-5
+ * placeholder body is gone. `entrypoints/options/` redirects here rather
+ * than being removed (D-7.10-39); this shell no longer calls
+ * `chrome.runtime.openOptionsPage()` anywhere.
  */
 
-type Section = 'week' | 'manager' | 'settings';
-
-const STRINGS = {
-  week: 'Week',
-  manager: 'Manager',
-  settings: 'Settings',
-  disconnectedHeading: 'Connect to Jira',
-  disconnectedBody: 'Connect your Jira Cloud account to start logging time.',
-  connectCta: 'Connect to Jira',
-  settingsBody:
-    'Manage your Jira connection, catch-all project, time off subtask, and reminders.',
-  openSettings: 'Open settings',
-};
+type Section = FullPageSection;
 
 type AuthState = 'loading' | 'connected' | 'disconnected';
 
-const NAV_BUTTON_CLASS =
-  'rounded-md px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100 aria-[current=page]:bg-neutral-100 aria-[current=page]:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent';
+const STRINGS = {
+  disconnectedHeading: 'Connect to Jira',
+  disconnectedBody: 'Connect your Jira Cloud account to start logging time.',
+  connectCta: 'Connect to Jira',
+};
 
 function sectionFromURL(): Section {
   const raw = new URLSearchParams(window.location.search).get('section');
   return raw === 'manager' || raw === 'settings' ? raw : 'week';
-}
-
-/** Story 7.10 slot: hands off to the existing options page — the nav item
- * is spec-mandated (EXPERIENCE.md lines 60-62); only this body is
- * provisional. */
-function openOptions(): void {
-  chrome.runtime.openOptionsPage();
 }
 
 export function App(): React.ReactElement {
@@ -131,53 +118,46 @@ export function App(): React.ReactElement {
     }
   }, [managesReports, section, setSection]);
 
-  const handleConnect = (): void => {
-    chrome.runtime.openOptionsPage(() => {
-      if (chrome.runtime.lastError) {
-        log.warn('fullpage.openOptionsPage.error', {
-          message: chrome.runtime.lastError.message,
-        });
-      }
-    });
-  };
+  // D-7.10-40: once `entrypoints/options/` redirects here (D-7.10-39), calling
+  // `chrome.runtime.openOptionsPage()` from THIS page would open a new tab
+  // that redirects straight back to the page you are already on. Switch
+  // sections in place instead.
+  const handleConnect = useCallback((): void => {
+    setSection('settings');
+  }, [setSection]);
 
-  // Unstyled is fine here (7.7 gives it KKP chrome) — a neutral container and
-  // nothing more.
+  // Unstyled is fine here (7.7/7.8/7.10 give each section its own KKP
+  // chrome) — a neutral container and nothing more. Widened to 1180px,
+  // and DECLARED to be so (D-7.10-36e/R-1) — `round2:790` draws Surface 2
+  // (Week) at the same 1180px, so Week/Manager growing to match Settings
+  // is intentional, not a side effect.
+  //
+  // Finding 10: this container used to be `max-w-[1180px] px-4`. Under
+  // `border-box` (Tailwind preflight), `px-4` (32px) is subtracted from
+  // the CONTENT box, so the actual content width was 1148px, not 1180 —
+  // silently absorbed by SettingsView's own `max-w-full` clamp, so nothing
+  // visibly broke and no test could see it. No horizontal padding here:
+  // each section owns a full-bleed card (`rounded-[10px] border …`) with
+  // its own internal padding, so the outer container doesn't need any.
   return (
     <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-3xl px-4 py-6">
-        <nav className="flex items-center gap-2 border-b border-border pb-2" aria-label="Sections">
-          <button
-            type="button"
-            aria-current={section === 'week' ? 'page' : undefined}
-            onClick={() => setSection('week')}
-            className={NAV_BUTTON_CLASS}
-          >
-            {STRINGS.week}
-          </button>
-          {managesReports === true && (
-            <button
-              type="button"
-              aria-current={section === 'manager' ? 'page' : undefined}
-              onClick={() => setSection('manager')}
-              className={NAV_BUTTON_CLASS}
-            >
-              {STRINGS.manager}
-            </button>
-          )}
-          <button
-            type="button"
-            aria-current={section === 'settings' ? 'page' : undefined}
-            onClick={() => setSection('settings')}
-            className={NAV_BUTTON_CLASS}
-          >
-            {STRINGS.settings}
-          </button>
-        </nav>
-
-        <div className="mt-4">
-          {authState === 'disconnected' && section !== 'settings' ? (
-            <div className="text-center">
+      <div className="mx-auto max-w-[1180px] py-6">
+        {authState === 'disconnected' && section !== 'settings' ? (
+          // Finding 7: at baseline the shell's own `<nav>` painted above
+          // this gate unconditionally, so every section stayed reachable
+          // while disconnected. Removing that nav (D-7.10-30) left this the
+          // one branch with no chrome and no way out except the CTA. A
+          // minimal chrome bar carrying the real, unmocked `SectionTabs`
+          // restores it — the same component every other surface uses.
+          <div className="overflow-hidden rounded-[10px] border border-border bg-background shadow-raised">
+            <header className="bg-chrome-gradient rounded-t-[10px] px-[26px] pb-[14px] pt-[16px]">
+              <SectionTabs
+                active={section}
+                onSelect={setSection}
+                showManager={managesReports === true}
+              />
+            </header>
+            <div className="p-10 text-center">
               <h2 className="text-lg font-semibold text-neutral-900">
                 {STRINGS.disconnectedHeading}
               </h2>
@@ -188,39 +168,49 @@ export function App(): React.ReactElement {
                 </Button>
               </div>
             </div>
-          ) : (
-            <>
-              {section === 'week' && (
-                <WeekView
-                  weekOf={weekOf}
-                  onPrevWeek={handlePrevWeek}
-                  onNextWeek={handleNextWeek}
-                />
-              )}
-              {section === 'manager' && managesReports === true && (
-                <ManagerView
-                  cycle={getCurrentCycleId(approvalCycle)}
-                  // Misnomer inherited from the popup — there is no Today
-                  // section on the full page, so the defensive no-reports
-                  // fallback above lands on Week instead. Do not rename this
-                  // prop here (7.8 may).
-                  onSwitchToToday={() => setSection('week')}
-                />
-              )}
-              {section === 'settings' && (
-                <div className="text-center">
-                  <p className="text-sm text-neutral-500">{STRINGS.settingsBody}</p>
-                  {/* Story 7.10 replaces this body in place. */}
-                  <div className="mt-4">
-                    <Button variant="primary" onClick={openOptions}>
-                      {STRINGS.openSettings}
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
+          </div>
+        ) : (
+          <>
+            {section === 'week' && (
+              <WeekView
+                weekOf={weekOf}
+                onPrevWeek={handlePrevWeek}
+                onNextWeek={handleNextWeek}
+                section={section}
+                onSectionChange={setSection}
+                showManagerTab={managesReports === true}
+              />
+            )}
+            {/* Finding 6: was `managesReports === true`, which matched
+             * neither `true` nor `null` (the pending window before
+             * `hasDirectReports()` resolves) nor `false` — a stale
+             * `?section=manager` deep link landed on NO branch at all
+             * while pending, rendering a blank, escape-proof page. `!==
+             * false` covers the pending window too; the defensive
+             * fallback effect above still redirects to Week the moment
+             * this resolves false. */}
+            {section === 'manager' && managesReports !== false && (
+              <ManagerView
+                cycle={getCurrentCycleId(approvalCycle)}
+                // Misnomer inherited from the popup — there is no Today
+                // section on the full page, so the defensive no-reports
+                // fallback above lands on Week instead. Do not rename this
+                // prop here (7.8 may).
+                onSwitchToToday={() => setSection('week')}
+                section={section}
+                onSectionChange={setSection}
+                showManagerTab={managesReports === true}
+              />
+            )}
+            {section === 'settings' && (
+              <SettingsView
+                section={section}
+                onSectionChange={setSection}
+                showManagerTab={managesReports === true}
+              />
+            )}
+          </>
+        )}
       </div>
     </div>
   );

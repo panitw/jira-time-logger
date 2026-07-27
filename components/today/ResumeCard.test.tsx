@@ -444,8 +444,19 @@ describe('ResumeCard', () => {
   });
 
   // ---- AC1: shadow-lift exclusivity guard ----------------------------------
-  it('shadow-lift appears in exactly one source file across components/ and entrypoints/', () => {
-    const roots = ['components', 'entrypoints'].map((d) =>
+  // Story 7.10 review (R-2/f): this guard originally walked ALL of
+  // components/ and entrypoints/ — but Story 7.3's own AC1 says the resume
+  // card carries `shadow-lift` and "is the only element IN THE POPUP that
+  // does." A full-page card (e.g. Settings) is not in the popup and never
+  // violated that AC; the over-broad guard forced Story 7.10 to substitute
+  // the visibly lighter `shadow-raised` for its Settings shell instead of
+  // the design-matching `shadow-lift`, silently degrading that design.
+  // Narrowed to the directories that actually compose the popup surface
+  // (`entrypoints/popup/`, `components/shell/`, `components/today/`) —
+  // `components/ui/` is excluded because it's a shared primitive library
+  // used well beyond the popup, not popup-specific chrome.
+  it('shadow-lift appears in exactly one source file across the POPUP surface (entrypoints/popup, components/shell, components/today)', () => {
+    const roots = ['entrypoints/popup', 'components/shell', 'components/today'].map((d) =>
       path.resolve(process.cwd(), d),
     );
     const hits: string[] = [];

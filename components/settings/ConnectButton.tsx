@@ -6,12 +6,11 @@ import { startOAuthFlow, type PendingConnection } from '@/lib/oauth/flow';
 import { setAuth } from '@/lib/storage/tokens';
 
 const STRINGS = {
-  heading: 'Welcome to jira-time-logger',
-  body: 'Connect to Jira to get started. The extension will read your assigned tickets and help you log time without leaving Chrome.',
+  heading: 'Connect to Jira to begin',
+  body: "Everything else on this page is set once you're connected. Nothing is sent anywhere except your Jira instance.",
   ctaConnect: 'Connect to Jira',
   ctaConnecting: 'Opening Jira…',
-  ctaUseApiToken: 'Or set up with an API token',
-  disconnectNote: '(You can disconnect any time from Settings.)',
+  ctaUseApiToken: 'Set up with an API token instead',
   pickerHeading: 'Pick a Jira site',
   pickerSub: 'Your account has access to more than one Jira Cloud site. Pick the one to connect.',
 };
@@ -123,33 +122,28 @@ export function ConnectButton({ onConnected }: Props): React.ReactElement {
   }
 
   return (
-    <section className="mx-auto max-w-md rounded-lg bg-brand-gradient p-10 text-center">
-      <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center">
-        <img src="/icon/128.png" alt="Jira Time Logger logo" className="h-16 w-16 rounded-lg" />
-      </div>
-      <h2 className="text-3xl font-semibold text-white">{STRINGS.heading}</h2>
-      <p className="mx-auto mt-3 max-w-md text-sm text-white/80">{STRINGS.body}</p>
-      <div className="mt-6">
+    <section className="flex w-full max-w-[420px] flex-col gap-[9px] rounded-lg border border-border bg-surface p-[18px] shadow-raised">
+      <h2 className="font-chrome text-[15px] font-semibold text-foreground">{STRINGS.heading}</h2>
+      <p className="text-body-sm text-muted">{STRINGS.body}</p>
+      <div className="mt-1">
         <Button
           variant="primary"
           onClick={() => void handleConnect()}
           disabled={status.kind === 'connecting'}
           autoFocus
+          className="w-full"
         >
           {status.kind === 'connecting' ? STRINGS.ctaConnecting : STRINGS.ctaConnect}
         </Button>
       </div>
-      <p className="mt-3 text-xs">
-        <button
-          type="button"
-          onClick={() => setStatus({ kind: 'api-token-form' })}
-          className="text-white/70 underline-offset-2 hover:text-white hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-accent-deep focus-visible:rounded"
-          disabled={status.kind === 'connecting'}
-        >
-          {STRINGS.ctaUseApiToken}
-        </button>
-      </p>
-      <p className="mt-4 text-xs text-white/60">{STRINGS.disconnectNote}</p>
+      <button
+        type="button"
+        onClick={() => setStatus({ kind: 'api-token-form' })}
+        className="self-start rounded font-chrome text-[12.5px] font-medium text-primary hover:text-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+        disabled={status.kind === 'connecting'}
+      >
+        {STRINGS.ctaUseApiToken}
+      </button>
     </section>
   );
 }

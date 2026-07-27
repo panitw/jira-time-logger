@@ -20,17 +20,69 @@ vi.mock('@/lib/storage/settings', () => ({
   approvalCycleItem: { getValue: () => mockApprovalCycleGet() },
 }));
 
+/**
+ * Story 7.10, D-7.10-30: the shell no longer renders its own `<nav>` — each
+ * section now carries the shared `SectionTabs` inside its OWN chrome
+ * header. These mocks render a minimal stand-in nav from the
+ * `section`/`onSectionChange`/`showManagerTab` props the shell now passes
+ * down, so this file keeps proving the SHELL's routing/prop-plumbing
+ * responsibility without re-testing `SectionTabs` itself (that component's
+ * real, unmocked behaviour is proven directly in
+ * `components/shared/SectionTabs.test.tsx` and in each real chrome header's
+ * own test file).
+ */
+function fakeNav(
+  section: string,
+  onSectionChange: (s: string) => void,
+  showManagerTab: boolean,
+): React.ReactElement {
+  return (
+    <nav aria-label="Sections">
+      <button
+        type="button"
+        aria-current={section === 'week' ? 'page' : undefined}
+        onClick={() => onSectionChange('week')}
+      >
+        Week
+      </button>
+      {showManagerTab && (
+        <button
+          type="button"
+          aria-current={section === 'manager' ? 'page' : undefined}
+          onClick={() => onSectionChange('manager')}
+        >
+          Manager
+        </button>
+      )}
+      <button
+        type="button"
+        aria-current={section === 'settings' ? 'page' : undefined}
+        onClick={() => onSectionChange('settings')}
+      >
+        Settings
+      </button>
+    </nav>
+  );
+}
+
 vi.mock('@/components/week/WeekView', () => ({
   WeekView: ({
     weekOf,
     onPrevWeek,
     onNextWeek,
+    section,
+    onSectionChange,
+    showManagerTab,
   }: {
     weekOf: string;
     onPrevWeek?: () => void;
     onNextWeek?: () => void;
+    section: string;
+    onSectionChange: (s: string) => void;
+    showManagerTab: boolean;
   }) => (
     <div data-testid="week-view">
+      {fakeNav(section, onSectionChange, showManagerTab)}
       Week of {weekOf}
       <button type="button" onClick={onPrevWeek}>
         mock-prev
@@ -43,8 +95,39 @@ vi.mock('@/components/week/WeekView', () => ({
 }));
 
 vi.mock('@/components/manager/ManagerView', () => ({
-  ManagerView: ({ cycle }: { cycle: string; onSwitchToToday: () => void }) => (
-    <div data-testid="manager-view">Manager cycle {cycle}</div>
+  ManagerView: ({
+    cycle,
+    section,
+    onSectionChange,
+    showManagerTab,
+  }: {
+    cycle: string;
+    onSwitchToToday: () => void;
+    section: string;
+    onSectionChange: (s: string) => void;
+    showManagerTab: boolean;
+  }) => (
+    <div data-testid="manager-view">
+      {fakeNav(section, onSectionChange, showManagerTab)}
+      Manager cycle {cycle}
+    </div>
+  ),
+}));
+
+vi.mock('@/components/settings/SettingsView', () => ({
+  SettingsView: ({
+    section,
+    onSectionChange,
+    showManagerTab,
+  }: {
+    section: string;
+    onSectionChange: (s: string) => void;
+    showManagerTab: boolean;
+  }) => (
+    <div data-testid="settings-view">
+      {fakeNav(section, onSectionChange, showManagerTab)}
+      Settings body
+    </div>
   ),
 }));
 
@@ -80,6 +163,12 @@ describe('fullpage App', () => {
       expect(screen.getByTestId('week-view')).toBeTruthy();
     });
     expect(screen.getByRole('button', { name: 'Week' }).getAttribute('aria-current')).toBe('page');
+  });
+
+  it('renders no top-level shell nav — only the mounted section carries one (D-7.10-30)', async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('week-view')).toBeTruthy());
+    expect(screen.getAllByRole('navigation', { name: 'Sections' }).length).toBe(1);
   });
 
   it('?section=manager selects Manager once reports resolve true', async () => {
@@ -138,12 +227,22 @@ describe('fullpage App', () => {
     expect(screen.getByText(/Manager cycle \d{4}-\d{2}/)).toBeTruthy();
   });
 
-  it('the Settings section renders a thin panel whose action calls chrome.runtime.openOptionsPage', async () => {
+  it('clicking the Settings nav item mounts the real SettingsView', async () => {
     render(<App />);
     await waitFor(() => expect(screen.getByTestId('week-view')).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-    fireEvent.click(await screen.findByText('Open settings'));
-    expect(chrome.runtime.openOptionsPage).toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByTestId('settings-view')).toBeTruthy());
+  });
+
+  // D-7.10-30: navigating FROM Settings back to Week also works — proves
+  // the shell's `setSection` plumbing is symmetric, not one-directional.
+  it('navigating from Settings back to Week works', async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('week-view')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    await waitFor(() => expect(screen.getByTestId('settings-view')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Week' }));
+    await waitFor(() => expect(screen.getByTestId('week-view')).toBeTruthy());
   });
 
   it('disconnected: shows the connect affordance instead of the Week section', async () => {
@@ -154,6 +253,18 @@ describe('fullpage App', () => {
       expect(screen.getByRole('heading', { name: 'Connect to Jira' })).toBeTruthy();
     });
     expect(screen.queryByTestId('week-view')).toBeNull();
+  });
+
+  // D-7.10-40: the disconnected fallback's CTA switches section IN PLACE —
+  // it must never call chrome.runtime.openOptionsPage() (that would open a
+  // new tab that redirects straight back here, per D-7.10-39).
+  it('disconnected: the Connect to Jira CTA switches to Settings without opening a new tab', async () => {
+    mockGetAuth.mockResolvedValue(null);
+    mockHasValidAuth.mockReturnValue(false);
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect to Jira' }));
+    await waitFor(() => expect(screen.getByTestId('settings-view')).toBeTruthy());
+    expect(chrome.runtime.openOptionsPage).not.toHaveBeenCalled();
   });
 
   // Story 7.7, D-7.7-25: `weekOf` is lifted to full-page state so the chrome

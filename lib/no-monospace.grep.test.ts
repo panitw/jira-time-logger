@@ -25,6 +25,13 @@
  *     matches it.
  *   - Before `epic-7` is marked done, this file's `ALLOWLIST` must be empty
  *     (D-7.7-21f).
+ *
+ * Story 7.10 update: `ALLOWLIST` is now `{}` — D-7.7-21f's stated
+ * precondition for marking epic-7 done. The guard stays fully armed with an
+ * empty allowlist: every occurrence anywhere in `components/ lib/
+ * entrypoints/` is now an unowned violation. A future story reintroducing
+ * `font-mono` must add its own new, exact-count, named-owner entry rather
+ * than reopening this one.
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -69,13 +76,17 @@ const ALL_SOURCE_FILES = SOURCE_DIRS.flatMap((d) =>
  * Each entry is the EXACT count today — not a ceiling. When the owning
  * story fixes its occurrence(s), update (or delete) that entry in the SAME
  * change, matching the file's actual new count.
+ *
+ * Story 7.10 closed the LAST four entries (D-7.7-21f's stated precondition
+ * for marking epic-7 done): `DiagnosticsBlock.tsx`/`CatchAllProjectField.tsx`
+ * → `tabular` (both numerics); `ManagerDisplay.tsx` → removed outright, not
+ * swapped (a person's name is not a numeric, D-7.10-43); `entrypoints/
+ * options/App.tsx` → the whole markup disappeared with the redirect
+ * (D-7.10-39). `ALLOWLIST` is now empty — the `if (allowed)` branch below
+ * simply never fires and every occurrence, anywhere, is an unowned
+ * violation. Do NOT re-add an entry without a new owning story.
  */
-const ALLOWLIST: Record<string, { count: number; owner: string }> = {
-  'components/settings/DiagnosticsBlock.tsx': { count: 2, owner: 'Story 7.10' },
-  'components/settings/ManagerDisplay.tsx': { count: 2, owner: 'Story 7.10' },
-  'components/settings/CatchAllProjectField.tsx': { count: 1, owner: 'Story 7.10' },
-  'entrypoints/options/App.tsx': { count: 1, owner: 'Story 7.10' },
-};
+const ALLOWLIST: Record<string, { count: number; owner: string }> = {};
 
 describe('Epic 7 standing constraint — no monospace (font-mono) outside the named, owned allowlist', () => {
   it('every font-mono occurrence is either inside the allowlist at its exact pinned count, or absent', () => {

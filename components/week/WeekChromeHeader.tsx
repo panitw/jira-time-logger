@@ -1,6 +1,8 @@
 import { format, parseISO } from 'date-fns';
+import { SectionTabs } from '@/components/shared/SectionTabs';
 import { MarkAsDoneButton } from '@/components/week/MarkAsDoneButton';
 import { hoursToSeconds, secondsToHours } from '@/lib/hours';
+import type { FullPageSection } from '@/lib/open-full-page';
 import { pctToWidthClass } from '@/lib/progress-width';
 import type { ISODate } from '@/lib/storage/view-state';
 import { WORKDAYS_PER_WEEK } from '@/lib/week-gaps';
@@ -37,6 +39,12 @@ function hoursLabel(seconds: number): string {
 export type WeekChromeHeaderProps = {
   /** This week's local-midnight Monday. */
   weekOf: ISODate;
+  /** Story 7.10, D-7.10-30: the shared Week/Manager/Settings tab row, now
+   * mounted inside every full-page chrome header instead of the shell's
+   * (removed) plain `<nav>`. */
+  section: FullPageSection;
+  onSectionChange: (section: FullPageSection) => void;
+  showManagerTab: boolean;
   /** `null` while the week's worklogs are still loading (or errored) — the
    * title/eyebrow/nav paint synchronously regardless (same "paint
    * unconditionally, branch only the data-dependent piece" pattern as the
@@ -58,6 +66,9 @@ export type WeekChromeHeaderProps = {
 
 export function WeekChromeHeader({
   weekOf,
+  section,
+  onSectionChange,
+  showManagerTab,
   grid,
   targetHours,
   today,
@@ -163,6 +174,8 @@ export function WeekChromeHeader({
           </div>
         )}
       </div>
+
+      <SectionTabs active={section} onSelect={onSectionChange} showManager={showManagerTab} />
     </header>
   );
 }

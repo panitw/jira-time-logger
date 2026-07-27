@@ -1,17 +1,27 @@
-import { formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { FactRow, FactTable, SectionRule } from '@/components/settings/SettingsPrimitives';
 import { Button } from '@/components/ui/button';
 import { log } from '@/lib/log';
 import { getStorageUsedBytes, clearCache } from '@/lib/storage/quota';
 import { lastSyncTimestampItem } from '@/lib/storage/settings';
 
+/**
+ * Diagnostics (Story 7.10, AC3, Block 4 of 5) — facts + the one action the
+ * design puts inside a facts block. `round2:324-341`.
+ *
+ * The old monospace utility is retired here in favour of `tabular`
+ * (D-7.7-21f, this story's owned allowlist entry): both values here are
+ * numerics (a datetime, a storage figure) — `round2:332,337` render them
+ * Kanit + `tabular-nums`.
+ */
+
 const STRINGS = {
   heading: 'Diagnostics',
-  lastSync: 'Last sync:',
+  lastSyncLabel: 'Last sync',
   lastSyncNever: 'never',
-  storageUsed: 'Local storage used:',
-  storageLabel: 'MB / 10 MB',
-  clearCache: 'Clear local cache',
+  localCacheLabel: 'Local cache',
+  clearCache: 'Clear cache',
   cleared: 'Cleared',
 };
 
@@ -35,7 +45,9 @@ export function DiagnosticsBlock(): React.ReactElement {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
-    return () => { if (timeoutRef.current) clearTimeout(timeoutRef.current); };
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
   }, []);
 
   const handleClearCache = useCallback(async (): Promise<void> => {
@@ -52,37 +64,25 @@ export function DiagnosticsBlock(): React.ReactElement {
     }
   }, []);
 
-  const lastSyncLabel = syncTs
-    ? formatDistanceToNow(syncTs, { addSuffix: true })
-    : STRINGS.lastSyncNever;
-
+  const lastSyncLabel = syncTs ? format(new Date(syncTs), 'd MMM yyyy, HH:mm') : STRINGS.lastSyncNever;
   const storageMb = (storageBytes / (1024 * 1024)).toFixed(1);
 
   return (
-    <section className="mt-8">
-      <h3 className="text-base font-semibold text-neutral-900">{STRINGS.heading}</h3>
-      <hr className="my-3 border-neutral-200" />
-      <div className="space-y-2 text-sm text-neutral-700">
-        <p>
-          {STRINGS.lastSync}{' '}
-          <span className="font-mono">{lastSyncLabel}</span>
-        </p>
-        <p className="flex items-center gap-2">
-          <span>
-            {STRINGS.storageUsed}{' '}
-            <span className="font-mono">
-              {storageMb} {STRINGS.storageLabel}
-            </span>
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void handleClearCache()}
-          >
-            {cleared ? STRINGS.cleared : STRINGS.clearCache}
-          </Button>
-        </p>
-      </div>
-    </section>
+    <div className="flex flex-col gap-3">
+      <SectionRule heading={STRINGS.heading} />
+      <FactTable>
+        <FactRow label={STRINGS.lastSyncLabel} tabularValue>
+          {lastSyncLabel}
+        </FactRow>
+        <FactRow label={STRINGS.localCacheLabel}>
+          <div className="flex items-center justify-between gap-3">
+            <span className="tabular">{storageMb} MB</span>
+            <Button variant="secondary" size="sm" onClick={() => void handleClearCache()}>
+              {cleared ? STRINGS.cleared : STRINGS.clearCache}
+            </Button>
+          </div>
+        </FactRow>
+      </FactTable>
+    </div>
   );
 }

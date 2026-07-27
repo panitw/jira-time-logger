@@ -426,6 +426,15 @@ describe('AC3 — no surface hard-codes a day-status colour token (source-level 
       // Story 7.9, AC2: the offline banner's headline reuses the SAME amber
       // convention as the pre-existing validation/warning surfaces.
       'components/shell/OfflineBanner.tsx',
+      // Story 7.10, D-7.6-37 (deferred to this story, now closed): the
+      // Settings-surface client-side validation reds (nothing was ever sent
+      // to Jira) convert to the SAME established amber convention —
+      // Work-day target / Daily reminder's range/format checks, and the
+      // API-token setup form's network/parse-error branch (E-9's ruling,
+      // D-7.10-34).
+      'components/settings/TargetHoursField.tsx',
+      'components/settings/ReminderTimeField.tsx',
+      'components/settings/ApiTokenSetup.tsx',
     ]);
     const violations: string[] = [];
     for (const file of [...ALL_SOURCE_FILES, ...CSS_FILES]) {
@@ -482,6 +491,13 @@ describe('AC3 — no surface hard-codes a day-status colour token (source-level 
     // they ever leak into this file — a file-level allowlist alone would
     // have permitted all five silently (D-7.6-43's lesson).
     const MANAGER_MATRIX = 'components/manager/ManagerMatrix.tsx';
+    // Story 7.10, D-7.6-40 (this token's real, named consumer):
+    // `bg-status-clean-on-chrome` — the Settings connection-status dot — is
+    // a DIFFERENT, longer Tailwind utility than the banned `bg-status-clean`
+    // bar token, but `source.includes('bg-status-clean')` matches it as a
+    // substring/prefix. Same narrow single-token exception mechanism as
+    // ManagerMatrix's `bg-royal-purple` case just below.
+    const SETTINGS_CHROME_HEADER = 'components/settings/SettingsChromeHeader.tsx';
     const BAR_TOKENS = [
       'bg-status-clean',
       'bg-royal-purple',
@@ -497,6 +513,16 @@ describe('AC3 — no surface hard-codes a day-status colour token (source-level 
       for (const tok of BAR_TOKENS) {
         if (!source.includes(tok)) continue;
         if (rel === MANAGER_MATRIX && tok === 'bg-royal-purple') continue;
+        // Only exempt when EVERY occurrence of the substring is part of
+        // `bg-status-clean-on-chrome` — a bare `bg-status-clean` (the
+        // actually-banned bar token) anywhere in the file still fails.
+        if (
+          rel === SETTINGS_CHROME_HEADER &&
+          tok === 'bg-status-clean' &&
+          !/bg-status-clean(?!-on-chrome)/.test(source)
+        ) {
+          continue;
+        }
         violations.push(`${rel}: ${tok}`);
       }
     }

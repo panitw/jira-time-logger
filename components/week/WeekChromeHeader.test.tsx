@@ -78,6 +78,9 @@ function gridWithLoggedHours(hours: number): WeekGrid {
 function baseProps() {
   return {
     weekOf: '2026-06-15',
+    section: 'week' as const,
+    onSectionChange: vi.fn(),
+    showManagerTab: false,
     grid: fullGrid(),
     targetHours: 8,
     today: '2026-06-19',
@@ -192,6 +195,28 @@ describe('WeekChromeHeader (Story 7.7, AC2)', () => {
     expect(await screen.findByRole('dialog')).toBeTruthy();
     // gappyGrid: 8+8+8+4+8 = 36h logged of a 40h week target.
     expect(screen.getByText('Close the week at 36 of 40h?')).toBeTruthy();
+  });
+
+  // --- Story 7.10, D-7.10-30: SectionTabs composition -----------------------
+  // Proves the REAL, unmocked SectionTabs renders here — same discipline as
+  // the "Real composition" block above.
+
+  describe('SectionTabs composition (Story 7.10)', () => {
+    it('renders Week active, Settings present, Manager hidden when showManagerTab is false', () => {
+      render(<WeekChromeHeader {...baseProps()} />);
+      expect(screen.getByRole('button', { name: 'Week' }).getAttribute('aria-current')).toBe(
+        'page',
+      );
+      expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Manager' })).toBeNull();
+    });
+
+    it('shows Manager when showManagerTab is true, and clicking it calls onSectionChange', () => {
+      const onSectionChange = vi.fn();
+      render(<WeekChromeHeader {...baseProps()} showManagerTab onSectionChange={onSectionChange} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Manager' }));
+      expect(onSectionChange).toHaveBeenCalledWith('manager');
+    });
   });
 
   // --- Story 7.7, Task 13: axe scan (Story 6.1 AC1 gate) -------------------

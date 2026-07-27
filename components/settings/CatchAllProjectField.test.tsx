@@ -1,115 +1,225 @@
 /* eslint-disable import/order */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+/**
+ * Retargeted for Story 7.10 / AC6 (four-state catch-all validation: idle,
+ * validating/mid-typing — neutral, settled-invalid — amber, settled-valid —
+ * project name + subtask count). Mocks the `jiraGet` module boundary
+ * directly rather than raw `fetch` — simpler than the old scheduler/refresh/
+ * fetch stack and this component only ever calls through that one seam.
+ */
+
+const jiraGetMock = vi.fn();
+vi.mock('@/lib/jira-client', () => ({
+  jiraGet: (...args: unknown[]) => jiraGetMock(...args),
+}));
 
 vi.mock('@/lib/storage/settings', () => ({
   catchAllProjectKeyItem: { getValue: vi.fn(async () => 'KNP'), setValue: vi.fn(async () => {}) },
   ptoSubtaskKeyItem: { getValue: vi.fn(async () => null), setValue: vi.fn(async () => {}) },
   ptoSubtaskSummaryItem: { getValue: vi.fn(async () => null), setValue: vi.fn(async () => {}) },
-  managerDisplayNameItem: { getValue: vi.fn(async () => null), setValue: vi.fn(async () => {}) },
-  skipLevelDisplayNameItem: { getValue: vi.fn(async () => null), setValue: vi.fn(async () => {}) },
-  reminderTimeItem: { getValue: vi.fn(async () => '17:00'), setValue: vi.fn(async () => {}) },
-  targetHoursItem: { getValue: vi.fn(async () => 8), setValue: vi.fn(async () => {}) },
-  approvalCycleItem: { getValue: vi.fn(async () => 'calendar-month'), setValue: vi.fn(async () => {}) },
-  lastSyncTimestampItem: { getValue: vi.fn(async () => null), setValue: vi.fn(async () => {}) },
-  setManagerNames: vi.fn(async () => {}),
-  getManagerNames: vi.fn(async () => ({
-    managerDisplayName: null,
-    skipLevelDisplayName: null,
-    managerAccountId: null,
-    skipLevelAccountId: null,
-  })),
 }));
-vi.mock('@/lib/storage/tokens', () => ({
-  getAuth: vi.fn(async () => null),
-  setAuth: vi.fn(),
-  clearAuth: vi.fn(),
-  hasValidAuth: vi.fn(() => false),
-}));
-vi.mock('@/lib/scheduler', () => ({
-  scheduler: { acquire: vi.fn((fn: () => Promise<unknown>) => fn()) },
-}));
-vi.mock('@/lib/oauth/refresh', () => ({
-  refreshTokens: vi.fn(async () => ({ kind: 'auth-expired' })),
-}));
-
-vi.stubGlobal('chrome', {
-  runtime: { id: 'test' },
-  storage: {
-    local: {
-      get: vi.fn(async () => ({})),
-      set: vi.fn(async () => {}),
-      remove: vi.fn(async () => {}),
-    },
-    onChanged: { addListener: vi.fn(), removeListener: vi.fn() },
-  },
-});
-vi.stubGlobal('fetch', vi.fn());
-vi.stubGlobal('btoa', (s: string) => Buffer.from(s).toString('base64'));
 
 import { CatchAllProjectField } from './CatchAllProjectField';
+
+/** Real 400ms debounce + a settle margin — genuinely waits it out rather
+ * than faking timers (which would fight the mixed setTimeout/Promise
+ * resolution order here). Wrapped in `act` so the resulting state updates
+ * aren't flagged as outside React's control. */
+async function flushDebounce(): Promise<void> {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 450));
+  });
+}
+
+function mockProject(key: string, name: string): void {
+  jiraGetMock.mockImplementation(async (path: string) => {
+    if (path === `rest/api/3/project/${key}`) {
+      return { kind: 'ok', value: { key, name } };
+    }
+    if (path.startsWith('rest/api/3/project/')) {
+      return { kind: 'not-found' };
+    }
+    if (path.includes('issuetype=Sub-task')) {
+      return {
+        kind: 'ok',
+        value: {
+          issues: [
+            { id: '1', key: `${key}-1`, fields: { summary: 'First' } },
+            { id: '2', key: `${key}-2`, fields: { summary: 'Second' } },
+          ],
+        },
+      };
+    }
+    return { kind: 'ok', value: { issues: [] } };
+  });
+}
 
 describe('CatchAllProjectField', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockProject('KNP', 'KKP Non-Project');
   });
 
-  it('renders section heading', async () => {
+  it('renders the label and its one-line consequence', async () => {
     render(<CatchAllProjectField />);
-    await waitFor(() => {
-      expect(screen.getByText('Catch-all project')).toBeTruthy();
-    });
+    await waitFor(() => expect(screen.getByText('Catch-all project key')).toBeTruthy());
+    expect(
+      screen.getByText('Where meetings, standup and time off get logged.'),
+    ).toBeTruthy();
+    expect(screen.getByText('Time-off subtask')).toBeTruthy();
+    expect(screen.getByText('Marking a day as time off logs a full day here.')).toBeTruthy();
   });
 
-  it('shows KNP as default placeholder after loading', async () => {
+  it('shows the stored key in the input', async () => {
     render(<CatchAllProjectField />);
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText('KNP')).toBeTruthy();
-    });
+    await waitFor(() => expect(screen.getByDisplayValue('KNP')).toBeTruthy());
   });
 
-  it('shows validation error when project key is invalid', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({
-      ok: false,
-      status: 404,
-      json: async () => ({}),
-      headers: new Headers(),
-    } as Response);
-
-    render(<CatchAllProjectField />);
-    await waitFor(() => screen.getByPlaceholderText('KNP'));
-
-    const input = screen.getByPlaceholderText('KNP');
-    fireEvent.change(input, { target: { value: 'INVALID' } });
-    fireEvent.blur(input);
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(
-          'Project key not found or no access — check the key and your permissions',
-        ),
-      ).toBeTruthy();
-    });
+  it('a settled valid key confirms with the project name and subtask count, no red anywhere', async () => {
+    const { container } = render(<CatchAllProjectField />);
+    await waitFor(() => expect(screen.getByText('KKP Non-Project — 2 subtasks')).toBeTruthy());
+    expect(container.innerHTML).not.toMatch(/state-danger|status-error/);
   });
 
-  it.skip('shows (default) helper when key is KNP', async () => {
-    vi.mocked(fetch)
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ issues: [] }),
-        headers: new Headers(),
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ issues: [] }),
-        headers: new Headers(),
-      } as Response);
-
+  it('mid-typing is neutral — never red or amber, even before the debounce settles', async () => {
     render(<CatchAllProjectField />);
-    await waitFor(() => {
-      expect(screen.getByText('(default)')).toBeTruthy();
+    await waitFor(() => expect(screen.getByDisplayValue('KNP')).toBeTruthy());
+    const callsBeforeKeystroke = jiraGetMock.mock.calls.length;
+    mockProject('ZZZZ', 'irrelevant');
+    fireEvent.change(screen.getByDisplayValue('KNP'), { target: { value: 'ZZZZ' } });
+    const input = screen.getByDisplayValue('ZZZZ');
+    // Synchronous — the flip to `validating` happens on the keystroke
+    // itself, before the 400ms debounce elapses. Mutation-proven (M-3):
+    // deleting the synchronous `setStatus('validating')`, deleting the
+    // debounce, deleting the "Checking…" hint, or rendering the amber
+    // `attention` icon mid-typing all fail one of these assertions.
+    expect(screen.getByText('Checking…')).toBeTruthy();
+    expect(screen.getByText('Waiting for a valid project key')).toBeTruthy();
+    expect(input.className).not.toMatch(/border-state-danger|border-amber-border/);
+    expect(input.className).toMatch(/border-\[1\.5px\]\s+border-primary/);
+    // No network round trip has happened yet — proves this is genuinely
+    // debounced, not merely a neutral resting colour left over from `valid`.
+    expect(jiraGetMock.mock.calls.length).toBe(callsBeforeKeystroke);
+  });
+
+  it('clearing the key resets the field to idle instead of showing a stale confirmation', async () => {
+    render(<CatchAllProjectField />);
+    await waitFor(() => expect(screen.getByText('KKP Non-Project — 2 subtasks')).toBeTruthy());
+    fireEvent.change(screen.getByDisplayValue('KNP'), { target: { value: '' } });
+    await waitFor(() =>
+      expect(screen.queryByText('KKP Non-Project — 2 subtasks')).toBeNull(),
+    );
+    const select = screen.getByRole('combobox');
+    expect(select).toBeDisabled();
+    expect(screen.getByText('Waiting for a valid project key')).toBeTruthy();
+  });
+
+  it('correcting a typo back to the last-good key recovers — does not stay bricked amber (Finding 1)', async () => {
+    render(<CatchAllProjectField />);
+    await waitFor(() => expect(screen.getByText('KKP Non-Project — 2 subtasks')).toBeTruthy());
+
+    jiraGetMock.mockImplementation(async (path: string) => {
+      if (path.startsWith('rest/api/3/project/')) return { kind: 'not-found' };
+      return { kind: 'ok', value: { issues: [] } };
     });
+    fireEvent.change(screen.getByDisplayValue('KNP'), { target: { value: 'ZZZZ' } });
+    await flushDebounce();
+    await waitFor(() => expect(screen.getByText('No project with this key')).toBeTruthy());
+
+    mockProject('KNP', 'KKP Non-Project');
+    fireEvent.change(screen.getByDisplayValue('ZZZZ'), { target: { value: 'KNP' } });
+    await flushDebounce();
+
+    await waitFor(() => expect(screen.getByText('KKP Non-Project — 2 subtasks')).toBeTruthy());
+    const input = screen.getByDisplayValue('KNP');
+    expect(input.className).not.toMatch(/border-amber-border|border-state-danger/);
+    expect(screen.getByRole('combobox')).not.toBeDisabled();
+  });
+
+  it('a failed subtask probe is not presented as "0 subtasks" (Finding 16)', async () => {
+    jiraGetMock.mockImplementation(async (path: string) => {
+      if (path === 'rest/api/3/project/KNP') {
+        return { kind: 'ok', value: { key: 'KNP', name: 'KKP Non-Project' } };
+      }
+      if (path.includes('issuetype=Sub-task')) return { kind: 'network', cause: 'boom' };
+      return { kind: 'not-found' };
+    });
+    render(<CatchAllProjectField />);
+    await waitFor(() =>
+      expect(screen.getByText("KKP Non-Project — couldn't load subtasks")).toBeTruthy(),
+    );
+    // No false COUNT anywhere — the confirmation says the probe failed, not
+    // "0 subtasks" (a real, and false, fact about the project).
+    expect(screen.queryByText(/\d+ subtasks?$/)).toBeNull();
+    expect(screen.getByRole('combobox')).toBeDisabled();
+  });
+
+  it('a stale response does not overwrite a newer validation (lastCallId guard, M-2)', async () => {
+    render(<CatchAllProjectField />);
+    await waitFor(() => expect(screen.getByDisplayValue('KNP')).toBeTruthy());
+
+    let resolveSlow: (v: unknown) => void = () => {};
+    const slowProject = new Promise((resolve) => {
+      resolveSlow = resolve;
+    });
+    jiraGetMock.mockImplementation((path: string) => {
+      if (path === 'rest/api/3/project/SLOW') return slowProject;
+      if (path === 'rest/api/3/project/FAST') {
+        return Promise.resolve({ kind: 'ok', value: { key: 'FAST', name: 'Fast Project' } });
+      }
+      if (path.includes('issuetype=Sub-task')) {
+        return Promise.resolve({ kind: 'ok', value: { issues: [] } });
+      }
+      return Promise.resolve({ kind: 'not-found' });
+    });
+
+    fireEvent.change(screen.getByDisplayValue('KNP'), { target: { value: 'SLOW' } });
+    await flushDebounce();
+    fireEvent.change(screen.getByDisplayValue('SLOW'), { target: { value: 'FAST' } });
+    await flushDebounce();
+
+    await waitFor(() => expect(screen.getByText('Fast Project — 0 subtasks')).toBeTruthy());
+
+    // Let the stale SLOW request resolve now — it must not clobber the
+    // already-settled FAST result.
+    resolveSlow({ kind: 'ok', value: { key: 'SLOW', name: 'Slow Project' } });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Fast Project — 0 subtasks')).toBeTruthy();
+    expect(screen.queryByText(/Slow Project/)).toBeNull();
+  });
+
+  it('a settled invalid key renders amber (attention), not red, and states the consequence to the dependent select', async () => {
+    render(<CatchAllProjectField />);
+    await waitFor(() => expect(screen.getByDisplayValue('KNP')).toBeTruthy());
+    jiraGetMock.mockImplementation(async (path: string) => {
+      if (path.startsWith('rest/api/3/project/')) return { kind: 'not-found' };
+      return { kind: 'ok', value: { issues: [] } };
+    });
+    fireEvent.change(screen.getByDisplayValue('KNP'), { target: { value: 'ZZZZ' } });
+    await flushDebounce();
+    await waitFor(() => expect(screen.getByText('No project with this key')).toBeTruthy());
+    const input = screen.getByDisplayValue('ZZZZ');
+    expect(input.className).toMatch(/border-amber-border/);
+    expect(input.className).not.toMatch(/border-state-danger/);
+    expect(screen.getByText("Can't load — fix the key above")).toBeTruthy();
+    const select = screen.getByRole('combobox');
+    expect(select).toBeDisabled();
+  });
+
+  it('the dependent select waits while validation is in flight', async () => {
+    render(<CatchAllProjectField />);
+    await waitFor(() => expect(screen.getByDisplayValue('KNP')).toBeTruthy());
+    // Never resolves within this test — proves the "waiting" copy shows
+    // while genuinely in flight, not just momentarily.
+    jiraGetMock.mockImplementation(() => new Promise(() => {}));
+    fireEvent.change(screen.getByDisplayValue('KNP'), { target: { value: 'PEND' } });
+    await flushDebounce();
+    await waitFor(() => expect(screen.getByText('Waiting for a valid project key')).toBeTruthy());
   });
 });

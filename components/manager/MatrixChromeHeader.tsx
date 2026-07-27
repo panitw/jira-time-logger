@@ -1,7 +1,9 @@
 import { ChevronDown } from 'lucide-react';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { DayStatusIndicator } from '@/components/shared/DayStatusIndicator';
+import { SectionTabs } from '@/components/shared/SectionTabs';
 import { Button } from '@/components/ui/button';
+import type { FullPageSection } from '@/lib/open-full-page';
 
 /**
  * The manager matrix's chrome header (Story 7.8, AC1). Follows
@@ -33,6 +35,10 @@ const STRINGS = {
 
 type Props = {
   cycleTitle: string;
+  /** Story 7.10, D-7.10-30: the shared Week/Manager/Settings tab row. */
+  section: FullPageSection;
+  onSectionChange: (section: FullPageSection) => void;
+  showManagerTab: boolean;
   /** `undefined` while reports are still resolving — the counts/CTA gate on
    * this the same way the old `Header`'s did (`reportCount !== undefined`). */
   reportCount?: number;
@@ -51,6 +57,9 @@ type Props = {
 
 export function MatrixChromeHeader({
   cycleTitle,
+  section,
+  onSectionChange,
+  showManagerTab,
   reportCount,
   doneCount,
   needAttentionCount,
@@ -220,6 +229,8 @@ export function MatrixChromeHeader({
           </div>
         ) : null}
       </div>
+
+      <SectionTabs active={section} onSelect={onSectionChange} showManager={showManagerTab} />
     </header>
   );
 }

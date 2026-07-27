@@ -12,6 +12,7 @@ import { hoursToSeconds, secondsToCellDisplay } from '@/lib/hours';
 import { deleteWorklog } from '@/lib/jira-client';
 import { log } from '@/lib/log';
 import { sendMessage } from '@/lib/messages';
+import type { FullPageSection } from '@/lib/open-full-page';
 import { enqueue as enqueueOutbox } from '@/lib/storage/outbox';
 import type { ISODate } from '@/lib/storage/view-state';
 import {
@@ -63,6 +64,14 @@ type Props = {
   today?: ISODate;
   /** Invalidate the week query after a successful cell/row mutation (AC #8). */
   onMutated?: () => void;
+  /** Finding 9: threaded through to `PtoPopover`'s "Configure in Settings"
+   * link so it switches the full page's section in place, rather than
+   * calling `chrome.runtime.openOptionsPage()` (which post-D-7.10-39 opens a
+   * duplicate tab). Optional (falls back to a no-op) so this component's
+   * own test suite — which never exercises that link — doesn't need to
+   * thread a prop through every one of its many call sites; every
+   * PRODUCTION call site (`WeekView.tsx`) passes it. */
+  onSectionChange?: (section: FullPageSection) => void;
 };
 
 // Story 7.7: `weekOf`/`isMarkedDone`/`onMarkedDone` are GONE from this
@@ -354,6 +363,7 @@ export function WeeklyGrid({
   targetHours = 8,
   today = todayDateString(),
   onMutated,
+  onSectionChange = () => {},
 }: Props): React.ReactElement {
   const [localRows, setLocalRows] = useState<LocalRow[]>([]);
   const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(new Set());
@@ -529,6 +539,7 @@ export function WeeklyGrid({
                     ptoSubtaskKey={ptoSubtaskKey}
                     targetHours={targetHours}
                     onAddWorklog={() => setPicking({ dayIndex: i })}
+                    onSectionChange={onSectionChange}
                     weekend={weekend}
                     {...(onMutated ? { onMutated } : {})}
                   />

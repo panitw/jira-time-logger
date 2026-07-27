@@ -348,3 +348,85 @@ comment above `ptoDays`.
 **Why not fixed here.** `TodayView.tsx` is a frozen path for Story 7.9 (Dev Notes: "Explicitly NOT edited") — correctly not touched. The existing `BANNED_GLYPHS` guard (`lib/day-status-vocabulary.grep.test.ts:589,597`) is scoped to "the manager surface" and would not catch this occurrence even if it regressed further; it does not currently enumerate `TodayView.tsx` at all.
 
 **Owner:** the next story that opens `TodayView.tsx` for its own reasons — swap the `×` for `lucide-react`'s `X` (already the vocabulary's established dismiss icon elsewhere in the product), and consider widening `BANNED_GLYPHS`'s scope beyond the manager surface if a second frozen-path occurrence like this one turns up. [components/today/TodayView.tsx:218]
+
+## Deferred from: code review of story-7.10 (2026-07-27)
+
+### `resolveReportingLine()` silently conflates "skip-level genuinely unset" with "skip-level lookup failed" (Finding 13 / R-4)
+
+**Where:** `lib/manager-resolution.ts:87-96` — when the skip-level `rest/api/3/user` lookup fails
+(403/429/network), the function logs `manager-resolution.skip-level-failed` and then returns
+**`ok(managerNames)`** with `skipLevelDisplayName` left `null` — byte-identical to the return value
+for a genuinely unset skip-level. `lib/manager-resolution.ts` is untouched by Story 7.10 (verified: an
+empty `git diff b434c81 -- lib/manager-resolution.ts`); the conflation is pre-existing.
+
+**What Story 7.10 surfaced.** `ManagerDisplay.tsx`'s Reporting-line block (AC7) renders that `null` as
+"Not set in Jira" in `text-faint` — the same honest, non-error treatment AC7 prescribes for a value
+that is genuinely absent. On a skip-level lookup failure specifically, that reads as a confident fact
+("your skip-level is unset") when the true state is "we don't know."
+
+**Why not fixed here (D-7.10-36h, orchestrator ruling).** `resolveReportingLine()`'s `Result<ManagerNames,
+JiraError>` contract is **shared with the approval path** — changing it at finisher stage is the exact
+pattern that burned this epic three times already (see the D-7.8-20/`fetchAllSearchPages` and
+duplicate-hex entries above). Given the contract cannot distinguish the two cases without a shape
+change, the ruling is to keep the UI saying **less rather than wrong**: "Not set in Jira" is the
+honest, non-committal rendering available under the current contract — it does not attribute a name to
+the wrong role, and it is the same treatment already used (correctly) for the genuinely-unset case.
+This is a documented honesty gap, not a silent one.
+
+**Owner:** the next story that touches `lib/manager-resolution.ts` (Manager-surface or approval-path
+work). Add a `skipLevelUnavailable: boolean` (or equivalent) to `ManagerNames`/the `Result`, set it on
+the `:92` failure branch, and thread it through `ManagerDisplay.tsx`'s `err`-shaped rendering (honest
+failure + Try again) instead of the `ok`+null "Not set" branch. [lib/manager-resolution.ts:87-96,
+components/settings/ManagerDisplay.tsx:100-106]
+
+### `lib/no-monospace.grep.test.ts` does not scan CSS, unlike its sibling `day-status-vocabulary.grep.test.ts` (M-10)
+
+**Where:** `lib/no-monospace.grep.test.ts` — `SOURCE_DIRS` covers `components`/`lib`/`entrypoints`,
+`.ts`/`.tsx` only. `styles/globals.css` is unscanned, so a `font-mono` occurrence there would be
+invisible to the guard even though `ALLOWLIST` is now genuinely `{}` (D-7.7-21f's epic-7-done
+precondition, closed by this story) and the repo-wide `.ts`/`.tsx` sweep is genuinely zero.
+
+**Why not fixed here.** Widening `SOURCE_DIRS`/adding a `CSS_FILES` scan (mirroring
+`day-status-vocabulary.grep.test.ts`'s own pattern) is guard-infrastructure hardening orthogonal to
+this story's four owned `ALLOWLIST` entries — none of which touched CSS. `styles/globals.css` has no
+`font-mono` today (spot-checked), so there is no live violation, only an unguarded blind spot.
+
+**Owner:** the next story that edits `lib/no-monospace.grep.test.ts` or adds a new CSS-authored font
+declaration — mirror `day-status-vocabulary.grep.test.ts`'s `CSS_FILES` scan. [lib/no-monospace.grep.test.ts]
+
+### `SectionTabs` sits last in each chrome header's focus order, and neither variant has a hover state (N-5, partial)
+
+**Where:** `components/shared/SectionTabs.tsx`; mounted last in `WeekChromeHeader.tsx:178`,
+`MatrixChromeHeader.tsx`, `SettingsChromeHeader.tsx`. At baseline the shell's own `<nav>` was the FIRST
+focusable element on the page; keyboard users now traverse prev/next, Mark-as-done and cycle controls
+before reaching section navigation, with no skip link.
+
+**Why not fixed here.** Reordering focus (moving the tab row earlier in each header, or adding a skip
+link) is a cross-cutting keyboard-navigation change to three already-shipped chrome headers (7.7, 7.8,
+this story) — bigger than a finisher-stage fix for a Minor with no WCAG failure attached (tab order is
+a Level AAA / best-practice concern here, not a 2.1 AA violation; every control remains reachable, just
+later). The companion hover-state gap (no `hover:` class on either `SectionTabs` variant, vs. the
+removed nav's `hover:bg-neutral-100`) IS fixed in this same pass — cheap, no layout risk.
+
+**Owner:** the next story that revisits full-page keyboard navigation — consider a skip link ("Skip to
+section content") or reordering `SectionTabs` earlier in each header's tab sequence. [components/shared/SectionTabs.tsx]
+
+### No live-region announcement for asynchronous state changes on the Settings surface (M-5)
+
+**Where:** `components/settings/ManagerDisplay.tsx` (skeleton → resolved/failed, retry → repeat
+failure) and `components/settings/SettingsView.tsx` generally — no `role="alert"` / `aria-live` /
+`aria-busy` anywhere. A screen-reader user hears "Manager" / "Skip-level" labels with silently-empty
+values while resolving, and is not told when a lookup fails, a retry starts, or a retry fails again.
+
+**Why not fixed here.** This is a genuine accessibility enhancement, not a regression — baseline
+`ManagerDisplay.tsx` had no live region either, and the story's hard gate is "no WCAG 2.1 AA
+regression," which this does not breach (SC 4.1.3 Status Messages is AA, but the value simply
+appearing on next render, rather than being announced, is the SAME baseline behaviour, not a new
+failure this story introduced). Retrofitting live-region announcements correctly (especially around
+`CatchAllProjectField.tsx:180`'s hint swaps and the skeleton→value transitions) touches several
+components at once and deserves its own accessibility-focused pass rather than a bundled finisher
+addition.
+
+**Owner:** a dedicated accessibility follow-up story for the Settings surface — add `aria-live="polite"`
+regions around `ManagerDisplay`'s value cells and `CatchAllProjectField`'s `catchall-key-hint`, and
+`aria-busy` on the skeleton rows. [components/settings/ManagerDisplay.tsx, components/settings/CatchAllProjectField.tsx:180, components/settings/SettingsView.tsx]

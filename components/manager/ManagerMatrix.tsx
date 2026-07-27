@@ -34,6 +34,7 @@ import {
   type MatrixRowInput,
 } from '@/lib/manager-matrix';
 import { sendRequest } from '@/lib/messages';
+import type { FullPageSection } from '@/lib/open-full-page';
 import { pctToWidthClass } from '@/lib/progress-width';
 import type { DirectReport } from '@/lib/storage/direct-reports';
 import { targetHoursItem } from '@/lib/storage/settings';
@@ -134,10 +135,6 @@ function workdaysElapsedInWindow(start: Date, end: Date, today: Date): number {
   return count;
 }
 
-function openOptions(): void {
-  chrome.runtime.openOptionsPage();
-}
-
 /**
  * Move `cycle` forward/back by `offset` cycles of the SAME cadence the id
  * already implies (monthly `yyyy-MM` vs weekly ISO-Monday `yyyy-MM-dd`) —
@@ -169,6 +166,12 @@ type Props = {
   cycle: CycleId;
   /** Flip the popup to the Today/Worker view (no-reports fallback, AC 13). */
   onSwitchToToday: () => void;
+  /** Story 7.10, D-7.10-30: the shared Week/Manager/Settings tab row, threaded
+   * from `entrypoints/fullpage/App.tsx` through `ManagerView` to
+   * `MatrixChromeHeader`. */
+  section: FullPageSection;
+  onSectionChange: (section: FullPageSection) => void;
+  showManagerTab: boolean;
 };
 
 /** Per-row state lifted to the parent (Story 7.8): drives the header's
@@ -183,7 +186,13 @@ type RowMeta = {
   cellAnchors: Map<string, string | null>;
 };
 
-export function ManagerMatrix({ cycle, onSwitchToToday }: Props): React.ReactElement {
+export function ManagerMatrix({
+  cycle,
+  onSwitchToToday,
+  section,
+  onSectionChange,
+  showManagerTab,
+}: Props): React.ReactElement {
   const reportsQuery = useManagerReports();
   // The current manager's accountId — the `by` field of every approval payload
   // (Story 5.6). Undefined until resolved / on error; the row's ApproveButton is
@@ -389,6 +398,9 @@ export function ManagerMatrix({ cycle, onSwitchToToday }: Props): React.ReactEle
       <div className="overflow-hidden rounded-[10px] border border-border shadow-raised motion-safe:animate-fade-in">
         <MatrixChromeHeader
           cycleTitle={cycleTitle}
+          section={section}
+          onSectionChange={onSectionChange}
+          showManagerTab={showManagerTab}
           onPrevCycle={handlePrevCycle}
           onNextCycle={handleNextCycle}
           onApproveRemaining={() => setApproveRemainingOpen(true)}
@@ -412,17 +424,25 @@ export function ManagerMatrix({ cycle, onSwitchToToday }: Props): React.ReactEle
       <div className="overflow-hidden rounded-[10px] border border-border shadow-raised motion-safe:animate-fade-in">
         <MatrixChromeHeader
           cycleTitle={cycleTitle}
+          section={section}
+          onSectionChange={onSectionChange}
+          showManagerTab={showManagerTab}
           onPrevCycle={handlePrevCycle}
           onNextCycle={handleNextCycle}
           onApproveRemaining={() => setApproveRemainingOpen(true)}
         />
         <div className="bg-background px-[26px] py-[22px]">
           {kind === 'auth-expired' ? (
+            // Finding 9: was `chrome.runtime.openOptionsPage()`, which now
+            // (D-7.10-39) opens an options tab that immediately redirects to
+            // `fullpage.html?section=settings` — a duplicate full-page tab,
+            // since Manager already lives on the full page post-7.8.
+            // `onSectionChange('settings')` switches in place instead.
             <FallbackState
               title={STRINGS.connectTitle}
               body={STRINGS.connectBody}
               ctaLabel={STRINGS.connectCta}
-              onCta={openOptions}
+              onCta={() => onSectionChange('settings')}
             />
           ) : (
             <FallbackState
@@ -445,6 +465,9 @@ export function ManagerMatrix({ cycle, onSwitchToToday }: Props): React.ReactEle
       <div className="overflow-hidden rounded-[10px] border border-border shadow-raised motion-safe:animate-fade-in">
         <MatrixChromeHeader
           cycleTitle={cycleTitle}
+          section={section}
+          onSectionChange={onSectionChange}
+          showManagerTab={showManagerTab}
           onPrevCycle={handlePrevCycle}
           onNextCycle={handleNextCycle}
           onApproveRemaining={() => setApproveRemainingOpen(true)}
@@ -636,6 +659,9 @@ export function ManagerMatrix({ cycle, onSwitchToToday }: Props): React.ReactEle
     <div className="overflow-hidden rounded-[10px] border border-border shadow-raised motion-safe:animate-fade-in">
       <MatrixChromeHeader
         cycleTitle={cycleTitle}
+        section={section}
+        onSectionChange={onSectionChange}
+        showManagerTab={showManagerTab}
         reportCount={sortedReports.length}
         doneCount={doneCount}
         needAttentionCount={needAttentionCount}

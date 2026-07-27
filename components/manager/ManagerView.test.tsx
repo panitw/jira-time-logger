@@ -46,8 +46,14 @@ function renderView(props: React.ComponentProps<typeof ManagerView>) {
 }
 
 describe('ManagerView', () => {
+  const sectionProps = {
+    section: 'manager' as const,
+    onSectionChange: () => {},
+    showManagerTab: true,
+  };
+
   it('renders the matrix (cycle title) instead of the old placeholder', () => {
-    renderView({ cycle: '2026-06', onSwitchToToday: () => {} });
+    renderView({ cycle: '2026-06', onSwitchToToday: () => {}, ...sectionProps });
     expect(screen.getByText(/June 2026/)).toBeTruthy();
     expect(
       screen.queryByText('The approval matrix for your reports will appear here.'),
@@ -56,7 +62,7 @@ describe('ManagerView', () => {
 
   it('accepts the cycle prop without throwing', () => {
     expect(() =>
-      renderView({ cycle: '2026-06-15', onSwitchToToday: () => {} }),
+      renderView({ cycle: '2026-06-15', onSwitchToToday: () => {}, ...sectionProps }),
     ).not.toThrow();
   });
 });

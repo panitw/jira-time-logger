@@ -67,7 +67,14 @@ function renderView(weekOf = '2026-06-15') {
     React.createElement(
       QueryClientProvider,
       { client },
-      React.createElement(WeekView, { weekOf, onPrevWeek, onNextWeek }),
+      React.createElement(WeekView, {
+        weekOf,
+        onPrevWeek,
+        onNextWeek,
+        section: 'week',
+        onSectionChange: vi.fn(),
+        showManagerTab: false,
+      }),
     ),
   );
   return { ...utils, client, onPrevWeek, onNextWeek };

@@ -1,14 +1,26 @@
 import { useCallback, useEffect, useState } from 'react';
+import { FieldLabel } from '@/components/settings/SettingsPrimitives';
 import { targetHoursItem } from '@/lib/storage/settings';
 
+/**
+ * Work-day target (Story 7.10, AC3/AC6/AC9, Logging-defaults item 3).
+ * `round2:298-304`.
+ *
+ * D-7.6-37, deferred here: nothing was sent to Jira for a client-side range
+ * check — red is reserved for a write Jira actually refused. Amber, not red
+ * (was `border-state-danger`/`text-state-danger`).
+ */
+
 const STRINGS = {
-  label: 'Work-day target (hours)',
+  label: 'Work-day target',
+  consequence: 'Sets your daily target for the week and matrix progress bars.',
+  suffix: 'hours per day',
   errorTooLow: 'Must be at least 1',
   errorTooHigh: 'Must be at most 24',
 };
 
 type Props = {
-  onSaved?: () => void;
+  onSaved?: (() => void) | undefined;
 };
 
 export function TargetHoursField({ onSaved }: Props): React.ReactElement {
@@ -58,22 +70,40 @@ export function TargetHoursField({ onSaved }: Props): React.ReactElement {
     });
   }, [handleBlur]);
 
-  if (!loaded) return <div><label className="block text-sm font-medium text-neutral-700">{STRINGS.label}</label><p className="mt-1 text-sm text-neutral-500">Loading…</p></div>;
+  if (!loaded) {
+    return <div aria-hidden="true" className="h-[34px] animate-skeleton rounded-md bg-border-faint" />;
+  }
 
   return (
-    <div>
-      <label htmlFor="target-hours-input" className="block text-sm font-medium text-neutral-700">{STRINGS.label}</label>
-      <input
-        id="target-hours-input"
-        type="number"
-        value={hours}
-        onChange={handleHoursChange}
-        onBlur={handleBlurWithRevert}
-        min={1}
-        max={24}
-        className={`mt-1 block w-24 rounded-md border px-3 py-1.5 text-sm ${error ? 'border-state-danger focus:ring-state-danger' : 'border-neutral-200 focus:ring-accent'} focus:outline-none focus:ring-2 focus:ring-offset-1`}
+    <div className="flex flex-col gap-1.5">
+      <FieldLabel
+        label={STRINGS.label}
+        consequence={STRINGS.consequence}
+        htmlFor="target-hours-input"
       />
-      {error && <p className="mt-1 text-xs text-state-danger">{error}</p>}
+      <div
+        className={`flex h-[34px] items-center gap-1.5 rounded-md bg-surface px-[11px] focus-within:border-[1.5px] focus-within:border-primary focus-within:ring-focus ${
+          error ? 'border-[1.5px] border-amber-border' : 'border border-border'
+        }`}
+      >
+        <input
+          id="target-hours-input"
+          type="number"
+          value={hours}
+          onChange={handleHoursChange}
+          onBlur={handleBlurWithRevert}
+          min={1}
+          max={24}
+          aria-describedby={error ? 'target-hours-error' : undefined}
+          className="w-10 border-none bg-transparent p-0 font-chrome text-body tabular text-foreground focus:outline-none"
+        />
+        <span className="text-body-sm text-faint">{STRINGS.suffix}</span>
+      </div>
+      {error && (
+        <p id="target-hours-error" className="text-body-sm text-amber-ink">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

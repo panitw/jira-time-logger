@@ -80,9 +80,19 @@ function wrapper({ children }: { children: React.ReactNode }) {
 }
 
 function renderMatrix(props: Partial<React.ComponentProps<typeof ManagerMatrix>> = {}) {
-  return render(<ManagerMatrix cycle="2026-05" onSwitchToToday={() => {}} {...props} />, {
-    wrapper,
-  });
+  return render(
+    <ManagerMatrix
+      cycle="2026-05"
+      onSwitchToToday={() => {}}
+      section="manager"
+      onSectionChange={() => {}}
+      showManagerTab
+      {...props}
+    />,
+    {
+      wrapper,
+    },
+  );
 }
 
 function reportsOk(reports: DirectReport[]) {
@@ -1509,7 +1519,15 @@ describe('ManagerMatrix', () => {
       // The current-user query invalidates to unresolved WHILE the dialog is
       // open — force the re-render a real invalidation would trigger.
       currentUserMock.mockReturnValue({ isPending: true, isError: false, data: undefined });
-      rerender(<ManagerMatrix cycle="2026-05" onSwitchToToday={() => {}} />);
+      rerender(
+        <ManagerMatrix
+          cycle="2026-05"
+          onSwitchToToday={() => {}}
+          section="manager"
+          onSectionChange={() => {}}
+          showManagerTab
+        />,
+      );
       fireEvent.click(screen.getByTestId('approve-remaining-confirm'));
       await new Promise((r) => setTimeout(r, 0));
       expect(sendRequestMock).not.toHaveBeenCalled();

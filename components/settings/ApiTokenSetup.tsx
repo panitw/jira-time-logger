@@ -30,7 +30,7 @@ const STRINGS = {
 type Status =
   | { kind: 'idle' }
   | { kind: 'verifying' }
-  | { kind: 'error'; message: string };
+  | { kind: 'error'; message: string; tone: 'red' | 'amber' };
 
 type Props = {
   onConnected: (email: string, siteDomain: string) => void;
@@ -64,7 +64,7 @@ export function ApiTokenSetup({ onConnected, onBack }: Props): React.ReactElemen
     if (result.kind !== 'ok') {
       log.warn('apitoken.setup.result', { kind: result.kind });
       const message = errorMessageFor(result.kind);
-      setStatus({ kind: 'error', message });
+      setStatus({ kind: 'error', message, tone: errorToneFor(result.kind) });
       return;
     }
 
@@ -135,7 +135,16 @@ export function ApiTokenSetup({ onConnected, onBack }: Props): React.ReactElemen
 
         {status.kind === 'error' && (
           <p
-            className="rounded-md border border-state-danger bg-state-danger-subtle px-3 py-2 text-sm text-state-danger"
+            className={
+              status.tone === 'red'
+                ? 'rounded-md border border-error-border bg-error-soft px-3 py-2 text-sm text-error-ink'
+                : // Amber (network/parse-error) matches the codebase's
+                  // established plain-text validation convention
+                  // (D-7.3-16/D-7.4-11 — `ResumeCard.tsx`/`SearchPanel.tsx`/
+                  // `QuickLogForm.tsx`) rather than a boxed chip: text only,
+                  // no `bg-amber-soft` wash.
+                  'text-sm text-amber-ink'
+            }
             role="alert"
             aria-live="assertive"
           >
@@ -167,6 +176,17 @@ function errorMessageFor(kind: string): string {
     default:
       return STRINGS.errorNetwork;
   }
+}
+
+/**
+ * D-7.10-34 (owner ruling): red for a genuine Jira refusal
+ * (`invalid-credentials` / `forbidden` — Jira answered and said no), amber
+ * for "it never got there" (`network` / `parse-error`). Independent of this
+ * fork, the ink is `error-ink`/`amber-ink` either way (§ Contrast) —
+ * `#DC2626` on `#FEF2F2` was 4.42:1 and failed AA.
+ */
+function errorToneFor(kind: string): 'red' | 'amber' {
+  return kind === 'invalid-credentials' || kind === 'forbidden' ? 'red' : 'amber';
 }
 
 type FieldProps = {

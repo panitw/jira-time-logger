@@ -2,40 +2,31 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.stubGlobal('chrome', {
-  runtime: { id: 'test' },
-  storage: { local: { get: vi.fn(async () => ({})), set: vi.fn(async () => {}) }, onChanged: { addListener: vi.fn(), removeListener: vi.fn() } },
-});
-
 vi.mock('@/lib/storage/settings', () => ({
   reminderTimeItem: { getValue: vi.fn(async () => '09:30'), setValue: vi.fn(async () => {}) },
   targetHoursItem: { getValue: vi.fn(async () => 10), setValue: vi.fn(async () => {}) },
   approvalCycleItem: { getValue: vi.fn(async () => 'calendar-month'), setValue: vi.fn(async () => {}) },
-  catchAllProjectKeyItem: { getValue: vi.fn(async () => 'KNP'), setValue: vi.fn(async () => {}) },
-  ptoSubtaskKeyItem: { getValue: vi.fn(async () => null), setValue: vi.fn(async () => {}) },
-  ptoSubtaskSummaryItem: { getValue: vi.fn(async () => null), setValue: vi.fn(async () => {}) },
-  managerDisplayNameItem: { getValue: vi.fn(async () => null), setValue: vi.fn(async () => {}) },
-  skipLevelDisplayNameItem: { getValue: vi.fn(async () => null), setValue: vi.fn(async () => {}) },
-  lastSyncTimestampItem: { getValue: vi.fn(async () => null), setValue: vi.fn(async () => {}) },
-  setManagerNames: vi.fn(async () => {}),
-  getManagerNames: vi.fn(async () => ({
-    managerDisplayName: null,
-    skipLevelDisplayName: null,
-    managerAccountId: null,
-    skipLevelAccountId: null,
-  })),
 }));
 
 import { ReminderTimeField } from './ReminderTimeField';
 import { TargetHoursField } from './TargetHoursField';
 import { CycleField } from './CycleField';
 
+/**
+ * Retargeted for Story 7.10 / AC9 (label rename: "Daily reminder time" →
+ * "Daily reminder", "Work-day target (hours)" → "Work-day target", each now
+ * with a one-line consequence) and D-7.6-37 (red → amber: nothing was ever
+ * sent to Jira for a client-side format/range check).
+ */
 describe('ReminderTimeField', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('shows label', async () => {
+  it('shows the AC9 label and its consequence', async () => {
     render(<ReminderTimeField />);
-    await waitFor(() => expect(screen.getByText('Daily reminder time')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Daily reminder')).toBeTruthy());
+    expect(
+      screen.getByText("The popup nudges you to log time after this if today's hours look short."),
+    ).toBeTruthy();
   });
 
   it('shows stored value (09:30) not default (17:00)', async () => {
@@ -43,13 +34,16 @@ describe('ReminderTimeField', () => {
     await waitFor(() => expect(screen.getByDisplayValue('09:30')).toBeTruthy());
   });
 
-  it('shows error on invalid format', async () => {
+  it('shows an AMBER error on invalid format, never red', async () => {
     render(<ReminderTimeField />);
     await waitFor(() => screen.getByDisplayValue('09:30'));
     const input = screen.getByDisplayValue('09:30');
     fireEvent.change(input, { target: { value: 'invalid' } });
     fireEvent.blur(input);
     await waitFor(() => expect(screen.getByText('Use 24-hour format (e.g. 17:00)')).toBeTruthy());
+    const errorText = screen.getByText('Use 24-hour format (e.g. 17:00)');
+    expect(errorText.className).toMatch(/text-amber-ink/);
+    expect(errorText.className).not.toMatch(/state-danger/);
   });
 
   it('saves valid time on blur', async () => {
@@ -66,9 +60,13 @@ describe('ReminderTimeField', () => {
 describe('TargetHoursField', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('shows label', async () => {
+  it('shows the AC9 label and its consequence', async () => {
     render(<TargetHoursField />);
-    await waitFor(() => expect(screen.getByText('Work-day target (hours)')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Work-day target')).toBeTruthy());
+    expect(
+      screen.getByText('Sets your daily target for the week and matrix progress bars.'),
+    ).toBeTruthy();
+    expect(screen.getByText('hours per day')).toBeTruthy();
   });
 
   it('shows stored value (10) not default (8)', async () => {
@@ -76,13 +74,16 @@ describe('TargetHoursField', () => {
     await waitFor(() => expect(screen.getByDisplayValue('10')).toBeTruthy());
   });
 
-  it('shows error when value < 1', async () => {
+  it('shows an AMBER error when value < 1, never red', async () => {
     render(<TargetHoursField />);
     await waitFor(() => screen.getByDisplayValue('10'));
     const input = screen.getByDisplayValue('10');
     fireEvent.change(input, { target: { value: '0' } });
     fireEvent.blur(input);
     await waitFor(() => expect(screen.getByText('Must be at least 1')).toBeTruthy());
+    const errorText = screen.getByText('Must be at least 1');
+    expect(errorText.className).toMatch(/text-amber-ink/);
+    expect(errorText.className).not.toMatch(/state-danger/);
   });
 
   it('shows error when value > 24', async () => {
@@ -108,12 +109,14 @@ describe('TargetHoursField', () => {
 describe('CycleField', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('shows label and default option', async () => {
+  it('shows the AC9 label, its consequence, and the single option — not hidden, not disabled', async () => {
     render(<CycleField />);
     await waitFor(() => {
       expect(screen.getByText('Approval cycle')).toBeTruthy();
+      expect(screen.getByText('How often approvals run — for now, every calendar month.')).toBeTruthy();
       expect(screen.getByText('Calendar month')).toBeTruthy();
     });
+    expect(screen.getByRole('combobox')).not.toBeDisabled();
   });
 
   it('saves on change', async () => {
