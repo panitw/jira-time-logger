@@ -4,6 +4,7 @@ import {
   rateLimited,
   authExpired,
   network,
+  badRequest,
   parseError,
   forbidden,
   notFound,
@@ -91,6 +92,8 @@ describe('discriminated-union switch exhaustiveness', () => {
           return 'expired';
         case 'network':
           return `net-${r.cause}`;
+        case 'bad-request':
+          return `bad-${r.cause}`;
         case 'parse-error':
           return 'bad-shape';
         case 'forbidden':
@@ -107,6 +110,7 @@ describe('discriminated-union switch exhaustiveness', () => {
     expect(handle(rateLimited(100))).toBe('retry-in-100');
     expect(handle(authExpired())).toBe('expired');
     expect(handle(network('fail'))).toBe('net-fail');
+    expect(handle(badRequest('400'))).toBe('bad-400');
     expect(handle(parseError({}))).toBe('bad-shape');
     expect(handle(forbidden())).toBe('forbid');
     expect(handle(notFound())).toBe('404');

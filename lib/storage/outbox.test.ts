@@ -44,6 +44,7 @@ const {
   update,
   markFailed,
   clearOutbox,
+  discardPending,
   runOutboxRetryPass,
   outboxItem,
   outboxDrainedItem,
@@ -140,6 +141,43 @@ describe('outbox queue helpers', () => {
 
   it('OutboxEntrySchema rejects malformed entries', () => {
     expect(OutboxEntrySchema.safeParse({ id: 'x' }).success).toBe(false);
+  });
+
+  describe('discardPending (offline banner trash affordance)', () => {
+    it('drops every pending entry and reports the count', async () => {
+      await enqueue({ kind: 'post', endpoint: 'e', issueKey: 'P-1' });
+      await enqueue({ kind: 'post', endpoint: 'e', issueKey: 'P-2' });
+
+      expect(await discardPending()).toBe(2);
+      expect(await list()).toEqual([]);
+    });
+
+    it('KEEPS failed entries — they belong to the write-error banner, not this one', async () => {
+      const failing = await enqueue({ kind: 'post', endpoint: 'e', issueKey: 'P-1' });
+      await enqueue({ kind: 'post', endpoint: 'e', issueKey: 'P-2' });
+      await markFailed(failing.id, 'forbidden');
+
+      expect(await discardPending()).toBe(1);
+
+      // The banner counts `pending` only, so discarding a `failed` entry
+      // would bin a write it never named — and would silently empty the
+      // error banner, whose per-entry Retry is the only way back.
+      const remaining = await list();
+      expect(remaining).toHaveLength(1);
+      expect(remaining[0]!.id).toBe(failing.id);
+      expect(remaining[0]!.status).toBe('failed');
+    });
+
+    it('is a no-op on an empty queue — reports 0, writes nothing', async () => {
+      const failing = await enqueue({ kind: 'post', endpoint: 'e', issueKey: 'P-1' });
+      await markFailed(failing.id, 'forbidden');
+      const setValue = vi.mocked(outboxItem.setValue);
+      setValue.mockClear();
+
+      expect(await discardPending()).toBe(0);
+      expect(setValue).not.toHaveBeenCalled();
+      expect(await list()).toHaveLength(1);
+    });
   });
 });
 

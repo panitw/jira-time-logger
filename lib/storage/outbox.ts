@@ -137,6 +137,28 @@ export async function clearOutbox(): Promise<void> {
 }
 
 /**
+ * Drop every `pending` entry, keeping `failed` ones. Backs the offline
+ * banner's discard affordance — that banner counts `pending` ONLY
+ * (`hooks/useOutboxState.ts`), so clearing `failed` entries here would
+ * silently bin writes the user never saw named in it, and would empty the
+ * write-error banner (which owns its own per-entry Retry) as a side effect.
+ *
+ * Deliberately NOT `clearOutbox()`: same reason.
+ *
+ * @returns how many entries were discarded, for the caller to log.
+ */
+export async function discardPending(): Promise<number> {
+  const current = await list();
+  const remaining = current.filter((e) => e.status !== 'pending');
+  const discarded = current.length - remaining.length;
+  if (discarded > 0) {
+    await outboxItem.setValue(remaining);
+    log.warn('outbox.pending.discarded', { count: discarded });
+  }
+  return discarded;
+}
+
+/**
  * Subset of `lib/jira-client` needed to replay outbox entries. Injected so the
  * drain function is unit-testable with a mocked client.
  */

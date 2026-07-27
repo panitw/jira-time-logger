@@ -16,7 +16,7 @@ import { useTimeOffToday, type TimeOffWorklogRef } from '@/hooks/useTimeOffToday
 import { useTodayTotal } from '@/hooks/useTodayTotal';
 import { log } from '@/lib/log';
 import { resolvePopupState } from '@/lib/popup-state';
-import { runOutboxRetryPass, update as updateOutbox } from '@/lib/storage/outbox';
+import { discardPending, runOutboxRetryPass, update as updateOutbox } from '@/lib/storage/outbox';
 import { ptoSubtaskKeyItem, ptoSubtaskSummaryItem, targetHoursItem } from '@/lib/storage/settings';
 import { getAuth, hasValidAuth, type AuthBundle } from '@/lib/storage/tokens';
 
@@ -267,6 +267,18 @@ export function App(): React.ReactElement {
     }
   }, []);
 
+  // The offline banner's trash affordance. `discardPending` leaves `failed`
+  // entries alone — they belong to the write-error banner, which has its own
+  // per-entry Retry. `outboxItem.watch()` in `useOutboxState` re-reads on the
+  // write, so the banner clears itself; nothing to set here.
+  const handleDiscardQueued = useCallback(async (): Promise<void> => {
+    try {
+      await discardPending();
+    } catch (e) {
+      log.error('outbox.discard.failed', { cause: String(e) });
+    }
+  }, []);
+
   // Story 7.9: "Undo time off" commits — the ONE explicit transition D-7.9-14
   // permits out of the frozen time-off body.
   const handleUndoTimeOffCommitted = useCallback((): void => {
@@ -432,7 +444,12 @@ export function App(): React.ReactElement {
                 onLogElsewhere={handleRequestSearchFocus}
               />
             )}
-            {popupState.offlineBanner && <OfflineBanner pendingCount={outbox.pendingCount} />}
+            {popupState.offlineBanner && (
+              <OfflineBanner
+                pendingCount={outbox.pendingCount}
+                onDiscardAll={() => void handleDiscardQueued()}
+              />
+            )}
 
             {popupState.body === 'time-off' && (
               <TimeOffCard

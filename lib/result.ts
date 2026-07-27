@@ -13,6 +13,7 @@ export type JiraError =
   | { kind: 'rate-limited'; retryAfterMs: number }
   | { kind: 'auth-expired' }
   | { kind: 'network'; cause: string }
+  | { kind: 'bad-request'; cause: string }
   | { kind: 'parse-error'; issue: unknown }
   | { kind: 'forbidden' }
   | { kind: 'not-found' };
@@ -42,6 +43,17 @@ export function authExpired(): JiraError {
 
 export function network(cause: string): { kind: 'network'; cause: string } {
   return { kind: 'network', cause };
+}
+
+/**
+ * Jira answered and rejected the request itself (a 4xx that is not 401/403/
+ * 404/429) — a malformed body, an unsupported method, a conflict. Distinct
+ * from `network` because it is NOT transient: replaying the identical bytes
+ * produces the identical rejection. Callers that park transient failures in
+ * the durable outbox must NOT park this one — see lib/storage/outbox.ts.
+ */
+export function badRequest(cause: string): { kind: 'bad-request'; cause: string } {
+  return { kind: 'bad-request', cause };
 }
 
 export function parseError(issue: unknown): { kind: 'parse-error'; issue: unknown } {

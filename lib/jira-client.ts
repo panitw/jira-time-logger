@@ -27,7 +27,7 @@ import {
 } from '@/lib/jira-types';
 import { log } from '@/lib/log';
 import { refreshTokens } from '@/lib/oauth/refresh';
-import { type Result, type JiraError, ok, authExpired, rateLimited, network, parseError, forbidden, notFound } from '@/lib/result';
+import { type Result, type JiraError, ok, authExpired, rateLimited, network, badRequest, parseError, forbidden, notFound } from '@/lib/result';
 import { scheduler } from '@/lib/scheduler';
 import { getAuth, type AuthBundle } from '@/lib/storage/tokens';
 
@@ -44,6 +44,28 @@ function getAuthHeader(bundle: AuthBundle): string {
   }
   const encoded = btoa(`${bundle.email}:${bundle.apiToken}`);
   return `Basic ${encoded}`;
+}
+
+/**
+ * Classify a non-ok response that the 401/403/404/429 ladder did not already
+ * claim. The split is retryable-vs-not, because the durable outbox
+ * (`lib/storage/outbox.ts`) replays exactly the errors named `network` /
+ * `rate-limited` and gives up on everything else:
+ *
+ *   - 4xx → `bad-request`. Jira read the request and refused it. The same
+ *     bytes will be refused again, so queueing it burns MAX_ATTEMPTS retries
+ *     over ten minutes and shows the user "they'll sync when you're back" —
+ *     a promise the outbox cannot keep. (This is how a 400 on the `started`
+ *     format silently swallowed every worklog: see lib/worklog-date.ts.)
+ *   - 5xx → `network`. A server-side blip genuinely can succeed on replay.
+ *
+ * `cause` keeps the status AND a slice of the body: it is the only place the
+ * real reason survives, since callers log `result.kind` alone.
+ */
+async function httpFailure(res: Response): Promise<JiraError> {
+  const body = await res.text().catch(() => '');
+  const cause = `HTTP ${res.status}: ${body.slice(0, 200)}`;
+  return res.status < 500 ? badRequest(cause) : network(cause);
 }
 
 export async function jiraGet<T>(
@@ -99,8 +121,7 @@ export async function jiraGet<T>(
       }
 
       if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        return network(`HTTP ${res.status}: ${body.slice(0, 200)}`);
+        return httpFailure(res);
       }
 
       const json: unknown = await res.json().catch(() => null);
@@ -223,8 +244,7 @@ export async function jiraPost<T>(
       }
 
       if (!res.ok) {
-        const resBody = await res.text().catch(() => '');
-        return network(`HTTP ${res.status}: ${resBody.slice(0, 200)}`);
+        return httpFailure(res);
       }
 
       const json: unknown = await res.json().catch(() => null);
@@ -314,8 +334,7 @@ export async function jiraPut<T>(
       }
 
       if (!res.ok) {
-        const resBody = await res.text().catch(() => '');
-        return network(`HTTP ${res.status}: ${resBody.slice(0, 200)}`);
+        return httpFailure(res);
       }
 
       const json: unknown = await res.json().catch(() => null);
@@ -395,8 +414,7 @@ export async function jiraDelete(path: string): Promise<Result<void, JiraError>>
       }
 
       if (!res.ok) {
-        const resBody = await res.text().catch(() => '');
-        return network(`HTTP ${res.status}: ${resBody.slice(0, 200)}`);
+        return httpFailure(res);
       }
 
       // 204 No Content — no body to parse.
