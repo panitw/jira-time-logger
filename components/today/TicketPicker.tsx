@@ -1,19 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, Plus } from 'lucide-react';
+import { LoaderCircle, Search, Plus } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { cn } from '@/components/ui/utils';
 import { useHierarchyTickets } from '@/hooks/useHierarchyTickets';
-import { type HierarchySource, type HierarchyTask, type HierarchySubtask } from '@/lib/hierarchy';
-import { searchTickets } from '@/lib/ticket-search';
-import { createSubtask } from '@/lib/create-subtask';
 import { fetchCatchAllSubtasks } from '@/lib/catch-all';
-import { catchAllProjectKeyItem } from '@/lib/storage/settings';
+import { createSubtask } from '@/lib/create-subtask';
+import { type HierarchySource, type HierarchyTask, type HierarchySubtask } from '@/lib/hierarchy';
+import { log } from '@/lib/log';
 import {
   getPinnedTickets,
   addPinnedTicket,
   type PinnedTicket,
 } from '@/lib/storage/pinned-tickets';
-import { log } from '@/lib/log';
-import { cn } from '@/components/ui/utils';
+import { catchAllProjectKeyItem } from '@/lib/storage/settings';
+import { searchTickets } from '@/lib/ticket-search';
 
 const STRINGS = {
   searchPlaceholder: 'Search or pick\u2026',
@@ -518,7 +518,10 @@ export function TicketPicker({
               : debouncedQuery ? (
                 <div className="py-3 text-center">
                   {isSearchPending ? (
-                    <div className="h-5 w-5 mx-auto rounded-full border-2 border-neutral-300 border-t-accent animate-spin" />
+                    <LoaderCircle
+                      aria-hidden="true"
+                      className="h-5 w-5 mx-auto motion-safe:animate-spin text-accent"
+                    />
                   ) : (
                     <p className="text-sm text-neutral-500">{STRINGS.noResults}</p>
                   )}

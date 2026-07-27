@@ -161,8 +161,27 @@ describe('AC3 — no surface hard-codes a day-status icon (source-level grep)', 
   // anywhere" — `SearchPanel.tsx` never renders it through
   // `DayStatusIndicator`, so it is a different icon USE, not a hard-code of
   // the vocabulary.
+  //
+  // Story 7.9, D-7.9-12: four hand-rolled `animate-spin` `<span>`/`<div>`
+  // bordered-circle spinners (breaching the epic's `lucide-react`-only rule)
+  // were fixed by replacing them with `LoaderCircle` — the EXACT same
+  // genuine in-flight-work use `SearchPanel.tsx` already established, never
+  // rendered through `DayStatusIndicator`. Allowlisted for the same reason.
+  //
+  // Story 7.9, D-7.9-4: `CircleX` is a write-FAILURE icon
+  // (`WriteErrorBanner.tsx`, AC3) — not a day status. The identical
+  // `LoaderCircle`/`SearchPanel.tsx` precedent applies; the alternative
+  // (composing the headline through `DayStatusIndicator status="error"`)
+  // ships a real 4.42:1 AA contrast failure (§ Contrast).
   const ICON_ALLOWLIST: Partial<Record<string, string[]>> = {
-    LoaderCircle: ['components/today/SearchPanel.tsx'],
+    LoaderCircle: [
+      'components/today/SearchPanel.tsx',
+      'components/today/QuickLogForm.tsx',
+      'components/today/PtoQuickAction.tsx',
+      'components/today/LoggedToday.tsx',
+      'components/today/TicketPicker.tsx',
+    ],
+    CircleX: ['components/shell/WriteErrorBanner.tsx'],
   };
 
   it('no file other than DayStatusIndicator.tsx imports a day-status icon from lucide-react', () => {
@@ -247,12 +266,16 @@ describe('AC3 — no surface hard-codes a day-status colour token (source-level 
   // deliberately NOT allowlisted here: its one use (the truncation caveat)
   // was removed by D-7.8-20, and leaving a now-unused entry in would be
   // exactly the stale-allowlist problem Finding 8(b) flags below.
-  it('no file other than DayStatusIndicator.tsx / DayCell.tsx / the manager surface / globals.css contains bg-amber-soft', () => {
+  it('no file other than DayStatusIndicator.tsx / DayCell.tsx / the manager surface / OfflineBanner.tsx / globals.css contains bg-amber-soft', () => {
     const allowlist = new Set([
       INDICATOR_FILE,
       'components/week/DayCell.tsx',
       'components/manager/ManagerMatrix.tsx',
       'components/manager/DrillDownPanel.tsx',
+      // Story 7.9, AC2: the offline banner's fill reuses the SAME amber
+      // vocabulary — a plain className literal, not a hidden status-tint map
+      // (the per-occurrence companion test below still catches that shape).
+      'components/shell/OfflineBanner.tsx',
       'styles/globals.css',
     ]);
     const violations: string[] = [];
@@ -277,6 +300,8 @@ describe('AC3 — no surface hard-codes a day-status colour token (source-level 
     const PINNED: Record<string, number> = {
       'components/manager/ManagerMatrix.tsx': 2,
       'components/manager/DrillDownPanel.tsx': 1,
+      // Story 7.9, D-7.8-22's stale-entry rule applied to the new file too.
+      'components/shell/OfflineBanner.tsx': 1,
     };
     const violations: string[] = [];
     for (const [rel, expected] of Object.entries(PINNED)) {
@@ -350,6 +375,9 @@ describe('AC3 — no surface hard-codes a day-status colour token (source-level 
       'components/today/QuickLogForm.tsx',
       'components/week/DayCell.tsx',
       'components/today/LoggedToday.tsx',
+      // Story 7.9, AC2: the offline banner's headline reuses the SAME amber
+      // convention as the pre-existing validation/warning surfaces.
+      'components/shell/OfflineBanner.tsx',
     ]);
     const violations: string[] = [];
     for (const file of [...ALL_SOURCE_FILES, ...CSS_FILES]) {

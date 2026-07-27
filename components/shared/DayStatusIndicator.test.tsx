@@ -216,7 +216,8 @@ describe('DayStatusIndicator — variant="stacked" bar (D-7.6-3)', () => {
   // `expect(shortBar?.className).toBe(longBar?.className)`, prescribed by
   // the story itself ("same percent, different note → same width class").
   // That assertion is VACUOUS — it cannot fail under any mutation, because
-  // `pctToWidthClass` is a pure function of `percent` alone; the width
+  // `lib/progress-width.ts#pctToWidthClass` (migrated onto by Story 7.9) is
+  // a pure function of `percent` alone; the width
   // CLASS never depended on note length, even with the pre-fix `inline-
   // flex` bug. The real defect D-7.7-29 describes is a RENDERED PIXEL LENGTH
   // difference (`w-full` resolving against the widest sibling line under

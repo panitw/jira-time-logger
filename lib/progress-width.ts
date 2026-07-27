@@ -7,15 +7,17 @@
  * `w-[${pct}%]` string is invisible to it — the same constraint every other
  * chrome progress bar in the product already works around).
  *
- * Three private copies of this exact table + function already exist
- * (`components/shell/ChromeHeader.tsx`, `components/week/WeekChromeHeader.tsx`,
- * `components/shared/DayStatusIndicator.tsx`). D-7.7-21c assigned extracting a
- * shared helper to Story 7.9 SPECIFICALLY so a fourth uncoordinated copy never
- * appears — but 7.8 lands first and needs its own bar for AC4's streaming
- * line. Per the orchestrator ruling (D-7.8-19a), 7.8 creates this module for
- * ITS OWN bar only and does not touch the three existing copies; Story 7.9's
- * obligation becomes "migrate all four call sites onto this module" rather
- * than "extract a shared helper".
+ * Migrated onto by Story 7.9 (Obligation 1): `components/shell/ChromeHeader.tsx`,
+ * `components/week/WeekChromeHeader.tsx`, and `components/shared/DayStatusIndicator.tsx`
+ * previously each carried a private copy of this exact table + function.
+ * D-7.7-21c assigned that migration to Story 7.9 SPECIFICALLY so a fourth
+ * uncoordinated copy never appears — 7.8 landed first and needed its own bar
+ * for AC4's streaming line, so it created this module for ITS OWN bar only
+ * (D-7.8-19a) without touching the three existing copies. Story 7.9 closed
+ * the gap: all four call sites now import from here. **Zero private copies
+ * remain** — pinned by `lib/progress-width.grep.test.ts`, which fails if a
+ * fifth ever reappears anywhere under `components/`, `lib/`, `entrypoints/`,
+ * `hooks/`.
  *
  * Uses the CORRECTED `Math.floor` + non-zero-floor arithmetic (D-7.7-29's
  * fix) — NOT the `Math.round` defect that shipped twice before that fix

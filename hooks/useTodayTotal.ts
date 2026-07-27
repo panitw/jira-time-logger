@@ -28,6 +28,13 @@
  * drives the real composition root (`App` → `TodayView` → this hook) so a
  * regression at the exact call site this hazard names is caught (Story 7.2
  * Finding 1 — the hook-only test below only pins the addition, not the guard).
+ *
+ * Story 7.9, D-7.9-13: `excludeWorklogIds` filters worklogs whose deferred
+ * DELETE is pending inside "Undo time off"'s 5s window out of the server
+ * sum too — the chrome figure would otherwise disagree with the already-
+ * cleared time-off card for the length of the undo window (the exact
+ * D-7.5-14 defect, reused rather than reinvented). Empty by default so every
+ * other caller is unaffected.
  */
 import { useWeekWorklogs } from '@/hooks/useWeekWorklogs';
 import { currentWeekMonday } from '@/lib/week-of';
@@ -37,6 +44,8 @@ export type TodayTotal = {
   isPending: boolean;
   isError: boolean;
 };
+
+const EMPTY_SET: ReadonlySet<string> = new Set();
 
 /** Local midnight at the start of the day containing `date` — mirrors
  * `lib/week-grid.ts#startOfLocalDay` so the popup and the week grid bucket
@@ -49,8 +58,12 @@ function startOfLocalDay(date: Date): Date {
  * @param sessionSeconds seconds logged in this popup session so far (from
  *   `TodayView`'s `onTotalChange`), added on top of the server-fetched
  *   today total. Defaults to 0 for callers that only need the server value.
+ * @param excludeWorklogIds worklog ids to drop from the server sum (D-7.9-13).
  */
-export function useTodayTotal(sessionSeconds = 0): TodayTotal {
+export function useTodayTotal(
+  sessionSeconds = 0,
+  excludeWorklogIds: ReadonlySet<string> = EMPTY_SET,
+): TodayTotal {
   const query = useWeekWorklogs(currentWeekMonday());
 
   if (query.isError) {
@@ -70,6 +83,7 @@ export function useTodayTotal(sessionSeconds = 0): TodayTotal {
   for (const issue of query.data) {
     for (const worklog of issue.worklogs) {
       if (!worklog.started) continue;
+      if (excludeWorklogIds.has(worklog.id)) continue;
       const startedMs = new Date(worklog.started).getTime();
       if (!Number.isFinite(startedMs)) continue;
       if (startedMs >= todayStartMs && startedMs < tomorrowStartMs) {

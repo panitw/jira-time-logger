@@ -1,6 +1,7 @@
 import { format, parseISO } from 'date-fns';
 import { MarkAsDoneButton } from '@/components/week/MarkAsDoneButton';
 import { hoursToSeconds, secondsToHours } from '@/lib/hours';
+import { pctToWidthClass } from '@/lib/progress-width';
 import type { ISODate } from '@/lib/storage/view-state';
 import { WORKDAYS_PER_WEEK } from '@/lib/week-gaps';
 import type { WeekGrid } from '@/lib/week-grid';
@@ -26,53 +27,6 @@ const STRINGS = {
   prevAria: 'Previous week',
   nextAria: 'Next week',
 };
-
-// Quantised to 5% steps — same Tailwind-scanner constraint as
-// `ChromeHeader.tsx`/`DayStatusIndicator.tsx`'s own copies of this table;
-// each chrome-bar owner keeps its own (established convention, not
-// duplication worth centralising for three call sites).
-const WIDTH_CLASSES = [
-  'w-0',
-  'w-[5%]',
-  'w-[10%]',
-  'w-[15%]',
-  'w-[20%]',
-  'w-[25%]',
-  'w-[30%]',
-  'w-[35%]',
-  'w-[40%]',
-  'w-[45%]',
-  'w-[50%]',
-  'w-[55%]',
-  'w-[60%]',
-  'w-[65%]',
-  'w-[70%]',
-  'w-[75%]',
-  'w-[80%]',
-  'w-[85%]',
-  'w-[90%]',
-  'w-[95%]',
-  'w-full',
-] as const;
-
-/**
- * Finisher fix (D-7.7-21c / Finding 1): this copy shipped the exact
- * `Math.round` quantisation defect D-7.7-29 exists to eliminate — 39h of 40h
- * (97.6%) rounded UP to `w-full` ("done", right beside the mark-done CTA)
- * and 2.4% rounded DOWN to `w-0` ("empty" after an hour logged). Fixed the
- * same way as `DayStatusIndicator.pctToWidthClass`: `Math.floor` + a
- * non-zero floor, so only a true zero renders `w-0` and only a percentage
- * that genuinely rounds down to 100 renders `w-full`. D-7.7-21c is explicit
- * that this story fixes only ITS OWN instance — the popup's `ChromeHeader`
- * carries the same latent bug but is untouched (out of scope), and a
- * shared-helper extraction across all three copies is Story 7.9's job.
- */
-function pctToWidthClass(pct: number): string {
-  const clamped = Math.min(100, Math.max(0, pct));
-  if (clamped <= 0) return 'w-0';
-  const index = Math.max(1, Math.floor(clamped / 5));
-  return WIDTH_CLASSES[index] ?? 'w-full';
-}
 
 /** Bare hours, one decimal with a trailing `.0` stripped — the header
  * figure's "28" (`imports/jira-time-logger.dc.html:357`). */

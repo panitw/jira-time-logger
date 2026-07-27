@@ -2,6 +2,7 @@ import { format } from 'date-fns';
 import { DayStatusIndicator } from '@/components/shared/DayStatusIndicator';
 import type { DayStatus } from '@/lib/day-status';
 import { secondsToHours } from '@/lib/hours';
+import { pctToWidthClass } from '@/lib/progress-width';
 
 /**
  * Chrome header — the popup's fixed top field (Story 7.2, AC3/AC6). Also
@@ -17,41 +18,11 @@ const STRINGS = {
   product: 'Time Logger',
   toGoToday: (h: string) => `${h}h to go today`,
   targetMet: (target: number) => `Target met — ${target}h logged`,
+  // Story 7.9, AC5: the disconnected chrome shows this note instead of the
+  // figure/bar/live-region — no figure, no bar, no live region at all
+  // (`connected` already gates all three below).
+  notConnected: 'Not connected to Jira',
 };
-
-// Quantized to the nearest 5% so the fill width is a literal Tailwind
-// arbitrary-value class present in source (Tailwind's build-time scanner
-// cannot see a runtime-interpolated class string) — "All Tailwind classes;
-// no inline styles in popup/options" (architecture.md > Frontend Conventions).
-const WIDTH_CLASSES = [
-  'w-0',
-  'w-[5%]',
-  'w-[10%]',
-  'w-[15%]',
-  'w-[20%]',
-  'w-[25%]',
-  'w-[30%]',
-  'w-[35%]',
-  'w-[40%]',
-  'w-[45%]',
-  'w-[50%]',
-  'w-[55%]',
-  'w-[60%]',
-  'w-[65%]',
-  'w-[70%]',
-  'w-[75%]',
-  'w-[80%]',
-  'w-[85%]',
-  'w-[90%]',
-  'w-[95%]',
-  'w-full',
-] as const;
-
-function pctToWidthClass(pct: number): string {
-  const clamped = Math.min(100, Math.max(0, pct));
-  const index = Math.round(clamped / 5);
-  return WIDTH_CLASSES[index] ?? 'w-0';
-}
 
 function formatHoursValue(seconds: number): string {
   return secondsToHours(seconds).toFixed(1);
@@ -145,6 +116,15 @@ export function ChromeHeader({
       </div>
 
       <p className="relative mt-[12px] font-chrome text-display-sm text-white">{today}</p>
+
+      {/* AC5: disconnected chrome — eyebrow + avatar + date + this note
+       * ONLY. No figure, no bar, no live region (`connected` already gates
+       * all three below; nothing new to suppress here). */}
+      {!connected && (
+        <p className="relative mt-[7px] font-chrome text-[11.5px] font-medium text-white/85">
+          {STRINGS.notConnected}
+        </p>
+      )}
 
       {/* Story 7.2 Finding 5: the live region wraps BOTH the pending skeleton
        * and the resolved figure so it is present from first paint — a region

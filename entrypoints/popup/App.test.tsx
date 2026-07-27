@@ -9,8 +9,13 @@ const mockHasValidAuth = vi.fn();
 const mockUseTodayTotal = vi.fn();
 const mockUseResumeTicket = vi.fn();
 const mockUseTicketSearch = vi.fn();
+const mockUseTimeOffToday = vi.fn();
+const mockUseOutboxState = vi.fn();
 const postWorklogMock = vi.fn();
+const deleteWorklogMock = vi.fn();
 const setLastLoggedTicketMock = vi.fn((..._args: unknown[]) => Promise.resolve());
+const updateOutboxMock = vi.fn((..._args: unknown[]) => Promise.resolve());
+const runOutboxRetryPassMock = vi.fn(() => Promise.resolve({ drained: 0 }));
 
 vi.mock('@/lib/storage/tokens', () => ({
   getAuth: () => mockGetAuth(),
@@ -19,10 +24,23 @@ vi.mock('@/lib/storage/tokens', () => ({
 
 vi.mock('@/lib/storage/settings', () => ({
   targetHoursItem: { getValue: async () => 8 },
+  ptoSubtaskKeyItem: { getValue: async () => null },
+  ptoSubtaskSummaryItem: { getValue: async () => null },
 }));
 
 vi.mock('@/hooks/useTodayTotal', () => ({
   useTodayTotal: (...args: unknown[]) => mockUseTodayTotal(...args),
+}));
+
+// Story 7.9: mocked at the hook level (same pattern as `useTodayTotal` /
+// `useResumeTicket` above) so these tests drive `resolvePopupState`'s real
+// precedence through controllable inputs, without a real week-query/outbox
+// round-trip.
+vi.mock('@/hooks/useTimeOffToday', () => ({
+  useTimeOffToday: (...args: unknown[]) => mockUseTimeOffToday(...args),
+}));
+vi.mock('@/hooks/useOutboxState', () => ({
+  useOutboxState: () => mockUseOutboxState(),
 }));
 
 // Story 7.3: resolved once in App.tsx and passed down as a prop — mocking
@@ -53,7 +71,12 @@ vi.mock('@/lib/pto', () => ({
   logHalfDayPto: vi.fn(),
 }));
 vi.mock('@/lib/messages', () => ({ sendMessage: vi.fn() }));
-vi.mock('@/lib/storage/outbox', () => ({ enqueue: vi.fn(async () => ({})) }));
+vi.mock('@/lib/storage/outbox', () => ({
+  enqueue: vi.fn(async () => ({})),
+  update: (...args: unknown[]) => updateOutboxMock(...args),
+  runOutboxRetryPass: () => runOutboxRetryPassMock(),
+  outboxItem: { getValue: vi.fn(async () => []), watch: vi.fn(() => () => {}) },
+}));
 vi.mock('@/components/today/PtoQuickAction', () => ({
   PtoQuickAction: () => <div data-testid="pto-quick-action" />,
 }));
@@ -71,6 +94,7 @@ vi.mock('@/lib/storage/last-logged', () => ({
 }));
 vi.mock('@/lib/jira-client', () => ({
   postWorklog: (...args: unknown[]) => postWorklogMock(...args),
+  deleteWorklog: (...args: unknown[]) => deleteWorklogMock(...args),
 }));
 
 vi.mock('@/lib/log', () => ({
@@ -97,6 +121,8 @@ beforeEach(() => {
   mockUseTodayTotal.mockReturnValue({ seconds: 0, isPending: false, isError: false });
   mockUseResumeTicket.mockReturnValue({ status: 'none' });
   mockUseTicketSearch.mockReturnValue({ kind: 'idle' });
+  mockUseTimeOffToday.mockReturnValue({ seconds: 0, isPending: false, worklogs: [] });
+  mockUseOutboxState.mockReturnValue({ pendingCount: 0, failed: [] });
   postWorklogMock.mockResolvedValue({ kind: 'ok', value: { id: 'wl-search-1', timeSpentSeconds: 3600 } });
   // @ts-expect-error minimal chrome stub
   globalThis.chrome = { runtime: { openOptionsPage: vi.fn(), getURL: vi.fn((path: string) => `chrome-extension://abc/${path}`) }, tabs: { create: vi.fn() } };
@@ -212,13 +238,22 @@ describe('App', () => {
     expect(container.textContent).toContain(dateText);
   });
 
+  // Story 7.9, AC5: the disconnected card's copy — heading "Connect to
+  // Jira" (unchanged since 7.2), body, full-width "Sign in to Jira" CTA, and
+  // the reassurance line.
   it('renders the disconnected fallback when not connected', async () => {
     renderApp();
     await waitFor(() => {
       expect(
-        screen.getByText('Connect your Jira Cloud account to start logging time.'),
+        screen.getByText(
+          'Sign in once with your KKP Jira account. The extension reads your assigned tickets and writes worklogs as you.',
+        ),
       ).toBeTruthy();
     });
+    expect(screen.getByRole('button', { name: 'Sign in to Jira' })).toBeTruthy();
+    expect(
+      screen.getByText('Nothing is sent anywhere except your Jira instance.'),
+    ).toBeTruthy();
   });
 
   it('renders Today view when connected', async () => {

@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query';
-import { Pencil, Trash2, Undo2, Clock, X, XCircle, RefreshCw } from 'lucide-react';
+import { Pencil, Trash2, Undo2, Clock, X, XCircle, RefreshCw, LoaderCircle } from 'lucide-react';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { textToAdf } from '@/lib/adf';
@@ -923,7 +923,7 @@ function WorklogRow({
             disabled={saveDisabled}
           >
             {editMutation.isPending ? (
-              <span className="inline-block h-3 w-3 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+              <LoaderCircle aria-hidden="true" className="h-3 w-3 motion-safe:animate-spin" />
             ) : (
               STRINGS.save
             )}

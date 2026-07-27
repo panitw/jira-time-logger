@@ -4157,3 +4157,129 @@ same order of magnitude the review's own "~600 cells" figure was gesturing at (r
 requests) and confirms the rate-limited-API concern D-7.8-20 raised is real: pagination only fires (adding a
 second `/search/jql` call) for a report logging against more than 100 distinct subtasks in one cycle, which
 is the deliberately rare case this whole Blocker was about protecting.
+
+---
+
+## Story 7.9 — Popup States: Loading, Offline, Error, Time Off, Disconnected
+
+*Story file `7-9-popup-states-loading-offline-error-time-off-disconnected.md`, `ready-for-dev`, baseline
+`8332eb3`. The creator recorded `D-7.9-1 … D-7.9-12` in the story file; per D-7.3-11 those fold into this log
+at finisher stage. Entries below are numbered from `D-7.9-13`.*
+
+**Two findings the creator surfaced before development, both correct and worth preserving.** First, **a real
+AA failure sits one plausible implementation away**: `DayStatusIndicator` derives a single colour for icon and
+label, so composing the error headline through `status="error"` would ship `#DC2626` on `#FEF2F2` = **4.42:1**.
+The headline must use `text-error-ink` `#991B1B` (**7.60:1**) — no new token needed. Second, **a `role="alert"`
+populated at first paint is generally not announced** (Story 7.2's Finding 5 established this), and a persisted
+`failed` outbox entry means the banner **is** present at first paint in the common case — so a naive build
+ships an AC3 that is decoratively true and functionally dead. Mount empty, populate on the next tick.
+
+**The progress-bar migration count is THREE** (D-7.7-21c as amended by D-7.8-19a): `ChromeHeader.tsx` (**the
+`Math.round` defect — 97.6% → `w-full`, 2.4% → `w-0`**), `WeekChromeHeader.tsx` and `DayStatusIndicator.tsx`
+(both already correct arithmetic; migration changes only `NaN` handling). `ManagerMatrix.tsx` already imports
+the module. Four call sites, three deletions, **zero copies after** — pinned by a new
+`lib/progress-width.grep.test.ts` so a fifth never appears. **This is where that defect dies.**
+
+### D-7.9-13 — "Undo time off" removes ALL of today's time-off worklogs, via the deferred-delete mechanism
+**Owner decision** (asked — it deletes real hours from Jira; the owner chose against the orchestrator's
+recommendation).
+
+**Verdict.** "Undo time off" removes **every** time-off worklog dated today, not merely the most recent. It is
+implemented through **Story 7.5's existing deferred-delete-with-undo mechanism** (`UNDO_WINDOW_MS = 5000`):
+the card clears immediately, the Jira DELETEs fire only when the window expires, and undoing inside the window
+cancels them with **zero Jira traffic**.
+
+**Situation.** A day can carry more than one time-off worklog — a half day marked twice, or a full day marked
+after a half day. The card's framing ("Marked as time off") is a statement about **the whole day**, so an
+Undo that reversed only the last write would leave the day still partly booked while the card disappeared —
+the UI and the data disagreeing.
+
+**In simple terms.** You mark Wednesday as a half day off in the morning, then later mark the whole day off.
+Two worklogs now exist. You realise you were wrong about the whole thing and hit "Undo time off". Under the
+chosen rule Wednesday is clean in one action, which is what "undo time off" plainly means to the person
+clicking it. Under the alternative you would hit Undo, see the card vanish, and still have half a day of time
+off booked in Jira with nothing on screen saying so.
+
+**Options considered.** *Only the most recent* — the orchestrator's recommendation, on the grounds that
+Story 7.5's list undo works that way and that a single click should never destroy more than the user's last
+step. Rejected by the owner: the card is a whole-day statement, so a partial undo leaves an inconsistent day.
+
+**Why the risk is acceptable, and how it is contained.** The owner's reading is the more honest one — the
+affordance says "time off", not "the last thing you did" — but it makes one click destructive across several
+records. That is contained by **reusing 7.5's deferred delete rather than writing a new immediate one**: for
+five seconds nothing has actually been sent to Jira and a second click restores everything, so the destructive
+step is recoverable by the same mechanism the product already uses for worklog deletion. No confirmation
+dialog — this epic's rule is undo-not-confirm.
+
+**Consequences.** **Do not write a second delete path**; compose over Story 7.5's. If more than one worklog is
+being removed, the affordance must **say how many** ("Undo time off · 2 entries") so the scope is visible
+before the window closes. A worklog pending deletion must be filtered out of the **seconds derivation** as
+well as the card, or the chrome figure will disagree with the screen — the exact defect D-7.5-14 and 7.5's
+review both had to fix. Tests must cover one, two, and zero time-off worklogs, plus an undo inside the window
+proving **no** Jira traffic occurred.
+
+**How we'd know it was wrong.** Users reporting time off disappearing that they did not mean to remove — that
+would mean five seconds is too short for a multi-record deletion, and the window should lengthen or the
+affordance should state the count more loudly.
+
+### D-7.9-14 — The time-off body is frozen at first paint
+**Owner decision.**
+
+**Verdict.** Which body the popup renders — normal vs the settled time-off card — is resolved **once, at first
+paint**, and does not change for the life of that popup session. Marking today as time off while the popup is
+open does **not** swap the body; the next open shows the settled card.
+
+**Why.** **D-7.3-9 stays absolute.** Switching mid-session would unmount the resume card, silently discarding
+hours the user had typed but not submitted — the precise failure that invariant exists to prevent, and the
+same "except when" clause D-7.5-11 refused to introduce. The third option offered (switch only when nothing is
+typed) was rejected for that reason: an invariant with a condition is one every future story must remember.
+
+**The action still visibly works** — the time-off entry appears in "Logged today" and the chrome figure
+updates — so nothing looks broken; only the full settled card waits. Accepted cost: the popup is briefly
+"behind" reality in one narrow case.
+
+**Consequences.** The body derivation reads its inputs once and latches, in the same spirit as `ResumeCard`'s
+identity and focus latches. A test must pin that marking time off mid-session leaves the resume card's
+subtask, pre-fill and write target untouched.
+
+### D-7.9-15 — The remaining eight escalations, decided
+**Orchestrator decisions** (routine; the creator's recommendation accepted except where noted).
+
+- **D-7.9-3 — use the token.** `border-amber-border` (`#EDD3A6`, `DESIGN.md:39`) beats the mockup's `#F0DCB8`. The
+  spines win over the mockups, and unlike D-7.7-15's cases this value is **already in the token layer** — so
+  this is D-7.3-14's situation, not a missing-token one.
+- **D-7.9-4 — add `CircleX` to `ICON_ALLOWLIST`.** Effectively forced: the exact `LoaderCircle` / `SearchPanel`
+  precedent applies, and the alternative ships the 4.42:1 contrast failure described above.
+- **D-7.9-5 — yes, vary the offline headline** when `navigator.onLine === true`. Claiming "Offline" while the
+  browser believes it is online is a false statement about the user's machine; the queue is what is real.
+- **D-7.9-6 — do NOT implement the chrome-note suffix** (`· 2 unsynced` / `· 1 not saved to Jira`). It double-
+  announces inside a `polite` region, fights the white-only chrome rule, and adds first-paint work against
+  NFR1. The banner already carries the count.
+- **D-7.9-7 — the Jira subtask summary stays VERBATIM.** `EXPERIENCE.md:112` renames it to "Time off"; **SD-7 and
+  D-7.7-18 overrule that.** It is real Jira data, not our copy. This is the third time this exact trap has
+  appeared (Story 7.6's `defaultSummary`, D-7.7-18's `KNP-99`) — *action for the spec owner:* `EXPERIENCE.md:112`
+  should be corrected.
+- **D-7.9-10 — pinning test, no suppression logic.** The double-announcement paths are verified disjoint today
+  (`ResumeCard.tsx:233-236` never enqueues a non-retryable). Pin that with a test rather than adding
+  coordination code for a case that cannot currently occur.
+- **D-7.9-11 — "Log elsewhere" does NOT dismiss the banner.** The write still failed; hiding the record of it
+  because the user started a different action would lose the only notice that hours need attention.
+- **D-7.9-12 — FIX the icon violations in this story; do NOT defer them.** *This overrides the creator's
+  recommendation.* Four hand-rolled `animate-spin` spinners (`QuickLogForm:312`, `PtoQuickAction:258,260`,
+  `LoggedToday:926`, `TicketPicker:521`) and one raw `'✓'` glyph breach the epic's `lucide-react`-only rule and
+  `DESIGN.md:222-224`'s "Never a text glyph" — the same violation Story 7.8 fixed on its own surface.
+  **7.9 is the LAST story that owns the popup.** Deferring them means no story ever picks them up, which is
+  exactly how the `font-mono` violations nearly shipped (D-7.7-21f). Five small swaps now, or an epic-wide
+  constraint ships unmet. If any occurrence turns out to be genuinely non-trivial, fix the rest and record that
+  one with a **named owner**.
+
+**Also endorsed as recorded:** the creator's state-precedence rule — body first-match-wins
+`disconnected → loading → time-off → normal`, reusing `dayStatusFor`'s existing time-off-outranks ordering
+rather than inventing a second; banners **orthogonal**, rendering above the body in `normal` **and**
+`time-off`, suppressed in `disconnected`/`loading`, with **error above offline** when both fire. And the
+offline seam: **`navigator.onLine` appears nowhere in the codebase** — the real source is Story 2.7's outbox
+via `outboxItem.watch()`, counting **`pending` only** (counting `failed` would make "they'll sync
+automatically" a lie, since only the SW alarm drains `pending`; `failed` feeds the error banner instead).
+**Do NOT add an `online` listener touching React Query** — `refetchOnReconnect: false` is load-bearing
+(`main.tsx:39-42`, `useTodayTotal.ts:14-31`), and it was already identified as a third route to the
+double-count hazard in Story 7.2.

@@ -121,4 +121,34 @@ describe('useTodayTotal', () => {
 
     await waitFor(() => expect(result.current.seconds).toBe(3600 + 1800));
   });
+
+  // Story 7.9, D-7.9-13: a worklog pending "Undo time off" deletion must be
+  // filtered out of THIS server sum too, or the chrome figure disagrees with
+  // the already-cleared card for the length of the 5s undo window.
+  it('excludeWorklogIds drops a worklog from the server sum (D-7.9-13)', async () => {
+    const today = localMidnight(new Date());
+    fetchByIssueMock.mockResolvedValue({
+      kind: 'ok',
+      value: [
+        {
+          key: 'KNP-99',
+          summary: 'PTO',
+          worklogs: [
+            { id: 'w1', timeSpentSeconds: 28800, started: isoAt(today, 9) },
+            { id: 'w2', timeSpentSeconds: 3600, started: isoAt(today, 15) },
+          ],
+        },
+      ],
+    });
+
+    const { result, rerender } = renderHook(
+      ({ exclude }: { exclude: ReadonlySet<string> }) => useTodayTotal(0, exclude),
+      { wrapper, initialProps: { exclude: new Set<string>() } },
+    );
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+    expect(result.current.seconds).toBe(28800 + 3600);
+
+    rerender({ exclude: new Set(['w1']) });
+    await waitFor(() => expect(result.current.seconds).toBe(3600));
+  });
 });

@@ -45,8 +45,11 @@ vi.mock('@/lib/storage/settings', () => ({
   // Story 7.3: `useResumeTicket` (and, since 7.5, `useRecentlyWorked`) read
   // this to exclude the PTO subtask from week-worklog enrichment
   // (D-7.3-12). `null` = not configured, so nothing is excluded in this
-  // file's fixtures.
+  // file's fixtures. Story 7.9's `useTimeOffToday` reads the same item —
+  // `null` means no worklog is ever categorised as time off here either, so
+  // none of THIS file's existing tests land in the 'time-off' body.
   ptoSubtaskKeyItem: { getValue: vi.fn(async () => null) },
+  ptoSubtaskSummaryItem: { getValue: vi.fn(async () => null) },
 }));
 
 // Story 7.3: the resume card's data seam. `getLastLoggedTicket` resolves to

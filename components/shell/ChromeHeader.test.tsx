@@ -98,6 +98,23 @@ describe('ChromeHeader', () => {
     expect(screen.getByText('Time Logger')).toBeTruthy();
   });
 
+  // --- Story 7.9, AC5: the disconnected chrome adds the "Not connected" note
+  it('AC5: disconnected chrome shows "Not connected to Jira" — no figure, no bar, no live region', () => {
+    const { container } = render(
+      <ChromeHeader connected={false} userInitial={null} seconds={0} targetHours={8} isPending={false} />,
+    );
+    expect(screen.getByText('Not connected to Jira')).toBeTruthy();
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    expect(container.querySelector('.animate-skeleton')).toBeNull();
+  });
+
+  it('AC5: the "Not connected to Jira" note does NOT render while connected', () => {
+    render(
+      <ChromeHeader connected userInitial="J" seconds={0} targetHours={8} isPending={false} />,
+    );
+    expect(screen.queryByText('Not connected to Jira')).toBeNull();
+  });
+
   // --- Story 7.6: the progress note now routes through DayStatusIndicator --
 
   it('the progress note now carries an icon (AC3) — the popup used to have none', () => {
@@ -130,6 +147,39 @@ describe('ChromeHeader', () => {
     const rootClass = noteSpans[noteSpans.length - 1]?.className ?? '';
     expect(rootClass).toContain('text-white/85');
     expect(rootClass).not.toContain('text-status-clean');
+  });
+
+  // --- Story 7.9, Obligation 1: the Math.round quantisation defect dies here.
+  // Migrated onto `lib/progress-width.ts` (Math.floor + non-zero floor).
+  it('Obligation 1: 97.6% of target no longer renders a FULL bar (the old Math.round defect)', () => {
+    // 28100 / 28800 = 97.569% — Math.round would map this to index 20
+    // ("w-full", reads "done"); Math.floor + non-zero floor maps it to
+    // index 19 ("w-[95%]").
+    const { container } = render(
+      <ChromeHeader connected userInitial="J" seconds={28100} targetHours={8} isPending={false} />,
+    );
+    const status = container.querySelector('[role="status"]') as HTMLElement;
+    const fill = [...status.querySelectorAll('div')].find(
+      (el) => el.className.includes('bg-white') && !el.className.includes('bg-white/20'),
+    );
+    expect(fill?.className).toContain('w-[95%]');
+    expect(fill?.className).not.toContain('w-full');
+  });
+
+  it('Obligation 1: 2.4% of target no longer renders an EMPTY bar (the old Math.round defect)', () => {
+    // 700 / 28800 = 2.43% — Math.round would map this to index 0 ("w-0",
+    // reads "nothing logged" after an hour was logged); Math.floor + the
+    // non-zero floor maps any genuinely non-zero percentage to at least
+    // index 1 ("w-[5%]").
+    const { container } = render(
+      <ChromeHeader connected userInitial="J" seconds={700} targetHours={8} isPending={false} />,
+    );
+    const status = container.querySelector('[role="status"]') as HTMLElement;
+    const fill = [...status.querySelectorAll('div')].find(
+      (el) => el.className.includes('bg-white') && !el.className.includes('bg-white/20'),
+    );
+    expect(fill?.className).toContain('w-[5%]');
+    expect(fill?.className).not.toContain('w-0');
   });
 
   it('an explicit `status` prop overrides the derived met/partial/attention (7.9 seam)', () => {

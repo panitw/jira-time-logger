@@ -36,7 +36,8 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-11 22:45:02
-last_updated: 2026-07-27 (Story 7-8 → done — finisher closed 34 findings from 47 mutations; D-7.8-20 real pagination reverses D-7.8-16's truncated flag; D-7.8-21 restricted caveat closes the Blocker; D-7.8-1..15 folded into epic-7-decision-log.md as D-7.8-25..39; 98 files/1419 passed/1 skipped, same 1 known pre-existing rejection)
+last_updated: "2026-07-27 (Story 7-9 → review — popup states implemented at baseline 8332eb3. lib/popup-state.ts (AC6, 2-axis precedence), hooks/useTimeOffToday.ts + hooks/useOutboxState.ts (new derivations), OfflineBanner/WriteErrorBanner/PopupSkeletonBody/TimeOffCard (net-new). Obligation 1 CLOSED — zero progress-bar copies remain (lib/progress-width.grep.test.ts pins it), the ChromeHeader Math.round defect is fixed. Obligation 2 — breaksHeaderBaseline gets exactly the one appended !anyBanner condition. Obligation 3 — chrome time-off is white/opacity only. Obligation 4 — no-monospace guard untouched. D-7.9-12 fixed (not deferred) — 4 spinners + 2 checkmarks now lucide-react. D-7.9-13/14 (owner decisions) implemented: Undo time off composes Story 7.5's UNDO_WINDOW_MS deferred-delete; time-off body frozen at first paint, Undo is the one explicit transition. 107 files/1492 passed/1 skipped, same 1 known pre-existing rejection (ManagerView.test.tsx))"
+# previous:    2026-07-27 (Story 7-8 → done — finisher closed 34 findings from 47 mutations; D-7.8-20 real pagination reverses D-7.8-16's truncated flag; D-7.8-21 restricted caveat closes the Blocker; D-7.8-1..15 folded into epic-7-decision-log.md as D-7.8-25..39; 98 files/1419 passed/1 skipped, same 1 known pre-existing rejection)
 project: jira-time-logger
 # 2026-06-21: Story 2-7 created (ready-for-dev) — completes Epic 2
 # 2026-06-21: Story 3-1 created (ready-for-dev); Epic 3 → in-progress
@@ -541,7 +542,7 @@ development_status:
   7-6-day-status-vocabulary-time-off-rename: done
   7-7-full-page-surface-week-review: done
   7-8-manager-matrix-silent-correctness-loud-exceptions: done
-  7-9-popup-states-loading-offline-error-time-off-disconnected: backlog
+  7-9-popup-states-loading-offline-error-time-off-disconnected: review
   # 2026-07-25: UNBLOCKED. Claude Design round 2 delivered both surfaces; spines and
   # ACs updated from imports/jira-time-logger-round2.dc.html. See reconcile-claude-design-round2.md.
   7-10-settings-on-the-full-page: backlog

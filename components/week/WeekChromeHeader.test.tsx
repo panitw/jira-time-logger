@@ -135,8 +135,9 @@ describe('WeekChromeHeader (Story 7.7, AC2)', () => {
   });
 
   // Finisher fix (D-7.7-21c / Finding 1) — RED-proved by reverting
-  // `pctToWidthClass` to `Math.round`: 39h of a 40h week is 97.5% and used
-  // to render `w-full`, reading as fully done beside the mark-done CTA.
+  // `lib/progress-width.ts#pctToWidthClass` (migrated onto by Story 7.9) to
+  // `Math.round`: 39h of a 40h week is 97.5% and used to render `w-full`,
+  // reading as fully done beside the mark-done CTA.
   it('39h of 40h (97.5%) does not read as fully done — quantisation fix (D-7.7-29/D-7.7-21c)', () => {
     const { container } = render(<WeekChromeHeader {...baseProps()} grid={gridWithLoggedHours(39)} />);
     const track = container.querySelector('.h-\\[4px\\]');

@@ -10,6 +10,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { STATUS_LABEL, type DayStatus, type StatusKind } from '@/lib/day-status';
+import { pctToWidthClass } from '@/lib/progress-width';
 
 /**
  * The ONE React renderer for the shared day-status vocabulary (Story 7.6,
@@ -133,48 +134,6 @@ const STATUS_BAR_CLASS: Record<StatusKind, string> = {
 };
 
 const ICON_SIZE = 12; // 11-13px per DESIGN.md icons.defaults.size
-
-// Quantised to 5% steps — Tailwind's build-time scanner cannot see a
-// runtime-interpolated `w-[${pct}%]` class string (same trick as
-// `ChromeHeader.tsx`'s progress bar, D-7.6-3's `percent` doc comment).
-const BAR_WIDTH_CLASSES = [
-  'w-0',
-  'w-[5%]',
-  'w-[10%]',
-  'w-[15%]',
-  'w-[20%]',
-  'w-[25%]',
-  'w-[30%]',
-  'w-[35%]',
-  'w-[40%]',
-  'w-[45%]',
-  'w-[50%]',
-  'w-[55%]',
-  'w-[60%]',
-  'w-[65%]',
-  'w-[70%]',
-  'w-[75%]',
-  'w-[80%]',
-  'w-[85%]',
-  'w-[90%]',
-  'w-[95%]',
-  'w-full',
-] as const;
-
-/**
- * Story 7.7, D-7.7-29 (defect 2 — quantisation): `Math.round` mapped 97.6% to
- * `w-full` (reads as fully done) and 2.4% to `w-0` (reads as empty).
- * `Math.floor` plus a non-zero floor fixes both directions: any genuinely
- * non-zero percentage renders at least `w-[5%]`, and only a true zero
- * renders `w-0`. `w-full` is now reserved for a percentage that actually
- * rounds down to 100 (or exceeds it, after clamping).
- */
-function pctToWidthClass(pct: number): string {
-  const clamped = Math.min(100, Math.max(0, pct));
-  if (clamped <= 0) return 'w-0';
-  const index = Math.max(1, Math.floor(clamped / 5));
-  return BAR_WIDTH_CLASSES[index] ?? 'w-full';
-}
 
 export type DayStatusIndicatorProps = {
   /** Which vocabulary entry to render. Icon and colour are derived from this

@@ -13,10 +13,22 @@ vi.mock('@/lib/storage/tokens', () => ({
 
 vi.mock('@/lib/storage/settings', () => ({
   targetHoursItem: { getValue: async () => 8 },
+  ptoSubtaskKeyItem: { getValue: async () => null },
+  ptoSubtaskSummaryItem: { getValue: async () => null },
 }));
 
 vi.mock('@/hooks/useTodayTotal', () => ({
   useTodayTotal: () => ({ seconds: 9000, isPending: false, isError: false }),
+}));
+
+// Story 7.9: mocked directly here too (same "shell only" scope as
+// `useTodayTotal` above) — this file's scans cover the chrome shell, not a
+// full time-off/outbox data path.
+vi.mock('@/hooks/useTimeOffToday', () => ({
+  useTimeOffToday: () => ({ seconds: 0, isPending: false, worklogs: [] }),
+}));
+vi.mock('@/hooks/useOutboxState', () => ({
+  useOutboxState: () => ({ pendingCount: 0, failed: [] }),
 }));
 
 const mockUseResumeTicket = vi.fn();
@@ -49,7 +61,12 @@ vi.mock('@/lib/pto', () => ({
   logHalfDayPto: vi.fn(),
 }));
 vi.mock('@/lib/messages', () => ({ sendMessage: vi.fn() }));
-vi.mock('@/lib/storage/outbox', () => ({ enqueue: vi.fn(async () => ({})) }));
+vi.mock('@/lib/storage/outbox', () => ({
+  enqueue: vi.fn(async () => ({})),
+  update: vi.fn(async () => {}),
+  runOutboxRetryPass: vi.fn(async () => ({ drained: 0 })),
+  outboxItem: { getValue: vi.fn(async () => []), watch: vi.fn(() => () => {}) },
+}));
 vi.mock('@/components/today/PtoQuickAction', () => ({
   PtoQuickAction: () => <div data-testid="pto-quick-action" />,
 }));

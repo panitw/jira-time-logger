@@ -268,6 +268,21 @@ describe('ResumeCard', () => {
     expect(setLastLoggedTicketMock).not.toHaveBeenCalled();
   });
 
+  // Story 7.9, D-7.9-10: pins the disjointness the popup's write-error
+  // banner relies on — a non-retryable refusal (this card's OWN inline
+  // role="alert" message) must NEVER also enqueue to the outbox (the error
+  // banner's source), or the same refusal would be announced twice. If a
+  // future change enqueues a non-retryable kind here, this goes red loudly
+  // rather than silently double-announcing.
+  it('D-7.9-10: a non-retryable refusal (forbidden) never enqueues to the outbox — disjoint from the banner\'s source', async () => {
+    postWorklogMock.mockResolvedValueOnce({ kind: 'forbidden' });
+    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} />);
+    const input = screen.getByLabelText('Hours for PROJ-1');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await screen.findByText('Couldn’t log time — try again');
+    expect(enqueueOutboxMock).not.toHaveBeenCalled();
+  });
+
   it('a network failure enqueues the outbox post and shows the pending chip, without stamping the record', async () => {
     postWorklogMock.mockResolvedValueOnce({ kind: 'network', cause: 'offline' });
     renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} />);

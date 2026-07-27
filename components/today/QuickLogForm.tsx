@@ -1,22 +1,22 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { postWorklog } from '@/lib/jira-client';
+import { Check, Clock, LoaderCircle } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import type { LoggedEntry } from '@/components/today/LoggedToday';
+import { Button } from '@/components/ui/button';
+import { currentCycleRange, isWithinCycle } from '@/lib/cycle-range';
 import {
   parseHours,
   hoursToSeconds,
   secondsToHoursDisplay,
   MAX_HOURS_PER_ENTRY,
 } from '@/lib/hours';
-import { currentCycleRange, isWithinCycle } from '@/lib/cycle-range';
-import { formatStartedISO, formatDateForInput } from '@/lib/worklog-date';
-import { approvalCycleItem } from '@/lib/storage/settings';
-import { setLastLoggedTicket } from '@/lib/storage/last-logged';
+import { postWorklog } from '@/lib/jira-client';
 import { log } from '@/lib/log';
 import { sendMessage } from '@/lib/messages';
+import { setLastLoggedTicket } from '@/lib/storage/last-logged';
 import { enqueue as enqueueOutbox } from '@/lib/storage/outbox';
-import { Clock } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import type { LoggedEntry } from '@/components/today/LoggedToday';
+import { approvalCycleItem } from '@/lib/storage/settings';
+import { formatStartedISO, formatDateForInput } from '@/lib/worklog-date';
 
 const STRINGS = {
   hoursLabel: 'Hours',
@@ -307,11 +307,17 @@ export function QuickLogForm({
           size="sm"
           onClick={handleSubmit}
           disabled={buttonDisabled}
+          // Story 7.9, D-7.9-12: the visible content below now swaps between
+          // an icon and text, so the accessible name must stay stable and
+          // meaningful independent of that \u2014 `aria-label` was previously
+          // absent here (the button's own text content WAS the accessible
+          // name, which silently became a bare glyph during `showSuccess`).
+          aria-label={STRINGS.logButton}
         >
           {isPending ? (
-            <span className="inline-block h-3 w-3 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+            <LoaderCircle aria-hidden="true" className="h-3 w-3 motion-safe:animate-spin" />
           ) : showSuccess ? (
-            '\u2713'
+            <Check aria-hidden="true" className="h-3 w-3" />
           ) : (
             STRINGS.logButton
           )}

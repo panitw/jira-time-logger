@@ -1,19 +1,19 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { logFullDayPto, logHalfDayPto } from '@/lib/pto';
+import { Check, Clock, LoaderCircle } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import type { LoggedEntry } from '@/components/today/LoggedToday';
+import { Button } from '@/components/ui/button';
 import { secondsToHoursDisplay, hoursToSeconds } from '@/lib/hours';
-import { formatStartedISO, todayDateString } from '@/lib/worklog-date';
+import { log } from '@/lib/log';
+import { sendMessage } from '@/lib/messages';
+import { logFullDayPto, logHalfDayPto } from '@/lib/pto';
+import { enqueue as enqueueOutbox } from '@/lib/storage/outbox';
 import {
   ptoSubtaskKeyItem,
   ptoSubtaskSummaryItem,
   targetHoursItem,
 } from '@/lib/storage/settings';
-import { log } from '@/lib/log';
-import { sendMessage } from '@/lib/messages';
-import { enqueue as enqueueOutbox } from '@/lib/storage/outbox';
-import { Clock } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import type { LoggedEntry } from '@/components/today/LoggedToday';
+import { formatStartedISO, todayDateString } from '@/lib/worklog-date';
 
 const STRINGS = {
   trigger: 'Mark today as time off',
@@ -255,9 +255,9 @@ export function PtoQuickAction({
             onClick={() => handleSubmit('full')}
           >
             {isPending ? (
-              <span className="inline-block h-3 w-3 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+              <LoaderCircle aria-hidden="true" className="h-3 w-3 motion-safe:animate-spin" />
             ) : showSuccess ? (
-              '✓'
+              <Check aria-hidden="true" className="h-3 w-3" />
             ) : (
               STRINGS.fullDay(targetHours)
             )}
