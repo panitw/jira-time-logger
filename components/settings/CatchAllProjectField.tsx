@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FieldLabel } from '@/components/settings/SettingsPrimitives';
 import { DayStatusIndicator } from '@/components/shared/DayStatusIndicator';
+import { fetchCatchAllSubtasks, type CatchAllItem } from '@/lib/catch-all';
 import { jiraGet } from '@/lib/jira-client';
-import { JiraProjectSchema, JiraSearchSchema, type JiraIssue } from '@/lib/jira-types';
+import { JiraProjectSchema } from '@/lib/jira-types';
 import {
   catchAllProjectKeyItem,
   ptoSubtaskKeyItem,
@@ -83,7 +84,7 @@ export function CatchAllProjectField({ onSaved }: Props): React.ReactElement {
   const [committedKey, setCommittedKey] = useState('KNP');
   const [status, setStatus] = useState<Status>('idle');
   const [projectName, setProjectName] = useState<string | null>(null);
-  const [subtasks, setSubtasks] = useState<JiraIssue[]>([]);
+  const [subtasks, setSubtasks] = useState<CatchAllItem[]>([]);
   // Finding 16: a failed subtask probe is its own state — it must not be
   // rendered as "0 subtasks", which reads as a fact about the project.
   const [subtasksError, setSubtasksError] = useState(false);
@@ -118,15 +119,16 @@ export function CatchAllProjectField({ onSaved }: Props): React.ReactElement {
         return;
       }
 
-      const subtaskResult = await jiraGet(
-        `rest/api/3/search/jql?jql=project=${encodeURIComponent(key)}+AND+issuetype=Sub-task&maxResults=50&fields=key,summary`,
-        JiraSearchSchema,
-      );
+      // D-CA-2: use the SHARED helper. Story 7.10 built this field with its own
+      // hand-rolled copy of the same query, so when `lib/catch-all.ts` was
+      // widened the picker changed and THIS screen did not — the duplication
+      // was invisible until a real project exposed it. One query, one place.
+      const subtaskResult = await fetchCatchAllSubtasks(key);
       if (callId !== lastCallId.current) return;
 
       setProjectName(projectResult.value.name);
       if (subtaskResult.kind === 'ok') {
-        setSubtasks(subtaskResult.value.issues);
+        setSubtasks(subtaskResult.value);
         setSubtasksError(false);
       } else {
         // A failed second fetch is NOT "the project has zero subtasks" —
@@ -217,7 +219,7 @@ export function CatchAllProjectField({ onSaved }: Props): React.ReactElement {
       const issue = subtasks[idx];
       if (!issue) return;
       await ptoSubtaskKeyItem.setValue(issue.key);
-      await ptoSubtaskSummaryItem.setValue(issue.fields.summary);
+      await ptoSubtaskSummaryItem.setValue(issue.summary);
       setSelectedKey(issue.key);
     },
     [subtasks],
@@ -318,7 +320,8 @@ export function CatchAllProjectField({ onSaved }: Props): React.ReactElement {
             <option value={-1}>{STRINGS.ptoPlaceholder}</option>
             {subtasks.map((issue, idx) => (
               <option key={issue.key} value={idx}>
-                {issue.key} — {issue.fields.summary}
+                {issue.key} — {issue.summary}
+                {issue.issueType ? ` (${issue.issueType})` : ''}
               </option>
             ))}
           </select>

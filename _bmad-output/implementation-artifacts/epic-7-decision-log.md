@@ -5077,3 +5077,45 @@ Incidents") it means those hours will not appear in an epic column either.
 **How we'd know it was wrong.** Catch-all hours going missing from the manager matrix in a way that matters
 to approvals — that would mean the rollup consequence is not acceptable for non-time-off items, and the
 filter needs to distinguish the time-off ticket from general catch-all work.
+
+### D-CA-2 — No issuetype filter at all, and the duplicated query is collapsed
+**Orchestrator decision**, after D-CA-1 failed against the same real project.
+
+**Verdict.** `lib/catch-all.ts` applies **no issue-type filter**: `project = "KEY" ORDER BY updated DESC`,
+projecting `key,summary,issuetype` so the picker can **label each option with its own type**. And
+`CatchAllProjectField` now calls the shared `fetchCatchAllSubtasks` instead of its own copy of the query.
+
+**Situation — two failures, and the second is the more important one.**
+
+**(1) Guessing type names cannot work.** `Sub-task` returned zero rows; widening to
+`IN ("Sub-task", "Task")` (D-CA-1) *also* returned zero. Issue-type names are **per-project,
+admin-defined, and may be localised** — the owner's project is "Group3:Non SR/SR Support", which is
+service-desk shaped and plausibly uses types like "Service Request". Any allow-list is a guess, and **a wrong
+guess fails silently as an empty dropdown** rather than as an error. Two guesses were two outages. So the
+filter is gone: show everything in the project, capped at 50, most-recently-updated first, and let the
+**label** carry the type instead of the query.
+
+**(2) The Settings field had its own copy of the query.** `CatchAllProjectField.tsx:122` hand-rolled
+`...issuetype=Sub-task...` rather than calling `fetchCatchAllSubtasks`. That is why D-CA-1 appeared to change
+nothing: it fixed `lib/catch-all.ts`, which feeds `TicketPicker`, while **the screen the owner was actually
+looking at ran a different query.** Story 7.10 introduced the duplicate when it built the field.
+
+**This is the same defect class the epic hit three times** — Story 7.9's `TimeOffCard` re-declaring
+`LoggedToday`'s delete path, Story 7.11's `banner-interactions` extraction (which passed only because it was
+genuinely wired), and now this. The pattern: a second implementation of something that already exists,
+invisible while both copies agree, and revealed only when one is changed. **Here it cost a whole
+fix-and-verify cycle** — the owner rebuilt, saw no change, and had to report the same bug twice.
+
+**Consequences.**
+- **One query, one place.** Any future change to what the catch-all returns now reaches both consumers.
+- The picker shows `KEY — summary (Type)`, so the list is readable without the code knowing the schema.
+- **Accepted cost:** the list is no longer inherently the curated "shared subtasks" set FR10 describes — it
+  is whatever the project holds. The 50-item cap and recency ordering are what keep it usable; a project with
+  many issues will show a long list. If that proves unwieldy, the fix is a filter the **user** chooses, not
+  one we guess.
+- The test asserts the exact JQL **and** that the JQL contains no `issuetype` — scoped to the `jql` param,
+  since `issuetype` legitimately appears in the `fields` projection. RED-proved by reintroducing the filter.
+
+**How we'd know it was wrong.** A catch-all project large enough that the right item is not in the first 50
+by recency. That is a real possibility and the signal to add user-driven filtering — not to reinstate a
+guessed type list.
