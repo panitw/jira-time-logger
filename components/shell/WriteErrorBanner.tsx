@@ -4,7 +4,7 @@ import { secondsToHoursDisplay } from '@/lib/hours';
 import type { OutboxEntry } from '@/lib/storage/outbox';
 
 /**
- * The write-refused banner (Story 7.9, AC3) — the ONE legitimate red on the
+ * The write-refused banner (Story 7.9, AC3) — a legitimate red on the
  * popup: Jira actually refused a worklog write.
  *
  * `role="alert"` is mounted UNCONDITIONALLY and EMPTY; its contents populate
@@ -16,7 +16,7 @@ import type { OutboxEntry } from '@/lib/storage/outbox';
  *
  * `CircleX` is a write-failure icon, never a day status — allowlisted in
  * `lib/day-status-vocabulary.grep.test.ts#ICON_ALLOWLIST` for this file only
- * (D-7.9-4, the exact `LoaderCircle`/`SearchPanel.tsx` precedent).
+ * (D-7.9-22, the exact `LoaderCircle`/`SearchPanel.tsx` precedent).
  *
  * Contrast (§ Contrast, hand-computed): the headline is `text-error-ink`
  * (#991B1B on #FEF2F2, 7.60:1) — NEVER `text-status-error` (#DC2626 on
@@ -68,6 +68,15 @@ export type WriteErrorBannerProps = {
   onLogElsewhere: () => void;
 };
 
+/** Review Finding 15 / D-7.9-18(a): the banner names one representative
+ * ticket, but when MORE than one write has failed it must say so — silently
+ * representing N failures as one is the same class of defect as a silent
+ * cap. Counts every failed entry that carries a worklog write body (the
+ * SAME predicate that selects `primary` below), not just delete failures. */
+function countWorklogFailures(entries: OutboxEntry[]): number {
+  return entries.filter((e) => e.kind !== 'delete').length;
+}
+
 export function WriteErrorBanner({
   entries,
   onRetry,
@@ -77,24 +86,34 @@ export function WriteErrorBanner({
   // A bare `useEffect(() => setMounted(true), [])` is flushed SYNCHRONOUSLY
   // by React Testing Library's `act()` wrapper around the initial render,
   // which would collapse this to a single-tick mount in tests even though a
-  // real browser defers `useEffect` to after paint. A macrotask (`setTimeout`,
-  // 0ms) genuinely requires a tick to elapse in both environments, which is
-  // what makes the "mounted empty, populated one tick later" contract
-  // provable rather than merely asserted.
+  // real browser defers `useEffect` to after paint. A macrotask (`setTimeout`)
+  // genuinely requires a tick to elapse in both environments, which is what
+  // makes the "mounted empty, populated one tick later" contract provable
+  // rather than merely asserted.
+  //
+  // Review Finding 18: 0ms is a delay calibrated to make the ASSERTION
+  // provable in jsdom, not a delay chosen for real assistive-tech cadence —
+  // screen readers observe live-region mutations on their own schedule, and
+  // ~100ms is the conventional safe minimum for a mount-empty-then-populate
+  // pattern to be reliably picked up. Bumped from 0 to 100; this is not a
+  // hot path (a failed write is already stale by the time it is seen).
+  const MOUNT_DELAY_MS = 100;
   useEffect(() => {
-    const timer = setTimeout(() => setMounted(true), 0);
+    const timer = setTimeout(() => setMounted(true), MOUNT_DELAY_MS);
     return () => clearTimeout(timer);
   }, []);
 
   const primary = entries.find((e) => e.kind !== 'delete') ?? entries[0];
   const seconds = primary ? extractSeconds(primary) : null;
+  const otherCount = Math.max(countWorklogFailures(entries) - 1, 0);
   const detail = primary
     ? `${primary.issueKey} · ${reasonFor(primary.lastError)}.` +
-      (seconds !== null ? ` Your ${secondsToHoursDisplay(seconds)} is saved locally.` : '')
+      (seconds !== null ? ` Your ${secondsToHoursDisplay(seconds)} is saved locally.` : '') +
+      (otherCount > 0 ? ` (+${otherCount} more.)` : '')
     : '';
 
   return (
-    <div className="-mt-[10px] mb-3 flex items-start gap-2 rounded-lg border border-error-border bg-error-soft px-[11px] py-[9px] shadow-hairline">
+    <div className="mb-3 flex items-start gap-2 rounded-lg border border-error-border bg-error-soft px-[11px] py-[9px] shadow-hairline">
       <CircleX aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0 text-status-error" />
       <div role="alert" className="flex flex-1 flex-col gap-1">
         {mounted && primary && (
@@ -102,19 +121,19 @@ export function WriteErrorBanner({
             <p className="font-chrome text-body-sm font-medium text-error-ink">
               {STRINGS.headline}
             </p>
-            <p className="text-[12px] leading-[1.5] text-muted">{detail}</p>
+            <p className="tabular text-[12px] leading-[1.5] text-muted">{detail}</p>
             <div className="mt-0.5 flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => onRetry(primary.id)}
-                className="rounded-md border border-error-border bg-white px-[10px] py-[5px] font-chrome text-label font-medium text-error-ink hover:bg-error-soft focus-visible:outline-none focus-visible:ring-focus"
+                className="rounded-md border border-error-border bg-white px-[10px] py-[5px] font-chrome text-label font-medium text-error-ink hover:bg-error-soft focus-visible:outline-none focus-visible:border-primary focus-visible:ring-focus"
               >
                 {STRINGS.retry}
               </button>
               <button
                 type="button"
                 onClick={onLogElsewhere}
-                className="rounded px-1 py-[5px] font-chrome text-label font-medium text-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-focus"
+                className="rounded px-1 py-[5px] font-chrome text-label font-medium text-muted hover:text-foreground focus-visible:outline-none focus-visible:border-primary focus-visible:ring-focus"
               >
                 {STRINGS.logElsewhere}
               </button>

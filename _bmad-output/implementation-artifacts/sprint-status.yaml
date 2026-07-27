@@ -1,6 +1,6 @@
 # generated: 2026-05-11 22:45:02
-# last_updated: 2026-07-27 (Story 7-8 → done — finisher triaged 34 findings from 47 mutations; D-7.8-20 reverses D-7.8-16, real token-pagination replaces the truncated flag entirely; D-7.8-21 closes the Blocker's restricted-caveat half; money-path coverage closed (user/by payload, Story 5.8 gate, no-hours chip, backdrop-dismiss, mid-batch-failure + re-entrancy guard); D-7.8-1..15 folded into epic-7-decision-log.md as D-7.8-25..39; 98 files / 1419 passed / 1 skipped, same one known pre-existing ManagerView.test.tsx rejection)
-# previous:     2026-07-26 (Story 7-8 → review — manager matrix restyle implemented in full: chrome header, bare correct cells, three exception chips, row total/action column, skeleton reshape, streaming line, drill-down reason/flags/summary/re-approve action, restyled confirm dialog + truncation caveat, cycle nav, "Approve remaining"; lib/manager-matrix.ts + approval-audit files stayed FROZEN byte-identical; 98 files / 1391 passed / 1 skipped, same one known pre-existing ManagerView.test.tsx rejection)
+# last_updated: 2026-07-27 (Story 7-9 → done — finisher fixed both Blockers by porting LoggedToday's committingIds guard + teardown flush into TimeOffCard, RED-proved against the reviewer's exact probes; D-7.9-16 made <main> the sole offset owner (verified for the disconnected-card case in a real browser); D-7.9-17 (focus-contrast) and D-7.9-18(a/b/c) implemented; 22 FIX / 0 DISMISS / 2 DEFER across 24 findings; D-7.9-1..12 folded into epic-7-decision-log.md as D-7.9-19..30; ResumeCard.tsx reverted to baseline; 109 files / 1514 passed / 1 skipped, same one known pre-existing ManagerView.test.tsx rejection)
+# previous:     2026-07-27 (Story 7-8 → done — finisher triaged 34 findings from 47 mutations; D-7.8-20 reverses D-7.8-16, real token-pagination replaces the truncated flag entirely; D-7.8-21 closes the Blocker's restricted-caveat half; money-path coverage closed (user/by payload, Story 5.8 gate, no-hours chip, backdrop-dismiss, mid-batch-failure + re-entrancy guard); D-7.8-1..15 folded into epic-7-decision-log.md as D-7.8-25..39; 98 files / 1419 passed / 1 skipped, same one known pre-existing ManagerView.test.tsx rejection)
 # project: jira-time-logger
 # project_key: NOKEY
 # tracking_system: file-system
@@ -36,8 +36,8 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-11 22:45:02
-last_updated: "2026-07-27 (Story 7-9 → review — popup states implemented at baseline 8332eb3. lib/popup-state.ts (AC6, 2-axis precedence), hooks/useTimeOffToday.ts + hooks/useOutboxState.ts (new derivations), OfflineBanner/WriteErrorBanner/PopupSkeletonBody/TimeOffCard (net-new). Obligation 1 CLOSED — zero progress-bar copies remain (lib/progress-width.grep.test.ts pins it), the ChromeHeader Math.round defect is fixed. Obligation 2 — breaksHeaderBaseline gets exactly the one appended !anyBanner condition. Obligation 3 — chrome time-off is white/opacity only. Obligation 4 — no-monospace guard untouched. D-7.9-12 fixed (not deferred) — 4 spinners + 2 checkmarks now lucide-react. D-7.9-13/14 (owner decisions) implemented: Undo time off composes Story 7.5's UNDO_WINDOW_MS deferred-delete; time-off body frozen at first paint, Undo is the one explicit transition. 107 files/1492 passed/1 skipped, same 1 known pre-existing rejection (ManagerView.test.tsx))"
-# previous:    2026-07-27 (Story 7-8 → done — finisher closed 34 findings from 47 mutations; D-7.8-20 real pagination reverses D-7.8-16's truncated flag; D-7.8-21 restricted caveat closes the Blocker; D-7.8-1..15 folded into epic-7-decision-log.md as D-7.8-25..39; 98 files/1419 passed/1 skipped, same 1 known pre-existing rejection)
+last_updated: "2026-07-27 (Story 7-9 → done — finisher pass. Both Blockers fixed: TimeOffCard.tsx ports LoggedToday's committingIds in-flight guard + pagehide/visibilitychange teardown flush, RED-proved against the reviewer's exact probes (deleteWorklog called exactly once under a double action; pagehide inside the undo window durably enqueues). D-7.9-16 (finisher-stage orchestrator ruling): <main> is the sole owner of the -10px offset, breaksHeaderBaseline = !anyBanner — the disconnected-card overhang genuinely CONFIRMED in a real browser (Playwright + a built extension bundle + a minimal chrome.storage stub); the banner-flush states could not be reached in this sandbox (network mocking limits), disclosed honestly rather than claimed. D-7.9-17: the three focus-contrast failures are Blockers, fixed. D-7.9-18(a/b/c): error-banner failure count, TimeOffCard's canonical red token, progress-width.grep.test.ts hardened to the no-monospace pinned-count standard. 22 FIX / 0 DISMISS / 2 DEFER (Finding 22, named owner in deferred-work.md) across 24 findings + 4 escalations + 9 green mutations closed. ResumeCard.tsx reverted to baseline (no story reason to touch it). D-7.9-1..12 folded into epic-7-decision-log.md as D-7.9-19..30, every citation repointed. 109 files/1514 passed/1 skipped, same 1 known pre-existing rejection (ManagerView.test.tsx); lint 0 errors/12 warnings/9 files; build clean, popup chunk 73.21 kB.)"
+# previous:    2026-07-27 (Story 7-9 → review — popup states implemented at baseline 8332eb3. lib/popup-state.ts (AC6, 2-axis precedence), hooks/useTimeOffToday.ts + hooks/useOutboxState.ts (new derivations), OfflineBanner/WriteErrorBanner/PopupSkeletonBody/TimeOffCard (net-new). Obligation 1 CLOSED — zero progress-bar copies remain (lib/progress-width.grep.test.ts pins it), the ChromeHeader Math.round defect is fixed. D-7.9-30 fixed (not deferred) — 4 spinners + 2 checkmarks now lucide-react. D-7.9-13/14 (owner decisions) implemented: Undo time off composes Story 7.5's UNDO_WINDOW_MS deferred-delete; time-off body frozen at first paint, Undo is the one explicit transition. 107 files/1492 passed/1 skipped, same 1 known pre-existing rejection (ManagerView.test.tsx))
 project: jira-time-logger
 # 2026-06-21: Story 2-7 created (ready-for-dev) — completes Epic 2
 # 2026-06-21: Story 3-1 created (ready-for-dev); Epic 3 → in-progress
@@ -465,6 +465,50 @@ project: jira-time-logger
 #             files (+0), 1391 -> 1419 passed (+28), 1 skipped unchanged, same single known
 #             ManagerView.test.tsx rejection. compile/lint (0 errors, 40 pre-existing import/order warnings,
 #             none in touched files)/build all clean.
+# 2026-07-27: Story 7-9 -> done. Finisher triaged 2 Blockers / 8 Majors / 11 Minors / 4 Nits (24 findings)
+#             + 4 escalations + 9 green mutations: 22 FIX, 0 DISMISS, 2 DEFER. Both Blockers fixed by
+#             porting LoggedToday.tsx's committingIds in-flight guard + pagehide/visibilitychange teardown
+#             flush into TimeOffCard.tsx (a second delete path re-declared everything WITHOUT Story 7.5's
+#             own two hardenings) -- RED-proved by hand-mutation against the reviewer's exact probes
+#             (deleteWorklog called exactly once under a double action; a popup close inside the undo
+#             window durably enqueues rather than silently abandoning the DELETE). D-7.9-16
+#             (finisher-stage orchestrator ruling): <main> becomes the SOLE owner of the -10px
+#             chrome-baseline offset (breaksHeaderBaseline = !anyBanner, dropping the resume.status-keyed
+#             guard entirely, closing Finding 11's routine "any week beginning with a day off" gap for
+#             free) -- the three self-carried, silently-CLIPPED -mt-[10px] occurrences (OfflineBanner,
+#             WriteErrorBanner, the disconnected card) removed, relative z-[1] added wherever the offset
+#             now applies (including SearchPanel.tsx's promoted body, a direct consequence). VERIFIED in a
+#             real browser for the disconnected-card overhang (Playwright + a built extension bundle + a
+#             minimal chrome.storage/chrome.runtime stub, since no real extension host exists in this
+#             sandbox) -- the banner-flush ("no overhang") states could not be reached within a reasonable
+#             wait budget (a real fetch to a non-existent host never settled through TanStack Query's retry
+#             backoff), disclosed honestly rather than claimed. D-7.9-17: the three focus-ring failures
+#             (1.21-1.22:1, below WCAG 1.4.11's 3:1) ARE Blockers under the epic's standing absolute gate,
+#             not Majors -- fixed with focus-visible:border-primary, including the safety-critical
+#             in-window Undo. D-7.9-18: the error banner now states a failure count when >1 write failed
+#             (a); TimeOffCard's refused-delete red switched to the canonical error-ink/status-error pair,
+#             the legacy text-state-danger token was wrong (b); lib/progress-width.grep.test.ts rewritten
+#             to lib/no-monospace.grep.test.ts's pinned-exact-count standard, closing 5 porous mutation axes
+#             (quote style, Tailwind fractions, arrow-function declarations, .test.tsx exclusion, a missing
+#             4th call site) (c). The vacuous D-7.3-9 pin (self-comparison, no write-target assertion,
+#             passed the story's own mandated re-key mutation GREEN) rewritten to rerender a LIVE tree with
+#             an unsubmitted typed value and assert the write target via toHaveBeenLastCalledWith --
+#             RED-proved against the exact M9a mutation. lib/day-status-vocabulary.grep.test.ts's
+#             PINNED/allowlist "or the build fails" claim was false (2 stale bg-amber-soft entries invisible
+#             to the detector, ICON_ALLOWLIST had no existence check) -- both closed with cross-check tests.
+#             PopupSkeletonBody restored to the design source's two-block, 3-line, 3-list-bar shape.
+#             DayStatusIndicator gained an additive hideText prop (the second widening of its frozen
+#             contract, after size in D-7.7-30) so TimeOffCard's heading could get the correct colour/size/
+#             family without fighting the icon's own colour on the same element. ResumeCard.tsx reverted to
+#             baseline (Finding 19 -- no story reason to touch it); the eslint --fix churn on the other
+#             three D-7.9-30 files kept and re-verified genuine. Finding 22 (TodayView.tsx's bare x glyph,
+#             a frozen path) DEFERRED with a named owner in deferred-work.md. D-7.9-1..12 folded into
+#             epic-7-decision-log.md as D-7.9-19..30 (after the orchestrator's own D-7.9-13..18, in numeric
+#             document order); every citation across the story file, sprint-status.yaml, deferred-work.md
+#             and 10 source files repointed, none left dangling. TESTS: 107 -> 109 files (+2), 1492 -> 1514
+#             passed (+22), 1 skipped unchanged, same single known ManagerView.test.tsx rejection.
+#             compile clean; lint 0 errors / 12 warnings across 9 files (ResumeCard.tsx's 1 pre-existing
+#             warning restored by its revert); build clean, popup chunk 73.21 kB.
 project_key: NOKEY
 tracking_system: file-system
 story_location: "{project-root}/_bmad-output/implementation-artifacts"
@@ -542,7 +586,7 @@ development_status:
   7-6-day-status-vocabulary-time-off-rename: done
   7-7-full-page-surface-week-review: done
   7-8-manager-matrix-silent-correctness-loud-exceptions: done
-  7-9-popup-states-loading-offline-error-time-off-disconnected: review
+  7-9-popup-states-loading-offline-error-time-off-disconnected: done
   # 2026-07-25: UNBLOCKED. Claude Design round 2 delivered both surfaces; spines and
   # ACs updated from imports/jira-time-logger-round2.dc.html. See reconcile-claude-design-round2.md.
   7-10-settings-on-the-full-page: backlog

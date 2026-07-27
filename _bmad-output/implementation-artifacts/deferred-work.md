@@ -338,3 +338,13 @@ comment above `ptoDays`.
 **What changed in Story 7.8.** The trap only bites when a `status-*` token composes INSIDE a `state-*`-coloured surface — and Story 7.8 deleted the only such surface. `ManagerMatrix.tsx`'s `STATUS_CLASSES`/cell fills are gone entirely; no matrix cell has a `state-*` background any more (D-7.8-4: `lib/manager-matrix.ts` stayed frozen; the collapse was a render-layer-only change). The row-level `✓ Approved` label sits on white (5.02:1, hand-computed); the restricted chip sits on its own `#F4F4F7` (4.81:1) regardless of what's behind it. **The trap survives in `globals.css` but has no live victim today.**
 
 **Owner:** still open — the next story that composes a `status-*` token inside a `state-*`-coloured surface (or vice versa) must hand-compute contrast first; the axe harness cannot catch this class of failure. No target story identified yet; flag it the moment one appears rather than waiting for a dedicated token-dedup story.
+
+## Deferred from: code review of story-7.9 (2026-07-27)
+
+### `TodayView.tsx:218`'s synced-toast dismiss button renders a bare `×` glyph — the same violation class D-7.9-30 fixed elsewhere, but on a frozen path
+
+**Where:** `components/today/TodayView.tsx:218` — the "synced" drain-toast's dismiss control (`outboxDrainedItem` → `TodayView.tsx:85-95`) renders a bare `×` as its visible content. It carries an `aria-label`, so it is not an accessibility defect — but it is the same "no raw text glyph" violation class D-7.9-30 fixed on `PtoQuickAction.tsx`/`QuickLogForm.tsx` (a stray `'✓'`) this same story, just on a different surface.
+
+**Why not fixed here.** `TodayView.tsx` is a frozen path for Story 7.9 (Dev Notes: "Explicitly NOT edited") — correctly not touched. The existing `BANNED_GLYPHS` guard (`lib/day-status-vocabulary.grep.test.ts:589,597`) is scoped to "the manager surface" and would not catch this occurrence even if it regressed further; it does not currently enumerate `TodayView.tsx` at all.
+
+**Owner:** the next story that opens `TodayView.tsx` for its own reasons — swap the `×` for `lucide-react`'s `X` (already the vocabulary's established dismiss icon elsewhere in the product), and consider widening `BANNED_GLYPHS`'s scope beyond the manager surface if a second frozen-path occurrence like this one turns up. [components/today/TodayView.tsx:218]

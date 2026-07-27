@@ -9,12 +9,12 @@ function setOnLine(value: boolean | undefined): void {
   });
 }
 
-describe('OfflineBanner (AC2, D-7.9-2, D-7.9-5)', () => {
+describe('OfflineBanner (AC2, D-7.9-20, D-7.9-23)', () => {
   afterEach(() => {
     setOnLine(true);
   });
 
-  it('is role="status" aria-live="polite" — NOT role="alert" (D-7.9-2)', () => {
+  it('is role="status" aria-live="polite" — NOT role="alert" (D-7.9-20)', () => {
     setOnLine(true);
     render(<OfflineBanner pendingCount={2} />);
     const region = screen.getByRole('status');
@@ -22,13 +22,13 @@ describe('OfflineBanner (AC2, D-7.9-2, D-7.9-5)', () => {
     expect(region.getAttribute('role')).not.toBe('alert');
   });
 
-  it('D-7.9-5: when navigator.onLine === false, the headline says "Offline"', () => {
+  it('D-7.9-23: when navigator.onLine === false, the headline says "Offline"', () => {
     setOnLine(false);
     render(<OfflineBanner pendingCount={2} />);
     expect(screen.getByText('Offline — 2 entries queued')).toBeTruthy();
   });
 
-  it('D-7.9-5: when navigator.onLine === true, the headline drops the word "Offline" (queue count only)', () => {
+  it('D-7.9-23: when navigator.onLine === true, the headline drops the word "Offline" (queue count only)', () => {
     setOnLine(true);
     render(<OfflineBanner pendingCount={2} />);
     expect(screen.getByText('2 entries queued')).toBeTruthy();
@@ -55,9 +55,9 @@ describe('OfflineBanner (AC2, D-7.9-2, D-7.9-5)', () => {
     expect(container.querySelector('.animate-spin')).toBeNull();
   });
 
-  it('carries its own -mt-[10px] offset (Obligation 2 — the banner, not <main>, absorbs the baseline break)', () => {
+  it('carries NO self -mt-[10px] offset (D-7.9-16 — <main> is the sole owner; a child offset would be CLIPPED by overflow-y-auto, not overhung)', () => {
     const { container } = render(<OfflineBanner pendingCount={1} />);
     const root = container.firstElementChild as HTMLElement;
-    expect(root.className).toContain('-mt-[10px]');
+    expect(root.className).not.toContain('-mt-[10px]');
   });
 });

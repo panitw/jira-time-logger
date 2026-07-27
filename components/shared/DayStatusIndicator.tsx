@@ -191,6 +191,21 @@ export type DayStatusIndicatorProps = {
    */
   tone?: 'data' | 'chrome';
 
+  /** `'inline'` variant ONLY: suppress this component's own visible text
+   * node entirely, rendering the icon (and its colour) alone. Story 7.9,
+   * Review Finding 17: `TimeOffCard`'s heading text needs a DIFFERENT
+   * colour/size/family than the icon (`#1E1B2E` 15px Kanit vs. the icon's
+   * `text-legacy-purple`) — impossible to express by overriding `className`
+   * on this component's own wrapper span, since `colorClass` and any
+   * caller-supplied override compete for the SAME element with unordered
+   * Tailwind specificity. The caller renders its own correctly-styled
+   * sibling heading instead; this prop only ever removes text, never adds
+   * or changes it — `label`/`STATUS_LABEL` fallback logic is untouched for
+   * every other caller (default `false`). AC8's "colour is never the only
+   * carrier of meaning" is still the caller's obligation when this is set —
+   * `TimeOffCard`'s sibling `<h2>` is what discharges it here. */
+  hideText?: boolean;
+
   className?: string;
 };
 
@@ -203,6 +218,7 @@ export function DayStatusIndicator({
   percent,
   size,
   tone = 'data',
+  hideText = false,
   className = '',
 }: DayStatusIndicatorProps): React.ReactElement {
   const Icon = STATUS_ICON[status];
@@ -271,7 +287,7 @@ export function DayStatusIndicator({
     <span className={`inline-flex items-center gap-1 ${colorClass} ${className}`}>
       {icon}
       {value !== undefined ? <span className="tabular">{value}</span> : null}
-      <span>{text}</span>
+      {!hideText && <span>{text}</span>}
     </span>
   );
 }

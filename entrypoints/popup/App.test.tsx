@@ -292,14 +292,22 @@ describe('App', () => {
       ).toBeTruthy();
     });
 
-    it('AC5: collapses to nothing with no history — no card, and <main> carries no -mt-[10px]', async () => {
+    // Story 7.9, D-7.9-16: `breaksHeaderBaseline` simplified from
+    // `connected && resume.status !== 'none' && !anyBanner` to `!anyBanner`
+    // — dropping the `resume.status`-keyed guard entirely (not narrowing
+    // it). `<main>` now offsets the search-promoted body too, closing the
+    // routine (not theoretical) gap Review Finding 11 proved: any week
+    // beginning with a day off gives `resume.status === 'none'` together
+    // with a time-off body, and the old guard silently dropped the offset
+    // there. `SearchPanel.tsx` gained `relative z-[1]` for this reason.
+    it('AC5: collapses to nothing with no history — no card, and <main> STILL carries -mt-[10px] (the offset is a property of the surface, not the resume card)', async () => {
       stubConnected();
       mockUseResumeTicket.mockReturnValue({ status: 'none' });
       const { container } = renderApp();
       await waitFor(() => expect(screen.getByTestId('today-view')).toBeTruthy());
 
       const main = container.querySelector('main')!;
-      expect(main.className).not.toContain('-mt-[10px]');
+      expect(main.className).toContain('-mt-[10px]');
       expect(main.querySelector('.shadow-lift')).toBeNull();
       // Finding 3: the two assertions above cannot tell "no card" apart from
       // "an empty reserved-space wrapper where the card would go" — D-7.3-1's

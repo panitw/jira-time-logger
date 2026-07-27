@@ -307,7 +307,7 @@ export function QuickLogForm({
           size="sm"
           onClick={handleSubmit}
           disabled={buttonDisabled}
-          // Story 7.9, D-7.9-12: the visible content below now swaps between
+          // Story 7.9, D-7.9-30: the visible content below now swaps between
           // an icon and text, so the accessible name must stay stable and
           // meaningful independent of that \u2014 `aria-label` was previously
           // absent here (the button's own text content WAS the accessible

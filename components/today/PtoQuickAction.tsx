@@ -163,7 +163,9 @@ export function PtoQuickAction({
   const handleSubmit = useCallback(
     (variant: Variant) => {
       // Guard against double-post: in-flight mutation, missing key, or the
-      // brief post-success window (popover lingers ~200ms showing ✓).
+      // brief post-success window (popover lingers ~200ms showing the
+      // `Check` icon — Story 7.9, D-7.9-30 migrated the raw '✓' glyph onto
+      // `lucide-react`'s `Check`, Review Finding 23).
       if (isPending || showSuccess || !ptoKey) return;
       setShowError(false);
       setShowPending(false);

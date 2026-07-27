@@ -132,8 +132,23 @@ type LoggedTodayProps = {
  * service-worker `outbox-retry` alarm can replay it. The "Pending — will retry"
  * chip rendered by the caller stays until the entry drains. Fire-and-forget:
  * enqueue failures are logged but never block the row.
+ *
+ * Exported (Story 7.9, Review Finding 3) so `TimeOffCard.tsx` can compose
+ * over the SAME endpoint-construction + `.catch`/`log.error` path rather
+ * than rebuilding the endpoint string inline with no error handling — the
+ * one piece of this file's delete machinery that is genuinely
+ * context-free and safe to share as-is. The stateful half (the undo-window
+ * timer, `committingIds`, the teardown flush) is NOT extracted into a
+ * shared hook: this component's state machine commits at most one pending
+ * entry at a time (a second `requestDelete` force-commits the first),
+ * while `TimeOffCard`'s undoes a whole BATCH atomically — different enough
+ * semantics that forcing them through one hook risks either breaking one
+ * caller or producing a leaky abstraction (the Story 7.8 pagination lesson:
+ * don't unify two protocols that only look similar). `TimeOffCard.tsx`
+ * instead PORTS the same two hardening mechanisms (mark-committing-before-
+ * await, pagehide/visibilitychange teardown flush) at their own call site.
  */
-function enqueueFailedWorklogMutation(info: {
+export function enqueueFailedWorklogMutation(info: {
   issueKey: string;
   worklogId: string;
   kind: 'edit' | 'delete';

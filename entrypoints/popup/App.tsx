@@ -99,8 +99,31 @@ export function App(): React.ReactElement {
   // OWN total, already computed net of a pending deletion that belongs to
   // ITS OWN `loggedEntries` (see `TodayView.tsx`).
   const [pendingDeletionId, setPendingDeletionId] = useState<string | null>(null);
+
+  // Story 7.9, D-7.9-13: the set of worklog ids "Undo time off" is currently
+  // removing (inside the 5s undo window, or already durably handed to the
+  // outbox) — excluded from BOTH `useTimeOffToday` and `useTodayTotal`'s
+  // seconds derivations so the chrome figure never disagrees with the
+  // already-cleared card (the exact defect D-7.5-14 and 7.5's review both
+  // had to fix). Lifted from `TimeOffCard` via `onExcludedIdsChange`, the
+  // SAME shape as `LoggedToday`'s own `onPendingDeletionChange` above.
+  // Declared BEFORE `ptoSeconds` (below) — Review Finding 4 needs it there
+  // too.
+  const [timeOffExcludedIds, setTimeOffExcludedIds] =
+    useState<ReadonlySet<string>>(EMPTY_WORKLOG_IDS);
+
+  // Review Finding 4: `timeOffExcludedIds` must ALSO net out of `ptoSeconds`
+  // — not just `useTimeOffToday`/`useTodayTotal`'s SERVER sums.
+  // `TimeOffCard`'s `worklogs` prop is `timeOffToday.worklogs` UNIONED with
+  // any SESSION-posted entries (`sessionTimeOffWorklogs` below), and
+  // `useTimeOffToday`'s own exclusion only ever touches the server loop —
+  // it is arithmetically incapable of reaching a session entry, which lives
+  // ONLY in `ptoEntries`/`ptoSeconds` here. Without this filter, undoing a
+  // session-posted time-off worklog leaves the chrome figure permanently
+  // wrong (the exact defect this finding named).
   const ptoSeconds = ptoEntries
     .filter((e) => e.worklogId !== pendingDeletionId)
+    .filter((e) => !timeOffExcludedIds.has(e.worklogId))
     .reduce((sum, e) => sum + e.seconds, 0);
   const resumeSeconds = resumeEntries
     .filter((e) => e.worklogId !== pendingDeletionId)
@@ -111,16 +134,6 @@ export function App(): React.ReactElement {
   const sessionSeconds = todayViewSeconds + ptoSeconds + resumeSeconds + searchSeconds;
   const externalEntries = [...ptoEntries, ...resumeEntries, ...searchEntries];
 
-  // Story 7.9, D-7.9-13: the set of worklog ids "Undo time off" is currently
-  // removing (inside the 5s undo window, or already durably handed to the
-  // outbox) — excluded from BOTH `useTimeOffToday` and `useTodayTotal`'s
-  // seconds derivations so the chrome figure never disagrees with the
-  // already-cleared card (the exact defect D-7.5-14 and 7.5's review both
-  // had to fix). Lifted from `TimeOffCard` via `onExcludedIdsChange`, the
-  // SAME shape as `LoggedToday`'s own `onPendingDeletionChange` above.
-  const [timeOffExcludedIds, setTimeOffExcludedIds] =
-    useState<ReadonlySet<string>>(EMPTY_WORKLOG_IDS);
-
   // Story 7.4: whether a search query is active — the RAW (non-debounced)
   // query, per D-7.4-18 — drives the `hidden`-attribute wrapper around
   // `TodayView` below. `searchPanelRef` is the seam Story 7.5's "Recently
@@ -128,7 +141,7 @@ export function App(): React.ReactElement {
   // D-7.5-12 — no count) calls via `handleRequestSearchFocus` (D-7.4-26);
   // the document-level `/` listener lives inside `SearchPanel` itself and
   // uses the exact same ref internally, so there is exactly one focus path.
-  // Story 7.9, D-7.9-11: "Log elsewhere" (the error banner) reuses this SAME
+  // Story 7.9, D-7.9-29: "Log elsewhere" (the error banner) reuses this SAME
   // seam rather than inventing a second focus path.
   const [searchActive, setSearchActive] = useState(false);
   const searchPanelRef = useRef<SearchPanelHandle>(null);
@@ -184,7 +197,7 @@ export function App(): React.ReactElement {
   // Story 7.5, D-7.5-22: the "Recently worked" handoff row's only focus path
   // — the exact seam `SearchPanel` itself uses for `/`, published for this
   // story by Story 7.4 (D-7.4-26). No second focus path is invented. Reused
-  // verbatim by the error banner's "Log elsewhere" (D-7.9-11).
+  // verbatim by the error banner's "Log elsewhere" (D-7.9-29).
   const handleRequestSearchFocus = useCallback((): void => {
     searchPanelRef.current?.focus();
   }, []);
@@ -327,26 +340,44 @@ export function App(): React.ReactElement {
 
   const connected = authState.kind === 'connected';
 
-  // The −10 px baseline-break offset — one boolean, one place (D-7.3-3).
-  // 7.9 appends exactly one condition (`&& !popupState.anyBanner`) — the
-  // mockup sets `resumeOffset: "0px"` in both the offline and error states.
-  // Nothing else changes: `resume.status` can never be `'none'` while
-  // `isPending` is true (both require the SAME week query to have settled),
-  // so this same boolean already covers the 'loading' skeleton body for
-  // free — no third condition needed. `<main>` still supplies the offset
-  // for the 'time-off' body too (TimeOffCard, like the skeleton, carries no
-  // self offset — Obligation 2: "do not move the offset onto the card").
+  // D-7.9-16 (finisher-stage orchestrator ruling, closing Findings 5 & 11):
+  // `<main>` is the SOLE owner of the −10 px baseline-break offset —
+  // `breaksHeaderBaseline = !anyBanner`, full stop. No child of the scroll
+  // container may carry its own `-mt-[10px]`: `<main>` is `overflow-y-auto`
+  // with NO top padding (D-7.3-3), so a negative top margin on a CHILD is
+  // silently CLIPPED (scrollTop cannot go negative), never overhung. The
+  // shipped code applied this correctly to the resume/skeleton/time-off
+  // bodies but wrongly let three elements self-carry `-mt-[10px]` instead
+  // (`OfflineBanner.tsx`, `WriteErrorBanner.tsx`, the disconnected card) —
+  // fixed at their own call sites; this is the one place the offset now
+  // lives.
   //
-  // Finding 5 (Story 7.3, carried forward unchanged): covers `'loading'` as
-  // well as `'ready'` — not `'ready'` alone. The skeleton renders in the
-  // card's real layout shape and now reserves the same message-region
-  // height (ResumeCard.tsx), so it and the resolved card share one offset
-  // and one height; only `'none'` (AC5) still drops it. Without this the
-  // popup double-shifted: once when the skeleton mounted flush, a second
-  // time when it resolved to `'ready'` and the offset kicked in — worse now
-  // that D-7.3-10 lets `'loading'` last up to `COLD_START_SKELETON_BUDGET_MS`
-  // on a cold start.
-  const breaksHeaderBaseline = connected && resume.status !== 'none' && !popupState.anyBanner;
+  // This DROPS the earlier `connected && resume.status !== 'none'` guard
+  // entirely — not narrowed, REMOVED. Keying the offset off `resume.status`
+  // was always the wrong axis (D-7.9-16): it is a property of the SURFACE
+  // (does a banner own the top of the scroll region right now?), not of the
+  // resume card specifically. `!anyBanner` alone:
+  //   - still offsets the 'normal' body when the resume card IS present
+  //     (unchanged from every prior story);
+  //   - now ALSO offsets the 'normal' body when `resume.status === 'none'`
+  //     (SearchPanel promoted to the first child, D-7.4-23) — closing the
+  //     routine (not theoretical) gap Finding 11 proved: `useResumeTicket`
+  //     excludes the time-off key (D-7.3-12), so ANY week beginning with a
+  //     day off gives `resume.status === 'none'` together with a time-off
+  //     body, and the old guard silently dropped the offset there. Search
+  //     needs `relative z-[1]` for this — added at its own call site.
+  //   - still offsets 'loading' and 'time-off' for free (anyBanner is
+  //     always false in 'loading', and the time-off body renders no banner
+  //     unless one is independently true) — matching the design source's
+  //     `margin-top:-10px` on both those cards;
+  //   - now ALSO offsets 'disconnected' (anyBanner is suppressed there too)
+  //     — which is exactly what the disconnected card's own self-carried
+  //     `-mt-[10px]` used to (incorrectly) supply itself; `<main>` supplies
+  //     it now instead, per the same mechanism as everything else.
+  // `connected` was never load-bearing for the OFFSET itself — it only ever
+  // gated whether the resume card rendered at all, which the `body` axis
+  // already governs.
+  const breaksHeaderBaseline = !popupState.anyBanner;
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
@@ -372,11 +403,13 @@ export function App(): React.ReactElement {
           // AC5: the chrome still identifies the product; this is the ONLY
           // content in <main>, and no other producer (resume/search/today
           // view/action bar) mounts — all still gated on `connected` below.
-          // Self-carries its own `-mt-[10px]` (design source `:543`):
-          // `breaksHeaderBaseline` is unconditionally false here (it
-          // requires `connected`), so <main> never supplies it.
-          <div className="-mt-[10px] flex flex-col items-start gap-[10px] rounded-lg border border-border bg-surface p-[18px] shadow-raised">
-            <h2 className="text-heading font-medium text-foreground">
+          // D-7.9-16: carries NO self `-mt-[10px]` — `<main>` supplies the
+          // design source's `margin-top:-10px` (`:543`) instead, since
+          // `breaksHeaderBaseline` is now unconditionally true here
+          // (`anyBanner` is always suppressed in the disconnected body).
+          // `relative z-[1]` is required wherever the offset applies.
+          <div className="relative z-[1] flex flex-col items-start gap-[10px] rounded-lg border border-border bg-surface p-[18px] shadow-raised">
+            <h2 className="font-chrome text-heading font-medium text-foreground">
               {STRINGS.disconnectedHeading}
             </h2>
             <p className="text-body-sm leading-[1.6] text-muted">{STRINGS.disconnectedBody}</p>
@@ -419,8 +452,11 @@ export function App(): React.ReactElement {
             )}
 
             {popupState.body === 'time-off' && (
+              // Finding 17: design source `:561` specifies Kanit 12px/500
+              // SENTENCE case ("Still want to log work?"), not the 11px
+              // uppercase eyebrow treatment other headings use.
               <div className="mb-1">
-                <span className="text-eyebrow uppercase text-faint">{STRINGS.timeOffEyebrow}</span>
+                <span className="font-chrome text-label text-faint">{STRINGS.timeOffEyebrow}</span>
               </div>
             )}
 

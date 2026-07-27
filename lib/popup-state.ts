@@ -20,11 +20,11 @@
  *
  * Body 3 mirrors `lib/day-status.ts#dayStatusFor`'s existing
  * time-off-outranks-everything-below-it precedence (D-7.6-6) — reused, not
- * reinvented, per D-7.9-1.
+ * reinvented, per D-7.9-19.
  *
  * `timeOffSeconds` is whatever the CALLER decides is the current, effective
  * time-off amount — this function does not know (and must not know) that
- * `entrypoints/popup/App.tsx` freezes that decision at first paint (D-7.9-8 /
+ * `entrypoints/popup/App.tsx` freezes that decision at first paint (D-7.9-26 /
  * D-7.9-14). Freezing is the caller's concern; this function is a pure
  * function of its inputs on every call.
  */

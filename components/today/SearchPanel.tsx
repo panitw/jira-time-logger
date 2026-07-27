@@ -419,7 +419,14 @@ export function SearchPanel({
             : '';
 
   return (
-    <div className="mb-3">
+    // D-7.9-16: when `resume.status === 'none'`, this panel is promoted to
+    // the first child of the scroll region and now shares `<main>`'s
+    // baseline-break offset (`breaksHeaderBaseline = !anyBanner`, no longer
+    // gated on `resume.status !== 'none'`) — `relative z-[1]` is required
+    // wherever that offset applies, matching `ResumeCard.tsx`'s own
+    // unconditional `relative z-[1]`. A no-op when this panel renders BELOW
+    // the resume card (its own stacking is unaffected either way).
+    <div className="relative z-[1] mb-3">
       <div
         className={cn(
           'flex h-9 items-center gap-1.5 rounded-lg border border-border bg-surface px-[9px] shadow-hairline',

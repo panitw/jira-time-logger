@@ -162,13 +162,13 @@ describe('AC3 — no surface hard-codes a day-status icon (source-level grep)', 
   // `DayStatusIndicator`, so it is a different icon USE, not a hard-code of
   // the vocabulary.
   //
-  // Story 7.9, D-7.9-12: four hand-rolled `animate-spin` `<span>`/`<div>`
+  // Story 7.9, D-7.9-30: four hand-rolled `animate-spin` `<span>`/`<div>`
   // bordered-circle spinners (breaching the epic's `lucide-react`-only rule)
   // were fixed by replacing them with `LoaderCircle` — the EXACT same
   // genuine in-flight-work use `SearchPanel.tsx` already established, never
   // rendered through `DayStatusIndicator`. Allowlisted for the same reason.
   //
-  // Story 7.9, D-7.9-4: `CircleX` is a write-FAILURE icon
+  // Story 7.9, D-7.9-22: `CircleX` is a write-FAILURE icon
   // (`WriteErrorBanner.tsx`, AC3) — not a day status. The identical
   // `LoaderCircle`/`SearchPanel.tsx` precedent applies; the alternative
   // (composing the headline through `DayStatusIndicator status="error"`)
@@ -225,6 +225,37 @@ describe('AC3 — no surface hard-codes a day-status icon (source-level grep)', 
     expect(iconNames.length).toBeGreaterThan(0);
     expect(new Set(BANNED_ICONS)).toEqual(new Set(iconNames));
   });
+
+  // Review Finding 9: `ICON_ALLOWLIST` above had NO stale-entry detection —
+  // adding an allowlist entry for a file that does not actually import the
+  // named icon stayed GREEN. Each entry is now REQUIRED to genuinely import
+  // the icon it is allowlisted for, mirroring the `bg-amber-soft`
+  // stale-entry checks above.
+  it('every ICON_ALLOWLIST entry genuinely imports the icon it is allowlisted for (stale-entry detection)', () => {
+    const violations: string[] = [];
+    for (const [icon, files] of Object.entries(ICON_ALLOWLIST)) {
+      for (const rel of files ?? []) {
+        const source = readFileSync(path.join(ROOT, rel), 'utf-8');
+        const importMatches = source.matchAll(
+          /import\s*\{([^}]*)\}\s*from\s*['"]lucide-react['"]/g,
+        );
+        let found = false;
+        for (const importMatch of importMatches) {
+          const names = importMatch[1]!.split(',').map((s) => s.trim().split(/\s+as\s+/)[0]);
+          if (names.includes(icon)) {
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          violations.push(
+            `${icon}: allowlisted for ${rel} but that file does not import ${icon} from lucide-react — stale entry`,
+          );
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
 });
 
 describe('AC3 — no surface hard-codes a day-status colour token (source-level grep)', () => {
@@ -266,22 +297,28 @@ describe('AC3 — no surface hard-codes a day-status colour token (source-level 
   // deliberately NOT allowlisted here: its one use (the truncation caveat)
   // was removed by D-7.8-20, and leaving a now-unused entry in would be
   // exactly the stale-allowlist problem Finding 8(b) flags below.
-  it('no file other than DayStatusIndicator.tsx / DayCell.tsx / the manager surface / OfflineBanner.tsx / globals.css contains bg-amber-soft', () => {
-    const allowlist = new Set([
-      INDICATOR_FILE,
-      'components/week/DayCell.tsx',
-      'components/manager/ManagerMatrix.tsx',
-      'components/manager/DrillDownPanel.tsx',
-      // Story 7.9, AC2: the offline banner's fill reuses the SAME amber
-      // vocabulary — a plain className literal, not a hidden status-tint map
-      // (the per-occurrence companion test below still catches that shape).
-      'components/shell/OfflineBanner.tsx',
-      'styles/globals.css',
-    ]);
+  // Review Finding 9: `components/week/DayCell.tsx` and `styles/globals.css`
+  // used to sit in this allowlist with ZERO actual `bg-amber-soft`
+  // occurrences each (`globals.css:136` defines `--color-amber-soft`, not
+  // the literal utility-class STRING `bg-amber-soft`) — both removed. The
+  // stale-entry cross-check below now proves every remaining entry here is
+  // ALSO pinned, so a file that stops legitimately using the class cannot
+  // silently keep its allowlist slot the way these two just did.
+  const BG_AMBER_SOFT_ALLOWLIST = new Set([
+    INDICATOR_FILE,
+    'components/manager/ManagerMatrix.tsx',
+    'components/manager/DrillDownPanel.tsx',
+    // Story 7.9, AC2: the offline banner's fill reuses the SAME amber
+    // vocabulary — a plain className literal, not a hidden status-tint map
+    // (the per-occurrence companion test below still catches that shape).
+    'components/shell/OfflineBanner.tsx',
+  ]);
+
+  it('no file other than DayStatusIndicator.tsx / the manager surface / OfflineBanner.tsx contains bg-amber-soft', () => {
     const violations: string[] = [];
     for (const file of [...ALL_SOURCE_FILES, ...CSS_FILES]) {
       const rel = relPath(file);
-      if (allowlist.has(rel)) continue;
+      if (BG_AMBER_SOFT_ALLOWLIST.has(rel)) continue;
       const source = stripCommentLines(readFileSync(file, 'utf-8'));
       if (source.includes('bg-amber-soft')) violations.push(`${rel}: bg-amber-soft`);
     }
@@ -290,30 +327,41 @@ describe('AC3 — no surface hard-codes a day-status colour token (source-level 
 
   // Finding 8(b) (Major, D-7.8-22): the file-level allowlist above has no
   // STALE-entry detection — a file that stops using `bg-amber-soft`
-  // (exactly what just happened to `ApproveButton.tsx` above) can sit in an
-  // allowlist forever with nothing failing. Pin the manager surface's two
-  // ACTIVE entries to their exact count, modelled on
-  // `lib/no-monospace.grep.test.ts`'s `ALLOWLIST` — an entry whose count
-  // drifts (including to zero) fails the build instead of silently
-  // outliving its reason.
+  // (exactly what just happened to `ApproveButton.tsx` above, and — Finding
+  // 9 — to `DayCell.tsx`/`globals.css`) can sit in an allowlist forever with
+  // nothing failing. Pin the manager surface's ACTIVE entries to their exact
+  // count, modelled on `lib/no-monospace.grep.test.ts`'s `ALLOWLIST` — an
+  // entry whose count drifts (including to zero) fails the build instead of
+  // silently outliving its reason.
+  const BG_AMBER_SOFT_PINNED: Record<string, number> = {
+    'components/manager/ManagerMatrix.tsx': 2,
+    'components/manager/DrillDownPanel.tsx': 1,
+    // Story 7.9, D-7.8-22's stale-entry rule applied to the new file too.
+    'components/shell/OfflineBanner.tsx': 1,
+  };
+
   it('the manager surface\'s bg-amber-soft occurrences are pinned to an exact count each (stale-entry detection)', () => {
-    const PINNED: Record<string, number> = {
-      'components/manager/ManagerMatrix.tsx': 2,
-      'components/manager/DrillDownPanel.tsx': 1,
-      // Story 7.9, D-7.8-22's stale-entry rule applied to the new file too.
-      'components/shell/OfflineBanner.tsx': 1,
-    };
     const violations: string[] = [];
-    for (const [rel, expected] of Object.entries(PINNED)) {
+    for (const [rel, expected] of Object.entries(BG_AMBER_SOFT_PINNED)) {
       const source = readFileSync(path.join(ROOT, rel), 'utf-8');
       const actual = (source.match(/bg-amber-soft/g) ?? []).length;
       if (actual !== expected) {
         violations.push(
-          `${rel}: expected exactly ${expected} bg-amber-soft occurrence(s), found ${actual} — update PINNED in this test as part of the SAME change that touches this file (a drop to 0 means the entry is now stale and should be removed from the allowlist test above too)`,
+          `${rel}: expected exactly ${expected} bg-amber-soft occurrence(s), found ${actual} — update BG_AMBER_SOFT_PINNED in this test as part of the SAME change that touches this file (a drop to 0 means the entry is now stale and should be removed from the allowlist test above too)`,
         );
       }
     }
     expect(violations).toEqual([]);
+  });
+
+  // Review Finding 9's own suggested resolution: assert every non-owner
+  // entry in the allowlist ABOVE is ALSO pinned here — this is what makes a
+  // future `DayCell.tsx`/`globals.css`-style stale entry (present in the
+  // allowlist, absent from the pin map, invisible to both) structurally
+  // impossible rather than merely unlikely.
+  it('every BG_AMBER_SOFT_ALLOWLIST entry other than the indicator itself is pinned in BG_AMBER_SOFT_PINNED', () => {
+    const nonOwner = [...BG_AMBER_SOFT_ALLOWLIST].filter((rel) => rel !== INDICATOR_FILE).sort();
+    expect(Object.keys(BG_AMBER_SOFT_PINNED).sort()).toEqual(nonOwner);
   });
 
   // D-7.6-43's lesson applied proactively: a file-level allowlist alone

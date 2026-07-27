@@ -1,12 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
  * Story 7.9, Task 9 — App-level integration tests for the popup-state
  * derivation (AC6), Obligation 2 (`breaksHeaderBaseline`), D-7.3-9 (the
  * resume card's frozen identity survives a banner mounting above it), AC2's
- * hot path, AC5's "no dead UI", and D-7.9-8/14's frozen time-off body
+ * hot path, AC5's "no dead UI", and D-7.9-26/14's frozen time-off body
  * (Trap 2). Mirrors `App.test.tsx`'s hook-mocking strategy — the REAL
  * `ResumeCard`/`SearchPanel` render, driven through controllable hooks.
  */
@@ -185,21 +185,51 @@ describe('App — Obligation 2: breaksHeaderBaseline drops under a banner, resto
 });
 
 describe('App — D-7.3-9: the resume card is not re-keyed by a banner mounting above it', () => {
-  it('the resume card keeps its subtask, pre-fill and write target unchanged when a banner appears', async () => {
+  // Review Finding 7: the ORIGINAL version of this test set `pendingCount: 3`
+  // BEFORE the only render, so the banner was already mounted when
+  // `preFillBefore` was captured — it compared the pre-fill value to ITSELF
+  // in the same render and could not fail for any value, never asserted the
+  // write target at all, and the story's own mandated RED-proof (re-key the
+  // card + change the pre-fill when a banner is present) passed GREEN.
+  // Fixed: render WITHOUT a banner first, establish an UNSUBMITTED, typed
+  // (non-default) value AND the write target, THEN `rerender` the SAME live
+  // tree with a banner mounted — a genuine rerender, not a fresh render, is
+  // what actually exercises a remount if one occurs — and assert all three
+  // survive using `toHaveBeenLastCalledWith` (a bare `toHaveBeenCalledWith`
+  // would already be satisfied by a call made BEFORE the banner mounted).
+  it('the resume card keeps its subtask, its UNSUBMITTED typed value, and its write target unchanged when a banner mounts above it', async () => {
     stubConnected();
-    mockUseOutboxState.mockReturnValue({ pendingCount: 3, failed: [] });
-    renderApp();
+    mockUseOutboxState.mockReturnValue({ pendingCount: 0, failed: [] });
+    const { rerender } = render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <App />
+      </QueryClientProvider>,
+    );
 
     const resumeInput = (await screen.findByLabelText('Hours for PROJ-1')) as HTMLInputElement;
-    const preFillBefore = resumeInput.value;
+    expect(screen.queryByText(/entries queued/)).toBeNull();
 
-    // The banner is mounted above the card — assert the card's own identity
-    // (key, pre-fill, and by extension its write target) is untouched.
-    expect(screen.getByText(/entries queued/)).toBeTruthy();
-    expect(screen.getByLabelText('Hours for PROJ-1')).toBeTruthy();
-    expect((screen.getByLabelText('Hours for PROJ-1') as HTMLInputElement).value).toBe(
-      preFillBefore,
+    // A distinctive, UNSUBMITTED value — a remount (mutation M9a: re-keying
+    // the card off `anyBanner`) would reset this back to the pre-fill.
+    fireEvent.change(resumeInput, { target: { value: '3.5' } });
+
+    mockUseOutboxState.mockReturnValue({ pendingCount: 3, failed: [] });
+    rerender(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <App />
+      </QueryClientProvider>,
     );
+
+    expect(screen.getByText(/entries queued/)).toBeTruthy();
+    const resumeInputAfter = screen.getByLabelText('Hours for PROJ-1') as HTMLInputElement;
+    expect(resumeInputAfter.value).toBe('3.5');
+
+    // The write target is unchanged too — submitting NOW (after the banner
+    // mounted) must still target PROJ-1. `postWorklog(key, body)` — the
+    // issue key is the FIRST positional argument (`ResumeCard.tsx:177`).
+    fireEvent.click(screen.getByRole('button', { name: /Log 1 hours to PROJ-1/ }));
+    await waitFor(() => expect(postWorklogMock).toHaveBeenCalledTimes(1));
+    expect(postWorklogMock).toHaveBeenLastCalledWith('PROJ-1', expect.anything());
   });
 });
 
@@ -238,7 +268,7 @@ describe('App — AC5: disconnected renders no dead UI behind the connect card',
   });
 });
 
-describe('App — D-7.9-8/14 (Trap 2): a mid-session time-off post does not flip the frozen body', () => {
+describe('App — D-7.9-26/14 (Trap 2): a mid-session time-off post does not flip the frozen body', () => {
   it('marking today as time off via the action bar mid-session does not swap the body — the resume card stays mounted, untouched', async () => {
     stubConnected();
     // Reactive mock: the hook's `seconds` output tracks whatever
@@ -253,7 +283,6 @@ describe('App — D-7.9-8/14 (Trap 2): a mid-session time-off post does not flip
 
     // First settle: sessionPtoSeconds is 0 → frozen to 'normal'.
     const resumeInput = (await screen.findByLabelText('Hours for PROJ-1')) as HTMLInputElement;
-    const preFillBefore = resumeInput.value;
     expect(screen.getByTestId('today-view')).toBeTruthy();
 
     // Type into the resume card's hour input but do NOT submit — proves the
@@ -269,6 +298,174 @@ describe('App — D-7.9-8/14 (Trap 2): a mid-session time-off post does not flip
     expect(screen.getByLabelText('Hours for PROJ-1')).toBeTruthy();
     expect((screen.getByLabelText('Hours for PROJ-1') as HTMLInputElement).value).toBe('3.5');
     expect(screen.getByTestId('today-view')).toBeTruthy();
-    void preFillBefore;
+  });
+});
+
+describe('App — D-7.9-16: <main> is the sole owner of the baseline offset', () => {
+  it('Finding 11: resume.status === "none" (any week beginning with a day off) + a time-off body still gets the offset — the old resume.status-keyed guard silently dropped it here', async () => {
+    stubConnected();
+    mockUseResumeTicket.mockReturnValue({ status: 'none' as const });
+    mockUseTimeOffToday.mockReturnValue({ seconds: 28800, isPending: false, worklogs: [] });
+    mockUseOutboxState.mockReturnValue({ pendingCount: 0, failed: [] });
+    const { container } = renderApp();
+
+    await waitFor(() => expect(screen.getByText('Marked as time off')).toBeTruthy());
+    const main = container.querySelector('main')!;
+    expect(main.className).toContain('-mt-[10px]');
+  });
+
+  it('Finding 5: the disconnected card no longer self-carries -mt-[10px] — <main> supplies it instead', async () => {
+    mockGetAuth.mockResolvedValue(null);
+    mockHasValidAuth.mockReturnValue(false);
+    const { container } = renderApp();
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Connect to Jira' })).toBeTruthy(),
+    );
+    const main = container.querySelector('main')!;
+    expect(main.className).toContain('-mt-[10px]');
+    const card = screen.getByRole('heading', { name: 'Connect to Jira' }).closest('div')!;
+    expect(card.className).not.toContain('-mt-[10px]');
+  });
+
+  it('AC1: the loading body gets the offset too, with PopupSkeletonBody genuinely mounted (Finding 13 — App-level AC1 wiring)', () => {
+    stubConnected();
+    mockUseTodayTotal.mockReturnValue({ seconds: 0, isPending: true, isError: false });
+    const { container } = renderApp();
+
+    // AC1's App-level wiring, proven directly rather than via ResumeCard's
+    // OWN (different) skeleton branch: `PopupSkeletonBody`'s distinctive
+    // `aria-hidden` root is the loading body's only producer. Deleting
+    // `{popupState.body === 'loading' && <PopupSkeletonBody />}` from
+    // `App.tsx` would make this selector find nothing.
+    const skeletonRoot = container.querySelector('main > div[aria-hidden="true"]');
+    expect(skeletonRoot).toBeTruthy();
+    expect(screen.queryByLabelText(/Hours for/)).toBeNull();
+    expect(screen.queryByTestId('today-view')).toBeNull();
+
+    const main = container.querySelector('main')!;
+    expect(main.className).toContain('-mt-[10px]');
+  });
+});
+
+describe('App — Finding 12: the rendered Axis-B contract (banner order, suppression, and the time-off body)', () => {
+  it('both banners render together, error ABOVE offline, in real DOM order', async () => {
+    stubConnected();
+    mockUseOutboxState.mockReturnValue({
+      pendingCount: 2,
+      failed: [
+        {
+          id: 'f1',
+          kind: 'post',
+          endpoint: 'x',
+          issueKey: 'GAPI-348',
+          attemptCount: 10,
+          status: 'failed',
+          lastError: 'forbidden',
+          enqueuedAt: new Date().toISOString(),
+          body: { timeSpentSeconds: 5400, started: 'x' },
+        },
+      ],
+    });
+    renderApp();
+    await waitFor(() => expect(screen.getByTestId('today-view')).toBeTruthy());
+
+    const errorBanner = screen.getByRole('alert');
+    const offlineBanner = screen.getByText(/entries queued/).closest('[role="status"]')!;
+    // `compareDocumentPosition`: DOCUMENT_POSITION_FOLLOWING (4) means the
+    // offline banner comes AFTER the error banner in DOM order — a REAL
+    // order assertion, not a boolean out of the pure precedence function
+    // (which structurally cannot express order at all).
+    expect(errorBanner.compareDocumentPosition(offlineBanner) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('both banners render ABOVE a rendered time-off body (not just the normal body)', async () => {
+    stubConnected();
+    mockUseTimeOffToday.mockReturnValue({ seconds: 28800, isPending: false, worklogs: [] });
+    mockUseOutboxState.mockReturnValue({
+      pendingCount: 2,
+      failed: [
+        {
+          id: 'f1',
+          kind: 'post',
+          endpoint: 'x',
+          issueKey: 'GAPI-1',
+          attemptCount: 10,
+          status: 'failed',
+          lastError: 'forbidden',
+          enqueuedAt: new Date().toISOString(),
+          body: { timeSpentSeconds: 3600, started: 'x' },
+        },
+      ],
+    });
+    renderApp();
+    await waitFor(() => expect(screen.getByText('Marked as time off')).toBeTruthy());
+
+    const errorBanner = screen.getByRole('alert');
+    const offlineBanner = screen.getByText(/entries queued/).closest('[role="status"]')!;
+    const card = screen.getByText('Marked as time off').closest('div')!;
+    expect(card.compareDocumentPosition(errorBanner) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    expect(card.compareDocumentPosition(offlineBanner) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+  });
+
+  it('both banners are SUPPRESSED in the loading body even with pendingCount/failedCount > 0', async () => {
+    stubConnected();
+    mockUseTodayTotal.mockReturnValue({ seconds: 0, isPending: true, isError: false });
+    mockUseOutboxState.mockReturnValue({
+      pendingCount: 3,
+      failed: [
+        {
+          id: 'f1',
+          kind: 'post',
+          endpoint: 'x',
+          issueKey: 'GAPI-1',
+          attemptCount: 10,
+          status: 'failed',
+          lastError: 'forbidden',
+          enqueuedAt: new Date().toISOString(),
+          body: { timeSpentSeconds: 3600, started: 'x' },
+        },
+      ],
+    });
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <App />
+      </QueryClientProvider>,
+    );
+    // `todayTotal.isPending: true` keeps the body 'loading' regardless of
+    // when the mocked `getAuth()` promise settles — flush it explicitly so
+    // the assertion below isn't racing an unflushed `act()` warning.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText(/entries queued/)).toBeNull();
+  });
+
+  it('both banners are SUPPRESSED in the disconnected body even with pendingCount/failedCount > 0', async () => {
+    mockGetAuth.mockResolvedValue(null);
+    mockHasValidAuth.mockReturnValue(false);
+    mockUseOutboxState.mockReturnValue({
+      pendingCount: 3,
+      failed: [
+        {
+          id: 'f1',
+          kind: 'post',
+          endpoint: 'x',
+          issueKey: 'GAPI-1',
+          attemptCount: 10,
+          status: 'failed',
+          lastError: 'forbidden',
+          enqueuedAt: new Date().toISOString(),
+          body: { timeSpentSeconds: 3600, started: 'x' },
+        },
+      ],
+    });
+    renderApp();
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Connect to Jira' })).toBeTruthy(),
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText(/entries queued/)).toBeNull();
   });
 });

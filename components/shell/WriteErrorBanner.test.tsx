@@ -29,7 +29,7 @@ describe('WriteErrorBanner (AC3)', () => {
     expect(alertRegion.textContent).toBe('');
 
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 100));
     });
     expect(alertRegion.textContent).toContain("Jira didn't accept that worklog");
   });
@@ -48,7 +48,7 @@ describe('WriteErrorBanner (AC3)', () => {
       />,
     );
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 100));
     });
     expect(
       screen.getByText('GAPI-348 · 403, you may not have Work On Issues permission. Your 1.5h is saved locally.'),
@@ -70,7 +70,7 @@ describe('WriteErrorBanner (AC3)', () => {
       />,
     );
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 100));
     });
     expect(screen.getByText(new RegExp(expectedReason.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))).toBeTruthy();
   });
@@ -78,7 +78,7 @@ describe('WriteErrorBanner (AC3)', () => {
   it('the headline uses text-error-ink (7.60:1), never text-status-error (4.42:1 — below AA)', async () => {
     render(<WriteErrorBanner entries={[failedEntry()]} onRetry={vi.fn()} onLogElsewhere={vi.fn()} />);
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 100));
     });
     const headline = screen.getByText("Jira didn't accept that worklog");
     expect(headline.className).toContain('text-error-ink');
@@ -89,20 +89,20 @@ describe('WriteErrorBanner (AC3)', () => {
     const onRetry = vi.fn();
     render(<WriteErrorBanner entries={[failedEntry({ id: 'fail-77' })]} onRetry={onRetry} onLogElsewhere={vi.fn()} />);
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 100));
     });
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(onRetry).toHaveBeenCalledWith('fail-77');
   });
 
-  // D-7.9-11: "Log elsewhere" does NOT dismiss the banner — the write still
+  // D-7.9-29: "Log elsewhere" does NOT dismiss the banner — the write still
   // failed. The component has no internal visibility state at all, so this
   // proves it structurally: the banner is still fully rendered post-click.
-  it('D-7.9-11: "Log elsewhere" calls onLogElsewhere and does not dismiss the banner', async () => {
+  it('D-7.9-29: "Log elsewhere" calls onLogElsewhere and does not dismiss the banner', async () => {
     const onLogElsewhere = vi.fn();
     render(<WriteErrorBanner entries={[failedEntry()]} onRetry={vi.fn()} onLogElsewhere={onLogElsewhere} />);
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 100));
     });
     fireEvent.click(screen.getByRole('button', { name: 'Log elsewhere' }));
     expect(onLogElsewhere).toHaveBeenCalledTimes(1);
@@ -130,8 +130,48 @@ describe('WriteErrorBanner (AC3)', () => {
       />,
     );
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 100));
     });
     expect(screen.getByText(/GAPI-2/)).toBeTruthy();
+  });
+
+  it('carries NO self -mt-[10px] offset (D-7.9-16 — <main> is the sole owner)', () => {
+    const { container } = render(
+      <WriteErrorBanner entries={[failedEntry()]} onRetry={vi.fn()} onLogElsewhere={vi.fn()} />,
+    );
+    const root = container.firstElementChild as HTMLElement;
+    expect(root.className).not.toContain('-mt-[10px]');
+  });
+
+  // Review Finding 15 / D-7.9-18(a): a multi-failure banner must SAY how
+  // many writes failed, not silently represent N failures as one.
+  it('D-7.9-18(a): names the primary ticket AND states how many other writes also failed', async () => {
+    render(
+      <WriteErrorBanner
+        entries={[
+          failedEntry({ id: 'post-1', issueKey: 'GAPI-1', body: { timeSpentSeconds: 3600, started: 'x' } }),
+          failedEntry({ id: 'post-2', issueKey: 'GAPI-2', body: { timeSpentSeconds: 1800, started: 'x' } }),
+          failedEntry({ id: 'post-3', issueKey: 'GAPI-3', body: { timeSpentSeconds: 900, started: 'x' } }),
+          // A delete-only failure must NOT count toward the "other writes"
+          // total — it carries no worklog write to report.
+          failedEntry({ id: 'del-1', kind: 'delete', issueKey: 'GAPI-4', body: undefined }),
+        ]}
+        onRetry={vi.fn()}
+        onLogElsewhere={vi.fn()}
+      />,
+    );
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 100));
+    });
+    expect(screen.getByText(/GAPI-1/)).toBeTruthy();
+    expect(screen.getByText(/\+2 more/)).toBeTruthy();
+  });
+
+  it('a single failure states no count suffix', async () => {
+    render(<WriteErrorBanner entries={[failedEntry()]} onRetry={vi.fn()} onLogElsewhere={vi.fn()} />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 100));
+    });
+    expect(screen.queryByText(/\+\d+ more/)).toBeNull();
   });
 });

@@ -4283,3 +4283,152 @@ automatically" a lie, since only the SW alarm drains `pending`; `failed` feeds t
 **Do NOT add an `online` listener touching React Query** — `refetchOnReconnect: false` is load-bearing
 (`main.tsx:39-42`, `useTodayTotal.ts:14-31`), and it was already identified as a third route to the
 double-count hazard in Story 7.2.
+
+### D-7.9-16 — `<main>` is the SOLE owner of the −10 px offset; no child may carry it
+**Orchestrator decision** (routine in principle — D-7.3-3 already settled the mechanism — but it closes a
+defect reproduced three times and resolves the reviewer's escalations 1 and 2 together, as it asked).
+
+**Verdict.** The −10 px baseline-breaking offset lives **only** on `<main>`, governed by one boolean. **No
+child of the scroll container may carry `-mt-[10px]`.** The three that currently do —
+`OfflineBanner.tsx:41`, `WriteErrorBanner.tsx:97` and the disconnected card at `App.tsx:378` — all lose it.
+Wherever the offset applies, `relative z-[1]` applies with it.
+
+**The rule becomes simply `breaksHeaderBaseline = !anyBanner`.**
+
+**Situation, verified in the code rather than assumed.** `<main>` is
+`overflow-y-auto … px-[14px] pb-[14px]` (`App.tsx:367`) — **there is no top padding.** A negative top margin
+on its first child therefore pulls that child above the content box, where `overflow-y-auto` **clips** it;
+`scrollTop` cannot go negative, so the clipped strip is unreachable. This is precisely the trap D-7.3-3
+documented and solved by moving the offset onto the container: *"an element pulled outside its scroll
+container's bounds gets clipped, not overhung."* Obligation 2 restated the prohibition. It was reproduced
+anyway, three times, because the offset looks like a property of the thing being offset.
+
+**What the design actually wants, checked per SD-6.** The two banner states are unambiguous:
+`imports/jira-time-logger-round2.dc.html:1193-1206` sets **`resumeOffset: "0px"`** for both offline and
+error, and the offline caption reads *"Banner pushes the resume card down."* **Nothing overhangs in a banner
+state** — so the banners should never have had an offset at all, and `&& !anyBanner` was already correct.
+The disconnected card is different: `:543` genuinely specifies `margin-top:-10px`, so the overhang **is**
+intended there — it simply has to come from `<main>`, exactly as the resume card's does.
+
+**In simple terms.** The card is meant to poke 10 px up into the purple header. If you nudge the card itself
+upward, the scrollable box it lives in crops off the part that sticks out, so you lose 10 px of the card and
+gain no overhang. If you instead nudge the *box*, the whole thing moves and the overhang appears. Same
+visual intent, and only one of the two works. The mockup nudges the card — but a static mockup never scrolls,
+so its author would not have seen the clipping.
+
+**Why this also closes the `breaksHeaderBaseline` gap (escalation 2).** The reviewer showed that gap is
+**routine, not theoretical**: `useResumeTicket` excludes the time-off key (D-7.3-12), so **any week beginning
+with a day off** yields `resume.status === 'none'` together with a time-off body. Keying the offset off
+`resume.status` was always the wrong axis — it is a property of *the surface*, not of the resume card.
+`!anyBanner` expresses it correctly and covers the time-off, loading, disconnected and search-promoted bodies
+without special cases. **My "exactly ONE appended condition" instruction is what forced the developer into
+the wrong shape; that constraint was about not rewriting the layout, not a literal count of `&&`s.** The
+simpler expression satisfies its intent better.
+
+**Consequences.** One boolean, one call site. A test must assert **no child of `<main>` carries a negative
+margin class** — a grep-style guard, since this has now recurred three times and jsdom cannot see the clipping.
+**jsdom cannot adjudicate this at all**, so the finisher must verify the overhang **in a real browser**
+(build, load the extension, look at the disconnected and offline states). That is the epic's first genuinely
+visual defect and the automated suite is blind to it.
+
+**How we'd know it was wrong.** A 10 px strip missing from the top of the disconnected card, or the chrome
+painting over it (that one means `relative z-[1]` is absent, not that the offset is wrong).
+
+### D-7.9-17 — The three focus-ring failures are BLOCKERS, not Majors
+**Orchestrator decision** (routine — the standing gate already decides it; only the severity was open).
+
+`ring-focus` composites to **1.22:1** on white and **1.21:1** on error-soft. `EXPERIENCE.md:257` requires the
+ring **plus a 1.5 px primary border**; three new controls have the ring alone —
+`WriteErrorBanner.tsx:110`, `:117`, and `TimeOffCard.tsx:166`, **the safety-critical in-window Undo**. A
+fourth control in the same file (`TimeOffCard.tsx:195`) does it correctly, so this is inconsistency rather
+than a misreading.
+
+The epic's standing constraint is *"no story may regress WCAG 2.1 AA"* — a **hard gate**, which makes an
+unusable focus indicator on the control that reverses an irreversible delete a blocker by definition, not a
+judgement call. The reviewer calibrated Major and flagged the discrepancy rather than deciding unilaterally,
+which was right. Fix all three to match `:195`. **Sixth hand-computed contrast catch of the epic; the axe
+harness has caught none of them.**
+
+### D-7.9-18 — The remaining escalations
+**Orchestrator decisions** (routine).
+
+**(a) The multi-failure error banner must state the count.** It currently names one ticket with no
+indication that others failed, while the offline banner and the undo affordance both carry counts. Silently
+representing N failures as one is the same class of defect as a silent cap: the user acts on "one write
+failed" when several did. Name the primary ticket **and** state how many others.
+
+**(b) `TimeOffCard.tsx:188`'s red is legitimate but uses the wrong token.** It renders on a **refused
+delete**, which is a write Jira actually refused — so red is correct under the standing rule, and this is not
+a second illegitimate red. But it uses the **legacy `text-state-danger`**, a third token for red on a surface
+where `WriteErrorBanner` already uses `status-error` (icon) and `error-ink` (text). Switch to the canonical
+pair and **hand-compute its contrast** — `error-ink #991B1B` is the text value that clears AA at 7.60:1,
+whereas `status-error #DC2626` is confined to `aria-hidden` icons precisely because it measures 4.41:1.
+
+**(c) The `progress-width.grep.test.ts` guard leaks along five axes** (quote style, fractions, arrow
+functions, test files) and its **"allowlist + PINNED or the build fails" claim is false** — deleting the
+`PINNED` entry stays green, and two entries are **already stale**. Harden it to the standard
+`lib/no-monospace.grep.test.ts` set: exact pinned counts, so a stale entry fails the build. The guard was
+added to stop a fourth progress-bar copy; a guard that cannot fail does not stop anything.
+
+**Finisher note (all four items above): FIXED.** `TimeOffCard.tsx` was rewritten to port `LoggedToday.tsx`'s
+`committingIds` guard and `pagehide`/`visibilitychange` teardown flush (both Blockers RED-proved against the
+reviewer's exact probes — see the story's Dev Agent Record); `App.tsx`'s `breaksHeaderBaseline` collapsed to
+`!anyBanner` and all three self-carried `-mt-[10px]` occurrences removed; `focus-visible:border-primary`
+added to the three under-contrast controls; the error banner now states a count when >1 fail;
+`TimeOffCard`'s red switched to `text-error-ink`; `lib/progress-width.grep.test.ts` rewritten to the
+pinned-exact-count standard with a Tailwind-fraction guard and a genuine `pctToWidthClass`-declaration check
+covering `.test.tsx` files too.
+
+## Story 7.9 — creator decisions folded (D-7.3-11 pattern)
+
+*Folded by the bmad-story-finisher pass that closed Story 7.9, per D-7.3-11: the story-local creator
+decisions `D-7.9-1 … D-7.9-12` (originally reserved low, before dev, so they could not collide with the
+orchestrator's escalation-resolution range `D-7.9-13 … D-7.9-18`) are renumbered `D-7.9-19 … D-7.9-30` here
+and become canonical. Every `D-7.9-1…12` citation in the story file and in source comments
+(`entrypoints/popup/App.tsx`, `lib/popup-state.ts`, `components/shell/OfflineBanner.tsx` + `.test.tsx`,
+`components/shell/WriteErrorBanner.tsx` + `.test.tsx`, `components/today/TimeOffCard.tsx` + `.test.tsx`,
+`components/today/ResumeCard.test.tsx`, `components/today/PtoQuickAction.tsx`,
+`components/today/QuickLogForm.tsx`, `lib/day-status-vocabulary.grep.test.ts`,
+`entrypoints/popup/App.popup-state.test.tsx`, `_bmad-output/implementation-artifacts/sprint-status.yaml`,
+`_bmad-output/implementation-artifacts/deferred-work.md`) was repointed to its `D-7.9-19…30` equivalent in
+one mechanical pass — none left dangling. No behaviour changed by this fold-in — documentation only. The
+nine (of these twelve) that were flagged as escalations were already ruled on above (`D-7.9-15` for six of
+them; `D-7.9-16 … D-7.9-18` for the three the review itself raised) — the *Recommend* text preserved below
+is the creator's ORIGINAL pre-dev recommendation, kept for context, not a re-open invitation.
+
+- **D-7.9-19 — Precedence is one pure function in `lib/popup-state.ts`.** AC6. Per-component branching is
+  how six states become sixteen. Mirrors `dayStatusFor`'s existing precedence discipline (D-7.6-6).
+- **D-7.9-20 — The offline banner is `role="status" aria-live="polite"`, not `role="alert"`.** Forced by
+  `EXPERIENCE.md:262-263`, which names the "queue count" as polite and reserves `alert` for write failures.
+- **D-7.9-21 — The offline banner's border: token, not the mockup's literal.** `#F0DCB8` (source `:592`) vs
+  `border-amber-border` `#EDD3A6` (`DESIGN.md:39`) disagree; **ruled** (D-7.9-15): use the token — the spine
+  wins on intent, and unlike D-7.7-15's cases this value is already in the token layer.
+- **D-7.9-22 — `CircleX` carries an `ICON_ALLOWLIST` entry.** The error banner's icon is a write-failure
+  icon, not a day status — the exact `LoaderCircle`/`SearchPanel.tsx` precedent. **Ruled** (D-7.9-15):
+  allowlist `components/shell/WriteErrorBanner.tsx`; composing the headline through
+  `DayStatusIndicator status="error"` would ship a 4.42:1 AA failure and was rejected.
+- **D-7.9-23 — Honest offline headline.** `navigator.onLine` is reliable only when `false`. **Ruled**
+  (D-7.9-15): vary the headline word (`"Offline — N entries queued"` vs `"N entries queued"`) rather than
+  claim "Offline" while the browser believes it is online.
+- **D-7.9-24 — The chrome progress note does NOT carry a banner-state suffix.** **Ruled** (D-7.9-15): the
+  banner already states the count in full; a chrome-note suffix would double-announce inside a `polite`
+  region and fights NFR1's first-paint budget.
+- **D-7.9-25 — SD-7 inside the time-off explanation: the Jira subtask summary stays VERBATIM.**
+  `EXPERIENCE.md:112`'s "Time off" rewrite is overruled by SD-7/D-7.7-18 — real Jira data is never renamed.
+  **Ruled** (D-7.9-15), the third time this exact trap has appeared this epic.
+- **D-7.9-26 — The time-off body is frozen at first paint** (superseded by the OWNER's own fuller ruling,
+  **D-7.9-14**, which is canonical — this entry is the creator's original pre-dev recommendation that
+  D-7.9-14 adopted).
+- **D-7.9-27 — "Undo time off" removes ALL of today's time-off worklogs** (superseded by the OWNER's own
+  fuller ruling, **D-7.9-13**, which is canonical — this entry is the creator's original recommendation,
+  which D-7.9-13 adopted against the orchestrator's contrary recommendation of "most recent only").
+- **D-7.9-28 — No suppression logic for a double-announced refusal**, pinned by a disjointness test instead.
+  **Ruled** (D-7.9-15) as recommended.
+- **D-7.9-29 — "Log elsewhere" reuses the `SearchPanelHandle` focus seam and does NOT dismiss the banner.**
+  **Ruled** (D-7.9-15) as recommended.
+- **D-7.9-30 — Fix the four hand-rolled spinners and the raw `'✓'` glyph in this story; do NOT defer them.**
+  **This OVERRODE the creator's own recommendation** (D-7.9-15 explicitly reversed the "defer" suggestion
+  below) — 7.9 is the last story to own the popup, so deferring meant no story would ever pick them up
+  (the same trap `font-mono` nearly fell into, D-7.7-21f). Implemented: `QuickLogForm.tsx`, `PtoQuickAction.tsx`
+  (×2, including a second raw `'✓'` the count in this entry's original text missed), `LoggedToday.tsx`,
+  `TicketPicker.tsx` all migrated to `LoaderCircle`/`Check`.

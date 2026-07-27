@@ -4,7 +4,7 @@ baseline_commit: 8332eb3
 
 # Story 7.9: Popup States — Loading, Offline, Error, Time Off, Disconnected
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -32,7 +32,7 @@ vocabulary are all live, tested and load-bearing at this baseline. **Verified by
 | Search-as-browse: combobox/listbox, `/` shortcut, `SearchPanelHandle`, outbox fallback | `components/today/SearchPanel.tsx` | **UNCHANGED** — reused as-is under "Still want to log work?" |
 | "Logged today" rows, edit/delete + undo, teardown flush, failed-outbox chip | `components/today/LoggedToday.tsx` (1000+ lines) | **UNCHANGED** |
 | "Recently worked" + 55-ticket handoff | `components/today/RecentlyWorked.tsx`, `components/today/TodayView.tsx` | **UNCHANGED** |
-| Action bar: "Mark today as time off" + "Open week ↗" | `components/shell/PopupActionBar.tsx`, `components/today/PtoQuickAction.tsx` | **UNCHANGED** (see D-7.9-12 for the hand-rolled spinner escalation) |
+| Action bar: "Mark today as time off" + "Open week ↗" | `components/shell/PopupActionBar.tsx`, `components/today/PtoQuickAction.tsx` | **UNCHANGED** (see D-7.9-30 for the hand-rolled spinner escalation) |
 | Durable write queue: `enqueue`, `list`, `remove`, `update`, `markFailed`, `runOutboxRetryPass`, `outboxItem.watch()` | `lib/storage/outbox.ts` (306 lines, Story 2.7) | **READ-ONLY consumer.** No schema change, no new key. |
 | Day-status vocabulary + its ONE renderer | `lib/day-status.ts`, `components/shared/DayStatusIndicator.tsx` | **CONSUME** — `status="time-off"` and `status="error"`; migrate its bar onto `lib/progress-width.ts` |
 | Percentage → Tailwind width class (correct arithmetic + NaN guard + tests) | `lib/progress-width.ts` (Story 7.8) | **MIGRATION TARGET** — three private copies fold onto it |
@@ -212,13 +212,13 @@ it inherits the baseline break — consistent with `ResumeCard.tsx:267-281`'s ex
 | Offset | `:1195` | `resumeOffset: "0px"` | — |
 | Banner box | `:592` | `margin-top:-10px; margin-bottom:12px; radius 8; padding 9px 11px; gap 8; align-items:flex-start`, `elevation.hairline` | — |
 | Fill | `:592` | `#FFF8EC` | `bg-amber-soft` (`DESIGN.md:38`) |
-| Border | `:592` | `#F0DCB8` | **use `border-amber-border` `#EDD3A6`** (`DESIGN.md:39`) — see D-7.9-3 |
+| Border | `:592` | `#F0DCB8` | **use `border-amber-border` `#EDD3A6`** (`DESIGN.md:39`) — see D-7.9-21 |
 | Icon colour | `:593` | `#B45309` | `text-status-dirty` |
 | Headline | `:595` | `#7A3E06`, Kanit 12.5px/500 | `text-amber-ink` + `font-chrome` |
 | Body line | `:596` | `#6B6678`, 12px, line-height 1.5 | `text-muted` |
 | Headline copy | `:595` | `Offline — 2 entries queued` | |
 | Body copy | `:596` | `They'll sync to Jira automatically when you're back.` | |
-| Chrome note in this state | `:1194` | `3.5h to go · 2 unsynced` | see D-7.9-6 |
+| Chrome note in this state | `:1194` | `3.5h to go · 2 unsynced` | see D-7.9-24 |
 
 Icon: `DESIGN.md:255` `offline: WifiOff`. The source's `●` glyph is a pre-lucide placeholder — same
 substitution D-7.7-18/D-7.6 established.
@@ -237,7 +237,7 @@ substitution D-7.7-18/D-7.6 established.
 | "Log elsewhere" button | `:609` | transparent, `#6B6678`, no border, `5px 4px`; hover `#1E1B2E` | |
 | Headline copy | `:605` | `Jira didn't accept that worklog` | |
 | Detail copy | `:606` | `GAPI-348 · 403, you may not have Work On Issues permission. Your 1.5h is saved locally.` | |
-| Chrome note in this state | `:1203` | `5.0h to go · 1 not saved to Jira` | see D-7.9-6 |
+| Chrome note in this state | `:1203` | `5.0h to go · 1 not saved to Jira` | see D-7.9-24 |
 
 Icon: `DESIGN.md:243` `error: CircleX`. Corroborated by `EXPERIENCE.md:118` (same two strings) and
 `EXPERIENCE.md:92` (*"Name what happened and where things went. 'Your 1.5h is saved locally.'"*).
@@ -257,7 +257,7 @@ Icon: `DESIGN.md:243` `error: CircleX`. Corroborated by `EXPERIENCE.md:118` (sam
 
 Spine strings (`EXPERIENCE.md:112-113`) are **authoritative over the mockup's copy**:
 `"Marked as time off"` / `"8h logged to KNP-99 · Time off. This day counts toward your week and needs
-nothing else from you."` / `"Undo time off"`. See **D-7.9-7** for the one SD-7 trap inside that sentence.
+nothing else from you."` / `"Undo time off"`. See **D-7.9-25** for the one SD-7 trap inside that sentence.
 
 ### Disconnected (`:542-549`; state keys `:1208-1212`)
 
@@ -295,7 +295,7 @@ per-component branching. Six states plus two orthogonal banners.
 Axis A — BODY (exactly one, in this order; first match wins):
   1. disconnected   authState.kind === 'disconnected'
   2. loading        authState.kind === 'loading'  OR  todayTotal.isPending
-  3. time-off       timeOffToday.seconds > 0            (frozen at first paint — see D-7.9-8)
+  3. time-off       timeOffToday.seconds > 0            (frozen at first paint — see D-7.9-26)
   4. normal         otherwise
 
 Axis B — BANNERS (independent of A; may both be false; render ABOVE the body):
@@ -388,7 +388,7 @@ word** but must **never gate the banner**:
 - `pendingCount > 0 && navigator.onLine === true` → `"N entries queued"` (still syncing)
 
 This keeps the banner honest in both directions and satisfies `EXPERIENCE.md`'s voice rule ("state the
-fact, not the verdict"). **Flagged as D-7.9-5** — if the orchestrator prefers the literal AC string
+fact, not the verdict"). **Flagged as D-7.9-23** — if the orchestrator prefers the literal AC string
 unconditionally, drop the second variant and use `"Offline — N entries queued"` always.
 
 **Hazard — do NOT add an `online` event listener that touches React Query.**
@@ -439,7 +439,7 @@ If the body swapped to the time-off card the instant the action bar posted, a va
 the resume card's hour input would be discarded — and the resume card would be unmounted while on
 screen, which is the letter of what D-7.3-9 forbids.
 
-**Ruling (D-7.9-8): the time-off BODY state is resolved at first paint and frozen**, exactly as
+**Ruling (D-7.9-26): the time-off BODY state is resolved at first paint and frozen**, exactly as
 D-7.3-9 froze the server-wins override. Precisely:
 
 - `App.tsx` resolves `isTimeOffToday` **once**, when the week query first settles, and stores it.
@@ -463,7 +463,7 @@ and cannot be the seam. The card owns its own undo:
 
 **Which worklog(s)?** All of today's time-off worklogs (a full day is one; a full+half sequence is two).
 Delete them sequentially; if any deletion enqueues, the card stays in the pending chip state rather than
-clearing. **Flagged as D-7.9-9** — the alternative (undo only the most recent) is defensible and cheaper.
+clearing. **Flagged as D-7.9-27** — the alternative (undo only the most recent) is defensible and cheaper.
 
 ---
 
@@ -515,7 +515,7 @@ they are focused on, then the interruption).
 
 **(d) Do not double-announce a refusal.** `ResumeCard.tsx:364` already renders a `role="alert"` red
 message when `submitState === 'error'`. If the banner names the same refusal, the user hears it twice.
-**Ruling (D-7.9-10):** the banner is derived from the **outbox** (`status: 'failed'`), the card's inline
+**Ruling (D-7.9-28):** the banner is derived from the **outbox** (`status: 'failed'`), the card's inline
 message from **this session's in-flight result**. A refusal that produces the card's message does
 **not** enter the outbox (non-retryable kinds are not enqueued by `ResumeCard.submitSeconds` — verified,
 `ResumeCard.tsx:233-236` only sets `submitState='error'`), so the two sources are disjoint today and no
@@ -569,7 +569,7 @@ non-retryable, suppress the card's inline message while the banner is up.
   - [x] `components/shell/OfflineBanner.tsx`. `role="status" aria-live="polite"` (**not** alert).
         `WifiOff` icon, `aria-hidden`. Tokens: `bg-amber-soft` / `border-amber-border` /
         `text-amber-ink` / `text-muted` / `text-status-dirty`.
-  - [x] Copy: `EXPERIENCE.md:117` verbatim, with the `navigator.onLine` headline variant (D-7.9-5).
+  - [x] Copy: `EXPERIENCE.md:117` verbatim, with the `navigator.onLine` headline variant (D-7.9-23).
   - [x] Add the new file to `lib/day-status-vocabulary.grep.test.ts`'s `bg-amber-soft` file allowlist
         **and** to the `PINNED` exact-count map (D-7.8-22's stale-entry rule). Failing to do both fails
         the build — by design.
@@ -582,7 +582,7 @@ non-retryable, suppress the card's inline message while the banner is up.
         tick** (§ Accessibility (b)).
   - [x] Icon `CircleX` — requires an `ICON_ALLOWLIST` entry in `lib/day-status-vocabulary.grep.test.ts`,
         the exact precedent `LoaderCircle`/`SearchPanel.tsx` already set (that guard's own comment: *"AC5's
-        actual rule is 'never used AS A DAY STATUS'"*). See **D-7.9-4**.
+        actual rule is 'never used AS A DAY STATUS'"*). See **D-7.9-22**.
   - [x] Headline `text-error-ink` (**#991B1B — NOT `text-status-error`; see § Contrast**). Icon
         `text-status-error`. Fill `bg-error-soft`, border `border-error-border`.
   - [x] Detail line: `<issueKey> · <statusCode>, <likely reason>. Your <N>h is saved locally.` Map
@@ -594,14 +594,14 @@ non-retryable, suppress the card's inline message while the banner is up.
   - [x] "Retry": `update(id, { status:'pending', attemptCount: 0 })` then `runOutboxRetryPass()` —
         **reuse `LoggedToday.handleRetryNow`'s shape (`:595-611`), do not write a second retry path.**
   - [x] "Log elsewhere": focuses the search field via the existing `SearchPanelHandle` seam
-        (`App.tsx:152-154`, D-7.4-26). **One focus path, not a second.** See **D-7.9-11**.
+        (`App.tsx:152-154`, D-7.4-26). **One focus path, not a second.** See **D-7.9-29**.
 
 - [x] **Task 5 — Time-off body (AC4)**
   - [x] `components/today/TimeOffCard.tsx`. Filled `Diamond` via
         `<DayStatusIndicator status="time-off" label="Marked as time off" />` — **do not import `Diamond`
         from `lucide-react`**; that import is banned outside `DayStatusIndicator.tsx` and the guard will
         fail. Same reason: use `text-primary` (`#594F74`), never `text-legacy-purple`.
-  - [x] Explanation from `EXPERIENCE.md:112`, with D-7.9-7's verbatim-summary rule applied.
+  - [x] Explanation from `EXPERIENCE.md:112`, with D-7.9-25's verbatim-summary rule applied.
   - [x] "Undo time off" — the write path in § Time off, with `Undo2` (`DESIGN.md:256`; not a banned icon).
   - [x] "Still want to log work?" eyebrow + the **existing** `SearchPanel`, unchanged.
   - [x] `App.tsx` passes `status="time-off"` to `ChromeHeader` (Obligation 3). The chrome renders its
@@ -653,7 +653,7 @@ non-retryable, suppress the card's inline message while the banner is up.
   - [x] AC5: in the disconnected state, `ResumeCard`, `SearchPanel`, `TodayView` and `PopupActionBar`
         render nothing, and the chrome's `role="status"` region is absent.
   - [x] `hooks/useTimeOffToday` — session-posted PTO seconds are included (Trap 1); a mid-session post
-        does not flip the body (Trap 2 / D-7.9-8).
+        does not flip the body (Trap 2 / D-7.9-26).
 
 - [x] **Task 10 — Gates**
   - [x] `pnpm compile`, `pnpm build`, `pnpm test`, `pnpm lint`. Baseline discipline in § Baseline.
@@ -684,7 +684,7 @@ none of this epic's five contrast failures.
 right (`:605` is `#991B1B`, `:603` is `#DC2626` for the glyph only). The trap is that
 `DayStatusIndicator status="error"` derives **one** colour (`text-status-error`) for **both** icon and
 label — so composing the whole headline through it would ship a real AA failure. Use the indicator for
-nothing here; render `CircleX` directly (D-7.9-4) with the icon in `text-status-error` and the headline
+nothing here; render `CircleX` directly (D-7.9-22) with the icon in `text-status-error` and the headline
 in `text-error-ink`.
 
 ### Non-text note
@@ -776,59 +776,66 @@ reporting the pass count and the error count.
 
 ## Decisions this story records
 
-Numbered for the epic decision log. **D-7.9-3 … D-7.9-12 are ESCALATIONS the orchestrator must rule on
-before or during dev** — they are flagged, not guessed.
+Numbered for the epic decision log. Originally recorded here (by the creator, before dev) as
+`D-7.9-1 … D-7.9-12`; **folded into `epic-7-decision-log.md` at finisher stage, per D-7.3-11's pattern**,
+renumbered `D-7.9-19 … D-7.9-30` (after the escalation-resolution entries `D-7.9-13 … D-7.9-18` the
+orchestrator recorded directly in the log during the review pass). Every citation of the old numbers, in
+this file and in source comments, was repointed to the new numbers in the same finisher pass — see
+`epic-7-decision-log.md`'s own "Story 7.9 — creator decisions folded" section for the canonical copy.
+**D-7.9-21 … D-7.9-30 were ESCALATIONS** — all nine were ruled on by the orchestrator (`D-7.9-15`, plus
+`D-7.9-16 … D-7.9-18` for the three raised by the review); the *Recommend* lines below are the creator's
+ORIGINAL recommendations, preserved for context, not re-open questions.
 
 **Settled by the creator (routine — forced consequences of decisions already taken):**
 
-- **D-7.9-1 — Precedence is one pure function in `lib/popup-state.ts`.** AC6. Per-component branching is
+- **D-7.9-19 — Precedence is one pure function in `lib/popup-state.ts`.** AC6. Per-component branching is
   how six states become sixteen. Mirrors `dayStatusFor`'s existing precedence discipline (D-7.6-6).
-- **D-7.9-2 — The offline banner is `role="status" aria-live="polite"`, not `role="alert"`.** Forced by
+- **D-7.9-20 — The offline banner is `role="status" aria-live="polite"`, not `role="alert"`.** Forced by
   `EXPERIENCE.md:262-263`, which names the "queue count" as polite and reserves `alert` for write
   failures.
 
 **ESCALATIONS — orchestrator ruling requested:**
 
-- **D-7.9-3 — The offline banner's border: `#F0DCB8` (source `:592`) vs `border-amber-border` `#EDD3A6`
+- **D-7.9-21 — The offline banner's border: `#F0DCB8` (source `:592`) vs `border-amber-border` `#EDD3A6`
   (`DESIGN.md:39`).** The two disagree. *Recommend the token* — the spine wins on intent and D-7.7-15's
   rule is tokenise-don't-inline; the difference is imperceptible. Recorded as a deviation for the
   DESIGN.md owner, same shape as D-7.3's `#DEDCE9` ruling.
-- **D-7.9-4 — `CircleX` needs an `ICON_ALLOWLIST` entry.** The error banner's icon is a **write-failure**
+- **D-7.9-22 — `CircleX` needs an `ICON_ALLOWLIST` entry.** The error banner's icon is a **write-failure**
   icon, not a day status; the guard's own comment says AC5's rule is *"never used AS A DAY STATUS"* and
   it already carries the exact precedent (`LoaderCircle` → `SearchPanel.tsx`). *Recommend allowlisting
   `components/shell/WriteErrorBanner.tsx`.* The alternative — composing the headline through
   `DayStatusIndicator status="error"` — **ships a 4.42:1 AA failure** (§ Contrast) and must not be chosen.
-- **D-7.9-5 — Honest offline headline.** `navigator.onLine` is reliable only when `false`. *Recommend*
+- **D-7.9-23 — Honest offline headline.** `navigator.onLine` is reliable only when `false`. *Recommend*
   using it to select the headline word only (`"Offline — N entries queued"` vs `"N entries queued"`),
   never to gate the banner. Alternative: the literal AC string unconditionally, accepting that it says
   "Offline" while online-but-rate-limited.
-- **D-7.9-6 — The chrome progress note in the banner states.** The source sets
+- **D-7.9-24 — The chrome progress note in the banner states.** The source sets
   `progressNote: "3.5h to go · 2 unsynced"` (`:1194`) and `"5.0h to go · 1 not saved to Jira"` (`:1203`)
   — i.e. the chrome note carries a **second** copy of the banner's information. *Recommend NOT
   implementing the suffix*: the banner already states it in full, `ChromeHeader`'s note is inside a
   `polite` live region that would then announce the count twice, and a suffix requires threading outbox
   state into `ChromeHeader` — which Obligation 3 and NFR1 both push against. Alternative: implement it as
   a `note` prop override, at the cost of a double announcement.
-- **D-7.9-7 — SD-7 inside the time-off explanation.** `EXPERIENCE.md:112` writes
+- **D-7.9-25 — SD-7 inside the time-off explanation.** `EXPERIENCE.md:112` writes
   *"8h logged to KNP-99 · **Time off**"* while the source (`:557`) writes *"KNP-99 · **PTO**"*. Per SD-7 /
   D-7.7-18, a **verbatim Jira subtask summary stays verbatim** — and `PtoQuickAction.tsx:28` already
   carries `defaultSummary: 'PTO'` for exactly that reason. *Recommend rendering `ptoSubtaskSummaryItem`'s
   real value verbatim* (falling back to `'PTO'`), i.e. the spine's "Time off" here is the spine renaming
   data, which SD-7 forbids. This is precisely the trap Story 7.6's `defaultSummary` finding identified.
-- **D-7.9-8 — The time-off body is frozen at first paint.** A mid-session "Mark today as time off" must
+- **D-7.9-26 — The time-off body is frozen at first paint.** A mid-session "Mark today as time off" must
   not swap the body out from under a typed hour value or unmount the resume card while it is on screen
   (D-7.3-9's letter). *Recommend freezing*, with "Undo time off" as the one explicit transition.
   Alternative: live re-derivation, accepting the input loss.
-- **D-7.9-9 — "Undo time off" deletes ALL of today's time-off worklogs, or only the most recent?**
+- **D-7.9-27 — "Undo time off" deletes ALL of today's time-off worklogs, or only the most recent?**
   *Recommend all* — the card claims the whole day is settled, so undoing it must leave no partial
   booking. Cheaper alternative: undo the most recent only.
-- **D-7.9-10 — Double-announcement of a refusal.** Verified disjoint today (`ResumeCard.tsx:233-236`
+- **D-7.9-28 — Double-announcement of a refusal.** Verified disjoint today (`ResumeCard.tsx:233-236`
   never enqueues a non-retryable). *Recommend no suppression logic*, with a test pinning the disjointness
   so a future path that enqueues a non-retryable fails loudly rather than double-announcing.
-- **D-7.9-11 — "Log elsewhere" reuses the `SearchPanelHandle` focus seam** (`App.tsx:152-154`, D-7.4-26)
+- **D-7.9-29 — "Log elsewhere" reuses the `SearchPanelHandle` focus seam** (`App.tsx:152-154`, D-7.4-26)
   rather than inventing a second focus path. *Recommend as stated.* Open sub-question: should it also
   dismiss the banner? *Recommend no* — the refused write is still unresolved and dismissing would hide it.
-- **D-7.9-12 — Four hand-rolled `animate-spin` spinners exist in the popup**
+- **D-7.9-30 — Four hand-rolled `animate-spin` spinners exist in the popup**
   (`QuickLogForm.tsx:312`, `PtoQuickAction.tsx:258`, `LoggedToday.tsx:926`, `TicketPicker.tsx:521`) —
   bordered `<span>`s, not `lucide-react`. `SearchPanel.tsx:486` already does it correctly with
   `LoaderCircle`. AC1's "no spinner is rendered anywhere" is scoped to the cold-open loading state, so
@@ -946,7 +953,7 @@ the specific test(s) fail, then reverting via `git diff`/backup-restore before r
 - `hooks/useTodayTotal.ts` / `hooks/useTimeOffToday.ts`: removed the `excludeWorklogIds.has(...)` filter
   line from each → their respective D-7.9-13 exclusion tests went RED (`43200`/`32400` instead of the
   post-exclusion figure). Reverted via saved backups; green.
-- `components/today/ResumeCard.tsx` D-7.9-10 pin: written against the EXISTING, unmodified
+- `components/today/ResumeCard.tsx` D-7.9-28 pin: written against the EXISTING, unmodified
   `submitSeconds` branching (no source change) — confirmed it fails if a future change routes a
   non-retryable kind through `enqueueOutbox` (verified by temporarily adding an `enqueueOutbox` call
   inside the `else` branch during review, then reverting — the assertion caught it).
@@ -959,7 +966,7 @@ new hooks (`useTimeOffToday`, `useOutboxState`) and the existing `useTodayTotal`
 new UI pieces (`PopupSkeletonBody`, `OfflineBanner`, `WriteErrorBanner`, `TimeOffCard`) render per that
 derivation with no per-component branching. All three progress-bar copies were migrated onto
 `lib/progress-width.ts` (Obligation 1 — the `ChromeHeader.tsx` `Math.round` defect is fixed). The four
-`animate-spin` hand-rolled spinners and two raw checkmark glyphs (D-7.9-12 — one more than the story's own
+`animate-spin` hand-rolled spinners and two raw checkmark glyphs (D-7.9-30 — one more than the story's own
 count found: `QuickLogForm.tsx:314` also had a bare `'✓'`, alongside `PtoQuickAction.tsx:260`) were fixed,
 not deferred.
 
@@ -1018,14 +1025,64 @@ undo." D-7.9-13 (owner, in the decision log) explicitly OVERRODE this with the 5
 
 **Tests run and their results** (all commands actually executed, output pasted/summarized, not assumed):
 - `pnpm compile` — clean, zero errors.
-- `pnpm lint` — 0 errors, 2 pre-existing warnings in `entrypoints/{popup,fullpage}/main.tsx` (files this
-  story never touches; confirmed via `git diff --stat` showing no diff on either file).
+- ~~`pnpm lint` — 0 errors, 2 pre-existing warnings in `entrypoints/{popup,fullpage}/main.tsx` (files this
+  story never touches; confirmed via `git diff --stat` showing no diff on either file).~~ **Review Finding
+  10: this materially misreported the gate.** The measured figure at this commit was **0 errors, 11
+  warnings across 8 files** (not 2 across 2) — see the Finisher Addendum below for the corrected,
+  re-measured figure after the finisher's own fixes (which restored one further pre-existing warning by
+  reverting `ResumeCard.tsx`, Finding 19).
 - `pnpm test` (`vitest run`) — **107 test files passed (107) / 1492 tests passed | 1 skipped (1493) /
   1 error**. The 1 error is the SAME pre-existing unhandled rejection in
   `components/manager/ManagerView.test.tsx` documented in the story's own § Baseline
   (`@wxt-dev/storage`'s `getStorageArea`, not a regression). Baseline was 98 files / 1419 passed / 1
   skipped / 1 (same) error — net **+9 files, +73 tests, +0 errors**.
 - `pnpm build` (`wxt build`) — succeeds, `output/chrome-mv3/` produced, popup chunk 71.77 kB.
+
+---
+
+### Finisher Addendum (bmad-story-finisher pass)
+
+**Debug Log — the two Blocker RED-proofs, by hand-mutation** (same discipline as the developer's own log
+above: mutate, confirm the specific test(s) fail, revert, confirm green):
+
+- `components/today/TimeOffCard.tsx`: temporarily removed the `!anyCommitting &&` guard around the
+  in-window Undo button → the new "Blocker 1" test (`deleteWorklog` never settles, asserts the button is
+  absent) went RED (the button rendered live instead). Reverted; green.
+- `components/today/TimeOffCard.tsx`: temporarily removed the synchronous `setCommittingIds` call at the
+  TOP of `commit()` (moved the mark-committing to AFTER the delete loop, matching the pre-fix shape) →
+  the "Blocker 1" test went RED for a second, independent reason (the button stayed clickable through the
+  whole in-flight period). Reverted; green.
+- `components/today/TimeOffCard.tsx`: temporarily deleted the `pagehide`/`visibilitychange` `useEffect`
+  entirely → 3 of the 4 "Blocker 2" tests went RED (`enqueueOutboxMock` never called; `deleteWorklogMock`
+  correctly still not called either, confirming the teardown path — not a fallback fetch — is what's
+  missing). The 4th ("pagehide with NO pending undo is a no-op") correctly stayed GREEN — there is nothing
+  to flush before any Undo click, so its assertion (`enqueueOutboxMock` not called) holds either way; this
+  is expected, not a gap. Reverted; green.
+- `lib/progress-width.grep.test.ts`: re-added a double-quoted `w-[N%]` table to a scratch file under
+  `hooks/` → RED (the original guard would have missed this; confirms Finding 8's axis 1 fix). Reverted.
+- `entrypoints/popup/App.tsx`: reverted `breaksHeaderBaseline` to
+  `connected && resume.status !== 'none' && !popupState.anyBanner` (the pre-fix expression) → FOUR tests
+  went RED, not just the one Finding 11 targets: the Finding 11 test itself (`resume.status: 'none'` +
+  time-off body), the disconnected-card offset test (Finding 5), the AC1 App-wiring test (Finding 13 — the
+  loading body ALSO lost its offset under the old guard, a coupling not previously obvious), and
+  `App.test.tsx`'s corrected AC5 test. Confirms the fix is load-bearing across all four, not merely the one
+  case it was written for. Reverted; green.
+- `entrypoints/popup/App.popup-state.test.tsx`: re-keyed the resume card off `anyBanner` (mutation M9a's
+  exact shape) inside the rewritten D-7.3-9 test's live tree → RED (pre-fill reset to the un-typed default,
+  and the post-banner submit's write target assertion failed). Confirms the rewritten pin has teeth where
+  the original did not. Reverted; green.
+
+**Gate figures, re-measured after every fix above** (see also "Finding Resolutions › Gate figures" for the
+canonical copy):
+
+| Gate | This story's original claim | Reviewer's measurement | Finisher's re-measurement |
+|---|---|---|---|
+| `pnpm compile` | clean | clean | **clean** |
+| `pnpm lint` | "0 errors, 2 warnings" (Finding 10: false) | 0 errors, 11 warnings / 8 files | **0 errors, 12 warnings / 9 files** (ResumeCard.tsx's 1 restored by its revert, Finding 19) |
+| `pnpm test` | 107 files / 1492 / 1 skip / 1 err | confirmed exact | **109 files / 1514 / 1 skip / 1 err** (+2 files, +22 tests over the reviewed commit; +0 new errors — the SAME pre-existing `ManagerView.test.tsx` rejection) |
+| `pnpm build` | popup chunk 71.77 kB | — | **popup chunk 73.21 kB** (production-code delta from the fixes; the two new `.grep.test.ts` files are not bundled) |
+
+---
 
 **Hand-computed contrast** — every colour pair this story renders already exists in the story's own §
 Contrast table (no new token was introduced, confirmed against `styles/globals.css` for each class used):
@@ -1050,11 +1107,17 @@ copies**; all four call sites (`ChromeHeader.tsx`, `WeekChromeHeader.tsx`, `DayS
 
 | Date | Change |
 |---|---|
-| 2026-07-27 | Story 7.9 implemented: popup-state derivation (`lib/popup-state.ts`), `useTimeOffToday`/`useOutboxState` hooks, `PopupSkeletonBody`/`OfflineBanner`/`WriteErrorBanner`/`TimeOffCard` components, `App.tsx` rewired to the single derivation, progress-width migration (Obligation 1) closed, D-7.9-12 icon-vocabulary fixes applied, `useTodayTotal` gained an `excludeWorklogIds` param for D-7.9-13. Status set to `review`. |
+| 2026-07-27 | Story 7.9 implemented: popup-state derivation (`lib/popup-state.ts`), `useTimeOffToday`/`useOutboxState` hooks, `PopupSkeletonBody`/`OfflineBanner`/`WriteErrorBanner`/`TimeOffCard` components, `App.tsx` rewired to the single derivation, progress-width migration (Obligation 1) closed, D-7.9-30 icon-vocabulary fixes applied, `useTodayTotal` gained an `excludeWorklogIds` param for D-7.9-13. Status set to `review`. |
+| 2026-07-27 | **Finisher pass** (commit on top of the `review` checkpoint): both Blockers fixed by porting `LoggedToday`'s `committingIds` guard + teardown flush into `TimeOffCard`, RED-proved against the reviewer's exact probes; D-7.9-16 (`<main>` sole offset owner) implemented and verified for the disconnected-card case in a real browser; D-7.9-17 (focus-contrast Blockers) and D-7.9-18(a)/(b)/(c) implemented; Findings 4, 7–24 fixed, Finding 22 deferred with a named owner; `ResumeCard.tsx` reverted to baseline (Finding 19); the story-local `D-7.9-1…12` folded into `epic-7-decision-log.md` as `D-7.9-19…30`. Status set to `done`. |
 
 ### File List
 
-**New files (18):**
+**New files (finisher pass, 2):**
+- `entrypoints/popup/App.baseline-offset.grep.test.ts` — Finding 5/D-7.9-16: no popup component other than `App.tsx` may carry a `-mt-[Npx]` class.
+- `components/today/TimeOffCard.composition.grep.test.ts` — Finding 14(a): proves `TimeOffCard.tsx` genuinely imports `enqueueFailedWorklogMutation`/`UNDO_WINDOW_MS` from `LoggedToday.tsx`, independent of the test file's own mock.
+
+**New files (developer's original pass, 9 — the story's own header miscounted this as "18," which is the
+new+edited file COUNT, not new files alone):**
 - `lib/popup-state.ts` + `lib/popup-state.test.ts`
 - `lib/progress-width.grep.test.ts`
 - `hooks/useTimeOffToday.ts` + `hooks/useTimeOffToday.test.tsx`
@@ -1065,26 +1128,46 @@ copies**; all four call sites (`ChromeHeader.tsx`, `WeekChromeHeader.tsx`, `DayS
 - `components/today/TimeOffCard.tsx` + `components/today/TimeOffCard.test.tsx`
 - `entrypoints/popup/App.popup-state.test.tsx`
 
-**Edited files (18):**
-- `entrypoints/popup/App.tsx` — the state derivation wired end to end; body/banner render tree; disconnected copy (AC5); `breaksHeaderBaseline` appends `!popupState.anyBanner`.
-- `entrypoints/popup/App.test.tsx`, `entrypoints/popup/App.session-total.test.tsx`, `entrypoints/popup/App.a11y.test.tsx` — mocks extended for `useTimeOffToday`/`useOutboxState`/`ptoSubtaskKeyItem`/`ptoSubtaskSummaryItem`/`deleteWorklog`; disconnected-copy assertions updated.
+**Edited files (finisher pass, beyond the developer's original 15 below):**
+- `components/today/TimeOffCard.tsx` — rewritten: `committingIds` guard + teardown flush (Blockers 1–2), `hideText` composition (Finding 17), `error-ink` token (Finding 20a), `tabular` (Finding 20b), `removedIds` rename (Finding 21).
+- `components/today/TimeOffCard.test.tsx` — rewritten: Blocker RED-proof describe blocks, in-window count assertions, mixed partial-failure test, retitled Finding-14(c) test, `enqueueFailedWorklogMutation` mock wiring.
+- `entrypoints/popup/App.tsx` — Finding 4 (`ptoSeconds` nets out `timeOffExcludedIds`, moved its declaration above the reducer that needs it); `breaksHeaderBaseline` simplified to `!popupState.anyBanner` (D-7.9-16); disconnected card lost its self `-mt-[10px]`, gained `relative z-[1]` and `font-chrome`; time-off eyebrow switched to `text-label` (Finding 17).
+- `entrypoints/popup/App.test.tsx` — the AC5 "no history" test's offset assertion flipped (now correctly expects `-mt-[10px]` — D-7.9-16 intentionally widens the offset to the search-promoted body).
+- `entrypoints/popup/App.popup-state.test.tsx` — D-7.3-9 pin rewritten to genuinely assert identity + write-target survival across a live rerender (Finding 7); new describe blocks for Finding 11 (search-promoted + time-off), Finding 5 (disconnected offset), Finding 13 (AC1 wiring), Finding 12 (banner DOM order/suppression/time-off body); dead `preFillBefore` declaration removed.
+- `components/shell/OfflineBanner.tsx` + `.test.tsx` — self `-mt-[10px]` removed (D-7.9-16); `tabular` on the headline; the offset test flipped to assert absence.
+- `components/shell/WriteErrorBanner.tsx` + `.test.tsx` — self `-mt-[10px]` removed; `focus-visible:border-primary` on both buttons (Finding 6/D-7.9-17); multi-failure count (Finding 15/D-7.9-18a); mount delay bumped 0→100ms with a corrected comment (Finding 18, all seven test waits updated to match); `tabular` on the detail line.
+- `components/shell/PopupSkeletonBody.tsx` — two-block structure, 3 lines (not 4), correct button order, 3 list bars (Finding 16/24a); `relative z-[1]` added.
+- `components/shared/DayStatusIndicator.tsx` — additive `hideText?: boolean` prop (default `false`, backward-compatible) for Finding 17.
+- `components/today/SearchPanel.tsx` — `relative z-[1]` on the outer wrapper, a direct consequence of D-7.9-16 now offsetting the search-promoted body too.
+- `components/today/LoggedToday.tsx` — `enqueueFailedWorklogMutation` exported (Finding 3) so `TimeOffCard.tsx` can genuinely reuse it.
+- `components/today/ResumeCard.tsx` — **reverted to byte-identical with baseline `8332eb3`** (Finding 19 — no story reason to touch it; the story's "UNCHANGED" claims are true again).
+- `components/today/PtoQuickAction.tsx` — stale comment corrected (Finding 23).
+- `lib/progress-width.grep.test.ts` — rewritten to the pinned-exact-count standard, quote-agnostic, scans `.test.tsx` too, bans the Tailwind-fraction shape, adds `ManagerMatrix.tsx` to `CALL_SITES` (Finding 8/24b).
+- `lib/day-status-vocabulary.grep.test.ts` — removed 2 stale `bg-amber-soft` allowlist entries, added a PINNED-covers-allowlist cross-check and an `ICON_ALLOWLIST` existence check (Finding 9).
+- `_bmad-output/implementation-artifacts/deferred-work.md` — new "code review of story-7.9" section (Finding 22, DEFERRED with a named owner); `D-7.9-1…12` citations repointed.
+- `_bmad-output/implementation-artifacts/epic-7-decision-log.md` — orchestrator's D-7.9-16/17/18 finisher notes appended; new "Story 7.9 — creator decisions folded" section (`D-7.9-19…30`).
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — status → `done`; `D-7.9-12` citation repointed to `D-7.9-30`.
+- `components/today/QuickLogForm.tsx`, `components/today/ResumeCard.test.tsx` — doc-only: `D-7.9-*` citations repointed to the folded numbering (no behaviour change).
+
+**Edited files (developer's original pass, 15 — the story's own header counted 18, missing that
+`ChromeHeader.test.tsx`/`WeekChromeHeader.test.tsx`/`DayStatusIndicator.test.tsx` are each ONE bullet
+covering TWO files):**
 - `components/shell/ChromeHeader.tsx` + `.test.tsx` — migrated onto `lib/progress-width.ts`; added the disconnected `"Not connected to Jira"` note (AC5); two new Obligation-1 defect-proof tests.
 - `components/week/WeekChromeHeader.tsx` + `.test.tsx` — migrated onto `lib/progress-width.ts`; comment reference updated.
-- `components/shared/DayStatusIndicator.tsx` + `.test.tsx` — migrated onto `lib/progress-width.ts`; comment reference updated.
-- `components/today/ResumeCard.test.tsx` — added the D-7.9-10 disjointness pin.
-- `components/today/LoggedToday.tsx` — D-7.9-12: hand-rolled spinner → `LoaderCircle`.
-- `components/today/PtoQuickAction.tsx` — D-7.9-12: hand-rolled spinner → `LoaderCircle`; raw `'✓'` → `Check`.
-- `components/today/QuickLogForm.tsx` — D-7.9-12: hand-rolled spinner → `LoaderCircle`; raw `'✓'` → `Check`; added a stable `aria-label` (previously absent, a latent a11y gap the icon swap would otherwise have worsened).
-- `components/today/TicketPicker.tsx` — D-7.9-12: hand-rolled spinner → `LoaderCircle`.
+- `components/shared/DayStatusIndicator.test.tsx` — migrated onto `lib/progress-width.ts`; comment reference updated.
+- `components/today/LoggedToday.tsx` — D-7.9-30: hand-rolled spinner → `LoaderCircle`.
+- `components/today/PtoQuickAction.tsx` — D-7.9-30: hand-rolled spinner → `LoaderCircle`; raw `'✓'` → `Check`.
+- `components/today/QuickLogForm.tsx` — D-7.9-30: hand-rolled spinner → `LoaderCircle`; raw `'✓'` → `Check`; added a stable `aria-label`.
+- `components/today/TicketPicker.tsx` — D-7.9-30: hand-rolled spinner → `LoaderCircle`.
 - `hooks/useTodayTotal.ts` + `hooks/useTodayTotal.test.tsx` — added the `excludeWorklogIds` parameter (D-7.9-13).
 - `lib/progress-width.ts` — header comment updated (three copies migrated, zero remain).
-- `lib/day-status-vocabulary.grep.test.ts` — `ICON_ALLOWLIST` gained `CircleX` (`WriteErrorBanner.tsx`) and five `LoaderCircle` entries; `bg-amber-soft`/`text-amber-ink` allowlists and the `PINNED` count gained `OfflineBanner.tsx`.
+- `lib/day-status-vocabulary.grep.test.ts` — `ICON_ALLOWLIST` gained `CircleX`/`LoaderCircle` entries; `bg-amber-soft` allowlist/PINNED gained `OfflineBanner.tsx`.
 - `_bmad-output/implementation-artifacts/deferred-work.md` — the Story 7.7 progress-bar entry marked CLOSED.
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` — status → `review`.
 
 **Explicitly NOT touched** (confirmed via `git status`/`git diff --stat`): `lib/no-monospace.grep.test.ts`,
-`lib/storage/outbox.ts`, `components/today/SearchPanel.tsx`, `components/today/LoggedToday.tsx`'s
-delete/undo mechanism itself (only its spinner), `components/today/TodayView.tsx`,
+`lib/storage/outbox.ts`'s contract, `components/today/LoggedToday.tsx`'s delete/undo mechanism itself
+(only its spinner, and the new `export` keyword on one already-existing function), `components/today/TodayView.tsx`,
 `components/shell/PopupActionBar.tsx`, the money path, `lib/hierarchy.ts`, `lib/storage/pinned-tickets.ts`,
 and the fenced Epic 6.3 files (`scripts/pack-crx.mjs`, `scripts/derive-ext-key.mjs`, `scripts/lib/`,
 `wxt.config.ts`, `package.json`, `docs/release.md` — pre-existing uncommitted SD-5 work, left byte-for-byte
@@ -1124,7 +1207,7 @@ as found).
 | *(all 10 other files)* | 11 | 11 (unchanged) |
 | **TOTAL** | **40** | **11** |
 
-Exactly 29 warnings disappeared from exactly 4 files — all `import/order` warnings genuinely fixed by `eslint --fix`, all 4 files being ones the story legitimately opened for D-7.9-12. Nothing was disabled, no `eslint-disable` was added, `eslint.config.js` is untouched, and the `lint` script is byte-identical at both commits (`"lint": "eslint ."`).
+Exactly 29 warnings disappeared from exactly 4 files — all `import/order` warnings genuinely fixed by `eslint --fix`, all 4 files being ones the story legitimately opened for D-7.9-30. Nothing was disabled, no `eslint-disable` was added, `eslint.config.js` is untouched, and the `lint` script is byte-identical at both commits (`"lint": "eslint ."`).
 
 **But the revert was NOT complete.** `components/today/ResumeCard.tsx` retains a pure import-order change with zero story content — see Finding 19. And ~70% of the changed lines across those 4 files is unrelated formatting churn.
 
@@ -1245,7 +1328,7 @@ It shares exactly **one line** with 7.5's mechanism (the `UNDO_WINDOW_MS` import
 - **Location**: story file lines 1021-1022
 - **Observation**: The record states *"`pnpm lint` — 0 errors, 2 pre-existing warnings in `entrypoints/{popup,fullpage}/main.tsx` (files this story never touches; confirmed via `git diff --stat` showing no diff on either file)."* Measured at HEAD: **0 errors and 11 warnings across 8 files** — `TicketPicker.test.tsx`, `fullpage/main.tsx`, `popup/main.tsx`, `canonical-manager.test.ts`, `cycle-range.test.ts` (×2), `cycle-range.ts`, `manager-resolution.direct-reports.test.ts`, `pto.ts`, `last-logged.test.ts`, `view-state.test.ts`. The claim understates residual lint state by a factor of 5.5 and names a file set that is not the actual one.
 - **Impact**: There is **no lint regression** (40 → 11 is a genuine improvement, Finding 19 aside), so the gate itself is fine — but the story's standing rule is *"Do not claim coverage that does not exist… State only what a named test asserts."* A gate reported from memory rather than from output is the same failure mode, and it is what made the 40→11 drop look unexplained to the reviewer.
-- **Suggested Resolution**: Correct the Dev Agent Record to the measured figures and record the 40→11 explanation (29 `import/order` warnings fixed by `eslint --fix` across the 4 D-7.9-12 files).
+- **Suggested Resolution**: Correct the Dev Agent Record to the measured figures and record the 40→11 explanation (29 `import/order` warnings fixed by `eslint --fix` across the 4 D-7.9-30 files).
 - **Related AC**: Task 10
 
 ### Finding 11: The `breaksHeaderBaseline` edge case is routine, not theoretical
@@ -1320,7 +1403,7 @@ It shares exactly **one line** with 7.5's mechanism (the `UNDO_WINDOW_MS` import
 - **Suggested Resolution**: Bump to ~100 ms (the banner is not a hot path) and correct the comment to say the macrotask is chosen for *test observability*, not for deferral semantics. The tests need a matching await duration.
 - **Related AC**: AC3
 
-### Finding 19: `ResumeCard.tsx` was edited undisclosed, and ~70% of the D-7.9-12 diff is unrelated formatting churn
+### Finding 19: `ResumeCard.tsx` was edited undisclosed, and ~70% of the D-7.9-30 diff is unrelated formatting churn
 - **Severity**: Minor
 - **Category**: Convention
 - **Location**: `components/today/ResumeCard.tsx:1-4`; story lines 31, 949, 1055-1083
@@ -1354,7 +1437,7 @@ It shares exactly **one line** with 7.5's mechanism (the `UNDO_WINDOW_MS` import
 - **Observation**: The synced-toast dismiss button renders a bare `×` as its visible content. It is the same violation class as the two `'✓'` glyphs this story fixed. It has an `aria-label`, so it is not an a11y defect. `TodayView.tsx` is a **frozen path** for this story, so it correctly was not touched — but it was also not recorded in `deferred-work.md`, and the existing `BANNED_GLYPHS` pin (`lib/day-status-vocabulary.grep.test.ts:589,597`) is scoped to "the manager surface" and would not catch it.
 - **Impact**: A known-class violation with no owner.
 - **Suggested Resolution**: Add a `deferred-work.md` entry with a named owner.
-- **Related AC**: D-7.9-12
+- **Related AC**: D-7.9-30
 
 ### Finding 23: Stale comment after the icon migration
 - **Severity**: Nit
@@ -1362,7 +1445,7 @@ It shares exactly **one line** with 7.5's mechanism (the `UNDO_WINDOW_MS` import
 - **Location**: `components/today/PtoQuickAction.tsx:166`
 - **Observation**: The comment still reads "…popover lingers ~200ms showing ✓" after the `'✓'` glyph became a `<Check>` icon in this story.
 - **Suggested Resolution**: Update the comment.
-- **Related AC**: D-7.9-12
+- **Related AC**: D-7.9-30
 
 ### Finding 24: Two miscounts in the story's own documentation
 - **Severity**: Nit
@@ -1376,14 +1459,17 @@ It shares exactly **one line** with 7.5's mechanism (the `UNDO_WINDOW_MS` import
 
 ## AC-by-AC verdict
 
+**Updated by the finisher after all 22 FIX resolutions above.** The reservations named below are RESOLVED,
+not open — retained per AC so a reader can see what was wrong and confirm it is now fixed.
+
 | AC | Verdict |
 |---|---|
-| **AC1 — Loading** | **Satisfied with reservations.** Chrome skeleton verified unchanged (`ChromeHeader.tsx:138-145` byte-identical to baseline, 7.2 Finding 5's live-region fix intact). `animate-skeleton` only; the no-spinner assertion is on rendered output and mutation-verified RED. NFR1 clean — `PopupSkeletonBody` takes no props and has no data-derived branch. But the skeleton's shape deviates from `:569-587` (Finding 16) and the App-level wiring is unpinned (Finding 13). |
-| **AC2 — Offline** | **Satisfied with reservations.** N counts `pending` only (`useOutboxState.ts:51`), mutation-verified. `navigator.onLine` selects only the headline word and never gates the banner — a mutation making the banner conditional on it goes RED across 7 tests. Both D-7.9-5 variants exist and are tested. The hot path still enqueues while offline (`App.popup-state.test.tsx:206-221`, drives the real `ResumeCard` and a real click). The "drops its negative offset" clause is implemented but by a mechanism D-7.3-3 documents as broken (Finding 5). |
-| **AC3 — Error** | **Satisfied with reservations.** Banner names ticket, status code and reason; `role="alert"` mounted empty and populated on the next tick, mutation-verified RED both ways. "Retry" reuses `LoggedToday.handleRetryNow`'s shape; "Log elsewhere" reuses the single `SearchPanelHandle` seam and correctly does **not** dismiss the banner (D-7.9-11). No focus theft (zero `.focus()` calls). Reservations: multi-failure under-reporting (Finding 15), the focus-contrast failures on both buttons (Finding 6), the offset mechanism (Finding 5), the delay calibration (Finding 18). |
-| **AC4 — Time off** | **NOT satisfied.** The settled card, filled `Diamond` via `DayStatusIndicator`, explanation, "Undo time off" and the retained `SearchPanel` under "Still want to log work?" are all present and correct, and D-7.9-13's core semantics (delete ALL, state the count, zero Jira traffic on undo, no confirmation dialog) are implemented and mostly pinned. But the undo path carries **two Blockers** (Findings 1, 2), the seconds exclusion is half-wired (Finding 4), and it is structurally a second delete path (Finding 3). |
-| **AC5 — Disconnected** | **Satisfied with reservations.** Copy verbatim against `:543-547` (heading "Connect to Jira", CTA "Sign in to Jira", both correct and deliberately different); chrome shows the note with no figure, no bar, no live region; all five "no dead UI" facts asserted and each mutation-verified RED. Reservations: the card's self-carried offset (Finding 5) and the missing `font-chrome` (Finding 17). |
-| **AC6 — One derivation** | **Satisfied.** `lib/popup-state.ts:63-87` implements the precedence verbatim; pure, no React. All 6 precedence mutations RED. `useOutboxState`/`useTimeOffToday` are called only in `App.tsx`; no component branches on its own popup state. The rendered Axis-B contract is under-tested (Finding 12), but the derivation itself is correct and well pinned. |
+| **AC1 — Loading** | **Satisfied.** Chrome skeleton unchanged; `animate-skeleton` only, mutation-verified RED. NFR1 clean. The skeleton's shape now matches `:569-587` (Finding 16 — two-block structure, 3 lines, correct button order, 3 list bars) and the App-level wiring is pinned (Finding 13 — `main > div[aria-hidden="true"]` assertion). |
+| **AC2 — Offline** | **Satisfied.** N counts `pending` only, mutation-verified. `navigator.onLine` selects only the headline word, never gates the banner. The hot path still enqueues while offline. The offset mechanism is now correct (Finding 5 / D-7.9-16 — `<main>` owns it, no self-carried, silently-clipped margin) and confirmed in a real browser for the equivalent disconnected-card case (see Finding Resolutions). |
+| **AC3 — Error** | **Satisfied.** Banner names ticket, status code, reason, AND (Finding 15 / D-7.9-18a) how many OTHER writes also failed when >1. `role="alert"` mounted empty, populated ~100ms later (Finding 18 — bumped from a jsdom-calibrated 0ms) with a corrected comment. "Retry"/"Log elsewhere" as before. Focus-visible border added to both buttons (Finding 6, now a Blocker per D-7.9-17, fixed). Offset mechanism fixed (Finding 5). |
+| **AC4 — Time off** | **Satisfied.** Both Blockers (Findings 1, 2) fixed — `TimeOffCard` now ports `LoggedToday`'s `committingIds` guard and teardown flush, RED-proved against the reviewer's exact probes. The seconds exclusion is now fully wired (Finding 4 — session-posted worklogs net out of `ptoSeconds` too). Composition over Story 7.5's mechanism is now genuine for the shared stateless piece (`enqueueFailedWorklogMutation`) and statically proven by a grep guard (Finding 3/14a); the stateful half is deliberately ported, not force-unified, with the reasoning recorded. Heading colour/size/family now matches the design source (Finding 17). The red surface uses the canonical token (Finding 20a / D-7.9-18b). |
+| **AC5 — Disconnected** | **Satisfied.** Copy verbatim; chrome shows the note with no figure/bar/live region; all "no dead UI" facts pinned. The card's offset now comes from `<main>` (Finding 5), visually CONFIRMED in a real browser (the one state this finisher pass could actually screenshot — see Finding Resolutions). `font-chrome` added to the heading (Finding 17). |
+| **AC6 — One derivation** | **Satisfied.** `lib/popup-state.ts` implements the precedence verbatim; pure, no React; all 6 precedence mutations RED. The rendered Axis-B contract is now tested (Finding 12 — real DOM order via `compareDocumentPosition`, a rendered time-off body, suppression in both loading and disconnected). |
 
 ---
 
@@ -1394,10 +1480,10 @@ It shares exactly **one line** with 7.5's mechanism (the `UNDO_WINDOW_MS` import
 - **The `role="alert"` two-tier mount is real, not decorative**, and the Debug Log's claim about RTL's `act()` was independently confirmed.
 - **D-7.9-15's disjointness pin has teeth and is precisely targeted** — adding an `enqueueOutbox` call to `ResumeCard`'s non-retryable branch reddens exactly one test. No suppression logic was added, as ruled.
 - **D-7.9-14's freeze is load-bearing and well tested** — the frozen-body test types `'3.5'` into the hour input and asserts it survives a mid-session time-off post. D-7.3-9 remains absolute with no "except when" clause.
-- **D-7.9-7 handled correctly** — `App.tsx:408` feeds the real `ptoSubtaskSummaryItem` value verbatim with a `?? 'PTO'` fallback matching `PtoQuickAction.tsx:28`; not hardcoded to "Time off". Every newly authored string uses "time off". D-7.9-6's chrome-note suffix correctly **not** implemented.
+- **D-7.9-25 handled correctly** — `App.tsx:408` feeds the real `ptoSubtaskSummaryItem` value verbatim with a `?? 'PTO'` fallback matching `PtoQuickAction.tsx:28`; not hardcoded to "Time off". Every newly authored string uses "time off". D-7.9-24's chrome-note suffix correctly **not** implemented.
 - **All frozen paths are byte-identical** — the money path (`approval.ts`, `comment-schema.ts`, `checksum.ts`, `adf.ts`, `manager-matrix.ts`), `hierarchy.ts`, `pinned-tickets.ts`, `outbox.ts`, `SearchPanel.tsx`, `TodayView.tsx`, `PopupActionBar.tsx`, and `lib/no-monospace.grep.test.ts` (whose ALLOWLIST still holds exactly 6 occurrences across 4 untouched files). The Epic 6.3 fence was respected — every change in those files is SD-5 content.
 - **No scope growth** — nothing under `components/settings/` or `entrypoints/options/`; no guest rail.
-- **D-7.9-12 fixed rather than deferred, and more thoroughly than scoped** — all four hand-rolled spinners migrated to `LoaderCircle` (`grep -rn "border-t-white\|rounded-full border-2"` returns **empty**), both raw `'✓'` glyphs fixed (the second, `QuickLogForm.tsx:314`, was written as `'✓'`, which a naive grep would miss), plus a genuine `aria-label` fix on a button whose accessible name had degraded to a bare glyph.
+- **D-7.9-30 fixed rather than deferred, and more thoroughly than scoped** — all four hand-rolled spinners migrated to `LoaderCircle` (`grep -rn "border-t-white\|rounded-full border-2"` returns **empty**), both raw `'✓'` glyphs fixed (the second, `QuickLogForm.tsx:314`, was written as `'✓'`, which a naive grep would miss), plus a genuine `aria-label` fix on a button whose accessible name had degraded to a bare glyph.
 - **Exactly one scroll region** — zero `overflow-*` in all four new components; `<main>` remains the sole scroll container.
 - **`lucide-react` only**, all icons `aria-hidden` at 12-13px, no second icon set, no icon font, strings never contain their icon, no new `font-mono`, and all 4 new `ring-focus` usages are `focus-visible:`-prefixed (never static).
 - **Every cited design-source line resolves to the claimed value** — I re-read all ~30 citations against `imports/jira-time-logger-round2.dc.html`; no repeat of the past "+1 off" defect (one cosmetic miscount, Finding 24).
@@ -1410,4 +1496,295 @@ It shares exactly **one line** with 7.5's mechanism (the `UNDO_WINDOW_MS` import
 2. **Finding 15 — multi-failure error banner.** AC3's copy is singular, so naming one ticket is defensible; but the offline banner states a count and D-7.9-13 required the undo affordance to state its count, for the same "make the scope visible" reason. **Should the error banner disclose how many writes were refused?**
 3. **Finding 6 severity.** I have calibrated the three focus-contrast failures as Major. The standing Epic 7 constraint is worded absolutely ("No WCAG 2.1 AA regression"), which would make them Blockers. Flagging the calibration rather than deciding it, since the safety-critical in-window Undo is among the three.
 4. **Finding 20(a)** — `TimeOffCard`'s new `text-state-danger` surface: confirm as an accepted second red on the popup and record it, or route the message elsewhere.
+
+**Resolved by the orchestrator, finisher stage:** #1 by **D-7.9-16** (`<main>` becomes the sole owner;
+`breaksHeaderBaseline = !anyBanner`), #2 by **D-7.9-18(a)** (the error banner now states a count when more
+than one write failed), #3 by **D-7.9-17** (the three focus-contrast failures ARE Blockers, per the standing
+absolute WCAG gate), #4 by **D-7.9-18(b)** (the red is legitimate — a refused DELETE is a refused write —
+but the token was wrong; switched to the canonical `error-ink`/`status-error` pair). All four are FIXED
+below.
+
+---
+
+## Finding Resolutions (bmad-story-finisher)
+
+Every finding triaged FIX / DISMISS / DEFER. **22 FIX, 0 DISMISS, 2 DEFER** (Finding 22, and — see below —
+the D-7.8-style "next story" pointers already recorded by the creator, which are not this story's findings
+to re-triage). Both Blockers RED-proved against the reviewer's exact probes (Debug Log References,
+updated below). Gate figures re-measured after every fix, not carried over from the Dev Agent Record's
+(corrected) claim.
+
+### Blockers
+
+**Finding 1 — duplicate irreversible DELETE if Undo is clicked mid-commit.** **FIX.** `TimeOffCard.tsx`
+ported `LoggedToday.tsx`'s `committingIds` mechanism verbatim in spirit: every worklog id in a batch is
+marked committing SYNCHRONOUSLY, before the delete loop's first `await`, and the in-window Undo button is
+now conditionally hidden (`!anyCommitting &&`) — mirroring `LoggedToday.tsx:507` — so there is structurally
+nothing to click during the whole in-flight period, not just the undo-window countdown. RED-proved
+(`components/today/TimeOffCard.test.tsx`, "Blocker 1" describe block): a `deleteWorklog` mock that never
+settles, held open past window expiry — the Undo button is asserted absent (`queryByRole` returns null),
+`deleteWorklog` stays called exactly once, and `onExcludedIdsChange` is asserted to never be called with an
+empty set (no re-admission). Manually re-verified RED by temporarily removing the `!anyCommitting` guard —
+the test failed as expected, confirming the guard is load-bearing, not incidental.
+
+**Finding 2 — popup closing inside the undo window silently abandons the DELETE.** **FIX.** Ported
+`LoggedToday.tsx:411-451`'s `pagehide`/`visibilitychange` teardown flush: on either event, every captured
+worklog in the pending batch is durably enqueued to the Story 2.7 outbox (via the SAME
+`enqueueFailedWorklogMutation` helper Finding 3 asks for, not a re-derived endpoint string), and the batch
+is marked committing so it cannot be re-admitted if the popup survives being hidden. `flushedForRef` is
+keyed by object identity on the `pending` batch (not a single id, since this is N worklogs) so `pagehide`
+and `visibilitychange` firing together never double-enqueue. RED-proved (3 new tests, "Blocker 2" describe
+block): `pagehide` before window expiry enqueues immediately with zero `deleteWorklog` calls; firing
+`pagehide` twice enqueues once; a two-worklog batch enqueues both entries in one flush.
+
+### Majors
+
+**Finding 3 — structural second delete path, not composition.** **FIX**, alongside Findings 1–2.
+`enqueueFailedWorklogMutation` (the one genuinely shared, stateless piece — endpoint construction +
+`.catch`/`log.error`) was exported from `LoggedToday.tsx` and is now imported and called by `TimeOffCard.tsx`
+— closing the "swallowed enqueue error" half of this finding exactly. The STATEFUL half (the undo-window
+timer, `committingIds`, the teardown flush) was deliberately **ported, not extracted into one shared hook**:
+`LoggedToday`'s state machine commits at most one entry at a time (a second `requestDelete` force-commits
+the first), while `TimeOffCard`'s undoes a whole BATCH atomically — different enough semantics that a
+forced single hook risks either breaking `LoggedToday`'s (frozen, heavily-tested, out-of-scope-to-touch)
+mechanism or producing a leaky abstraction, the same lesson this codebase already learned from Story 7.8's
+pagination-helper mistake (don't unify two protocols that only look similar). A new source-level grep guard
+(`components/today/TimeOffCard.composition.grep.test.ts`) proves the import is genuine — independent of the
+test file's own mock, which cannot otherwise distinguish "real import" from "coincidentally-matching local
+declaration" (this closes the specific mutation, Finding 14(a), that proved the OLD test blind to exactly
+this).
+
+**Finding 4 — session-posted time-off worklog never excluded from `ptoSeconds`.** **FIX.**
+`entrypoints/popup/App.tsx`'s `ptoSeconds` reducer now also filters `timeOffExcludedIds` (previously only
+`pendingDeletionId`) — the SAME set `useTimeOffToday`/`useTodayTotal` already receive, now also reaching
+the session-scalar contribution the two hooks are arithmetically unable to touch. `timeOffExcludedIds`'s
+declaration was moved above `ptoSeconds` (it was declared after, which would have been a TDZ crash —
+caught during self-review, not by the reviewer). No new test added at the App level for this specific
+combination beyond the general test suite passing; the fix is a one-line filter symmetric with the existing
+`pendingDeletionId` filter directly above it.
+
+**Finding 5 — the −10px offset silently CLIPPED on three scroll-container children.** **FIX, per D-7.9-16.**
+`breaksHeaderBaseline` collapsed from `connected && resume.status !== 'none' && !anyBanner` to
+`!anyBanner`. `-mt-[10px]` removed from `OfflineBanner.tsx`, `WriteErrorBanner.tsx`, and the disconnected
+card (`App.tsx`); `relative z-[1]` added to the disconnected card (it never had it) and, as a direct
+consequence of the simplified rule now also offsetting the search-promoted body,
+`components/today/SearchPanel.tsx`'s outer wrapper (previously self-offset never applied there).
+`PopupSkeletonBody.tsx` and `TimeOffCard.tsx` also gained `relative z-[1]` for the same reason (they always
+received `<main>`'s offset but never had the stacking-context companion the rule requires). A new
+source-level grep guard (`entrypoints/popup/App.baseline-offset.grep.test.ts`) asserts no popup component
+other than `App.tsx` declares any `-mt-[Npx]` class, closing the "this has recurred three times and jsdom
+cannot see it" gap structurally, not just for THIS story's three offenders. **Verified in a real browser**
+— see "Real-browser verification" below.
+
+**Finding 6 — three controls fail WCAG 2.1 AA 1.4.11 (focus ring alone, 1.21–1.22:1).** **FIX, per D-7.9-17
+(these are Blockers, not Majors — the standing gate is absolute).** Added `focus-visible:border-primary` to
+`WriteErrorBanner.tsx`'s Retry and Log-elsewhere buttons and `TimeOffCard.tsx`'s in-window Undo button,
+matching the pattern `TimeOffCard.tsx`'s OWN settled-card Undo button already used correctly. `#594F74`
+composited as a border measures 7.51:1, clearing 1.4.11's 3:1 with wide margin.
+
+**Finding 7 — the D-7.3-9 pin is vacuous.** **FIX.** `App.popup-state.test.tsx`'s D-7.3-9 describe block was
+rewritten: renders WITHOUT a banner first, types a distinctive UNSUBMITTED value (`'3.5'`, not the default
+pre-fill) into the resume card's hour input, THEN `rerender`s the SAME live tree (not a fresh render) with
+a banner mounted, and asserts the ticket's label, the typed value, AND the write target (via
+`toHaveBeenLastCalledWith` on `postWorklogMock`, which a bare `toHaveBeenCalledWith` — satisfiable by a
+PRE-banner call — would not have proved) all survive. This is exactly mutation M9a's shape (re-key + change
+identity when a banner mounts) and now reddens if the guard regresses; verified by temporarily reverting
+`breaksHeaderBaseline` to reference `resume.status` again with a forced remount and confirming RED, then
+restoring. The dead `void preFillBefore;` in the separate Trap-2 test (a different describe block) was also
+removed — the unused declaration it voided was deleted outright, not just silenced.
+
+**Finding 8 — `progress-width.grep.test.ts` porous along 5 mutation axes.** **FIX, per D-7.9-18(c).**
+Rewritten to `lib/no-monospace.grep.test.ts`'s pinned-exact-count standard: (1) quote-agnostic `w-[N%]`
+regex closes the double-quote/backtick axes; (2) every `.ts(x)` file is now scanned, including tests — a
+`WIDTH_LITERAL_ALLOWLIST` pins the three files with genuine literal test assertions
+(`ChromeHeader.test.tsx`: 4, `DayStatusIndicator.test.tsx`: 2, `progress-width.test.ts`: 5) to their EXACT
+count, so a fifth copy hiding in a `.test.tsx` file is no longer invisible, and the allowlist itself cannot
+go stale (a count mismatch fails the build); (3) a new, separate check bans the Tailwind-fraction quantiser
+shape (`w-1/4` etc.) outright — zero legitimate uses exist anywhere in the codebase today, verified by
+full-tree grep before choosing the threshold; (4) the declaration regex now accepts `function`,
+`const`/`let`/`var`, and object-method-shorthand forms, closing the arrow-function axis; (5) the guard file
+excludes only ITSELF (`SELF`), not test files generally — its own detection regexes legitimately contain
+`w-[`/`w-1/4`/`pctToWidthClass`-shaped substrings that would otherwise self-flag.
+
+**Finding 9 — the `PINNED`/allowlist "or the build fails" guarantee is false.** **FIX.**
+`lib/day-status-vocabulary.grep.test.ts`: the two stale `bg-amber-soft` allowlist entries
+(`components/week/DayCell.tsx`, `styles/globals.css` — both zero actual occurrences, confirmed by grep)
+were removed, and a new test (`every BG_AMBER_SOFT_ALLOWLIST entry other than the indicator itself is
+pinned`) asserts `Object.keys(BG_AMBER_SOFT_PINNED)` equals the allowlist minus the owner — a future stale
+entry is now structurally impossible to add without the guard itself failing. `ICON_ALLOWLIST` gained its
+own existence check: every allowlisted `(icon, file)` pair must genuinely import that icon from
+`lucide-react`, or the entry is reported as stale.
+
+**Finding 10 — Dev Agent Record misreports the `pnpm lint` gate.** **FIX.** See "Gate figures" below — the
+Dev Agent Record's lint section is corrected to the measured figures and the 40→11 (now 40→12, after
+Finding 19's revert restores ResumeCard.tsx's one warning) explanation is preserved.
+
+**Finding 11 — `breaksHeaderBaseline` edge case is routine.** **FIX, resolved by the SAME D-7.9-16 change as
+Finding 5** — `!anyBanner` no longer keys off `resume.status` at all, so `resume.status === 'none'` +
+time-off is no longer a special case; it is simply covered. A dedicated test
+(`App.popup-state.test.tsx`, "Finding 11") renders exactly this combination (`resume.status: 'none'`,
+`timeOffToday.seconds > 0`) and asserts `<main>` still carries `-mt-[10px]`.
+
+**Finding 12 — banner DOM order/suppression/time-off-body under-tested.** **FIX.** Four new App-level tests
+(`App.popup-state.test.tsx`, "Finding 12" describe block): both banners rendered together, asserting REAL
+DOM order via `compareDocumentPosition` (error precedes offline) rather than the pure function's booleans;
+both banners rendered above an ACTUALLY-rendered time-off body (`mockUseTimeOffToday` returns
+`seconds > 0`, closing "no App-level test ever renders the time-off body" too); suppression asserted with
+`pendingCount`/`failedCount` both truthy in the loading body; the same in the disconnected body.
+
+**Finding 13 — AC1's App-level wiring unpinned.** **FIX, folded into the same "Finding 12" describe block.**
+A dedicated test forces `todayTotal.isPending: true` and asserts `main > div[aria-hidden="true"]` — 
+`PopupSkeletonBody`'s distinctive root, a direct child of `<main>` and unique among the popup's current
+markup — is present, `ResumeCard` (`Hours for` label) is absent, and `TodayView` is absent. Deleting the
+`{popupState.body === 'loading' && <PopupSkeletonBody />}` line from `App.tsx` would make the selector find
+nothing, unlike the original assertion (which was satisfied by `ResumeCard`'s own, different, skeleton
+branch).
+
+**Finding 14 — `TimeOffCard`'s tests under-cover the multi-worklog/in-window paths.** **FIX**, four parts:
+(a) the `UNDO_WINDOW_MS`-import-mocked-away gap closed by `TimeOffCard.composition.grep.test.ts` (a static
+source check, independent of any runtime mock); (b) a new test asserts the IN-WINDOW notice's own count/
+wording for a 2-worklog batch (`"2 entries removed."`, a live `"Undo time off · 2 entries"` button),
+previously only the settled affordance's label was pinned; (c) the `:80` test (renamed) now states plainly
+that the "never import Diamond directly" guarantee is enforced by the AC3 grep guard, not this render
+assertion, and additionally asserts `hideText` doesn't suppress the icon while confirming the vocabulary's
+own default label ("Time off") is NOT what's shown (only the sibling `<h2>`'s "Marked as time off" is); a
+new mixed-partial-failure test (one `forbidden`, one `ok`) covers D-7.9-13's own multi-record scenario,
+previously verified only by probe.
+
+**Finding 15 — the error banner names one ticket with no count.** **FIX, per D-7.9-18(a).**
+`WriteErrorBanner.tsx` now counts every failed entry that carries a worklog write body (excluding
+delete-only failures, which have nothing to report) and appends `" (+N more.)"` to the detail line when
+more than one failed. Two new tests cover the multi-failure count and the single-failure no-suffix case.
+
+**Finding 16 — `PopupSkeletonBody` restructures the design source's skeleton shape.** **FIX.** Restored the
+TWO-sibling-block structure (`:570-579` card, `:580-586` separate `mt-4` block); removed the unsanctioned
+extra `h-[18px] w-24` bar (closing Finding 24(a)'s "4 lines" miscount too — there are genuinely 3); restored
+the source's button order (`52, 52, flex:1`); added the third 44px list bar the source specifies
+(`:583-585`). All three existing `PopupSkeletonBody.test.tsx` assertions (no spinner, `aria-hidden`, no
+self-offset) still pass unmodified — none of them pinned the now-corrected shape, so nothing needed
+loosening.
+
+**Finding 17 — the time-off heading (and two siblings) deviate in colour/size/family.** **FIX.** Root cause:
+`DayStatusIndicator` derives ONE colour for icon+label TOGETHER on the same element, so no `className`
+override on the composite could give the heading `#1E1B2E` while keeping the icon `text-legacy-purple`
+without fighting Tailwind's unordered same-element specificity. Added a genuinely additive, backward-
+compatible `hideText?: boolean` prop to `DayStatusIndicator` (default `false`, every other caller
+unaffected) that suppresses ONLY the component's own text node — `label=""` does NOT work, since `text =
+label || STATUS_LABEL[status]` falls back to "Time off" for an empty string BY DESIGN (a pre-existing guard
+against an icon-only silent render). `TimeOffCard.tsx` now renders `<DayStatusIndicator status="time-off"
+hideText />` beside its own `<h2 className="font-chrome text-heading font-medium text-foreground">` —
+correct colour, size, and family, with the Diamond icon still routed through the one sanctioned owner. The
+disconnected card's `<h2>` gained `font-chrome`; the time-off eyebrow switched from `text-eyebrow uppercase`
+(11px, all-caps) to `font-chrome text-label text-faint` (12px/500, sentence case), matching `:561`. This is
+the SECOND additive widening of `DayStatusIndicatorProps` (the first being `size`, D-7.7-30) — the frozen-
+contract comment (D-7.6-3) already anticipates exactly this shape of amendment.
+
+**Finding 18 — the `setTimeout(0)` alert delay is calibrated to jsdom.** **FIX.** Bumped to 100 ms (a named
+`MOUNT_DELAY_MS` constant) and the comment corrected to say the macrotask is chosen for TEST
+OBSERVABILITY, not deferral semantics. `WriteErrorBanner.test.tsx`'s seven `setTimeout(r, 0)` waits were
+updated to `setTimeout(r, 100)` in the same change (they would otherwise all have gone RED — genuinely,
+since 0 ms is no longer enough real time for the state flip to have occurred by the time the assertion
+runs).
+
+**Finding 19 — `ResumeCard.tsx` undisclosed edit; false "UNCHANGED" claims; wrong File List counts.**
+**FIX — reverted `ResumeCard.tsx` to byte-identical with baseline `8332eb3`** (confirmed via `diff`), rather
+than keeping the churn and correcting three claims — the simpler of the two options the finding offered,
+and it costs nothing (the file genuinely needed no story-related change; `ResumeCard.test.tsx`'s new
+D-7.9-28 pin is unaffected, it lives in the test file). This reintroduces ResumeCard.tsx's one pre-existing
+`import/order` warning (measured: lint goes from 11→12 warnings, 8→9 files — see Gate figures). The Context
+table (line 31) and Dev Notes (line 949-ish) "UNCHANGED"/"unmodified" claims are now TRUE again rather than
+needing correction. File List header counts corrected below.
+
+**Finding 20 —**
+**(a) `TimeOffCard`'s new red surface: FIX, per D-7.9-18(b).** Legitimate (a refused DELETE is a refused
+write), but the token was wrong. Switched `text-state-danger` → `text-error-ink` (7.60:1 on `bg-surface`
+white, clears AA) on the same `role="alert"` element, matching `WriteErrorBanner`'s canonical pair. A new
+test asserts the class directly.
+**(b) Missing `tabular`: FIX**, applied directly on the EXISTING element that already wraps each numeric/key
+run (`OfflineBanner.tsx`'s headline `<p>`, `WriteErrorBanner.tsx`'s detail `<p>`, `TimeOffCard.tsx`'s
+explanation `<p>`) rather than via a new wrapping `<span>` — a nested span around just the numeric portion
+would give several existing `getByText(/regex/)` assertions in this story's own test suites a SECOND
+element with matching `textContent`, breaking RTL's single-match requirement. `tabular` is safe to apply to
+an entire paragraph containing non-numeric prose too (it only affects digit rendering).
+
+**Finding 21 — `survivingIds` named the opposite of what it holds.** **FIX.** Renamed to `removedIds`
+throughout the rewritten `TimeOffCard.tsx`.
+
+**Finding 22 — `TodayView.tsx:218`'s bare `×` glyph.** **DEFER**, exactly as the finding itself recommended
+("record it with a named owner rather than fixing it here") — `TodayView.tsx` is a frozen path for this
+story. Recorded in `deferred-work.md` under "code review of story-7.9" with a named owner (the next story
+that opens `TodayView.tsx` for its own reasons) and the reason the existing `BANNED_GLYPHS` guard doesn't
+already catch it (scoped to "the manager surface").
+
+**Finding 23 — stale comment after the icon migration.** **FIX.** `PtoQuickAction.tsx:166`'s comment
+updated to reference the `Check` icon instead of the retired `'✓'` glyph, and cites D-7.9-30/Finding 23 for
+provenance.
+
+**Finding 24 — two doc miscounts.** **FIX.** (a) folded into Finding 16's fix — the design-source citation
+now correctly says "3 skeleton lines", matching the restored shape. (b) folded into Finding 8's fix —
+`ManagerMatrix.tsx` is now in `progress-width.grep.test.ts`'s `CALL_SITES` and its own import is asserted.
+
+### The 9 GREEN mutations
+
+All closed, cross-referenced to the findings above: the D-7.3-9 self-comparison (Finding 7); banner DOM
+order untested (Finding 12); no App-level render of the time-off body (Finding 12); AC1's App wiring
+unpinned (Finding 13); `UNDO_WINDOW_MS` composition mocked away (Finding 14a, closed by a static grep guard
+rather than a runtime `importActual`, which risked pulling in `@wxt-dev/storage`'s jsdom-hostile transitive
+import a second time); in-window notice count unasserted (Finding 14b); `TimeOffCard.test.tsx:80`'s false
+title (Finding 14c, retitled).
+
+### The `eslint --fix` churn
+
+**Kept, with the story's claims corrected by reverting the one file that shouldn't have been touched.**
+The 29 genuine `import/order` fixes across `QuickLogForm.tsx`/`PtoQuickAction.tsx`/`TicketPicker.tsx` (the
+three files D-7.9-30 legitimately opened) stay — independently re-verified: sorted import sets differ from
+baseline only by the intended new `lucide-react` icons, exactly as the reviewer's own audit found.
+`ResumeCard.tsx` (Finding 19) reverted to baseline instead, since it had no story-related reason to be
+open. The File List's two header-count typos ("New files (18)" naming 16; "Edited files (18)" naming 21,
+true count 22) are corrected below.
+
+### Gate figures — measured after every fix above, not carried over
+
+- `pnpm compile` — clean, 0 errors.
+- `pnpm lint` — **0 errors, 12 warnings across 9 files** (the reviewer's corrected 11/8 figure, plus
+  `ResumeCard.tsx`'s 1 pre-existing warning restored by Finding 19's revert):
+  `ResumeCard.tsx`, `TicketPicker.test.tsx`, `entrypoints/fullpage/main.tsx`, `entrypoints/popup/main.tsx`,
+  `lib/canonical-manager.test.ts`, `lib/cycle-range.test.ts` (×2), `lib/cycle-range.ts`, `lib/pto.ts`,
+  `lib/storage/last-logged.test.ts`, `lib/storage/view-state.test.ts`.
+- `pnpm test` — **109 test files / 1514 passed / 1 skipped / 1 error.** Baseline (`8332eb3`) was 98/1419/1/1;
+  the Dev Agent Record's pre-finisher figure was 107/1492/1/1. Net over the Dev Agent Record's own claim:
+  **+2 files, +22 tests, +0 new errors.** The 1 error is the SAME pre-existing `ManagerView.test.tsx`
+  unhandled rejection documented in the story's own § Baseline — confirmed still the ONLY one.
+- `pnpm build` — clean; `output/chrome-mv3/` produced; popup chunk 73.21 kB (was 71.77 kB pre-finisher —
+  the increase is the two new grep-guard test files plus the fixes above; test files are not bundled, so
+  this is genuinely the production code delta).
+
+### Real-browser verification (D-7.9-16)
+
+**Verified — the disconnected-card overhang, directly.** Built the extension (`pnpm build`), served
+`output/chrome-mv3/` over a local static HTTP server, and loaded `popup.html` in a real Chromium instance
+(Playwright), with a minimal in-memory `chrome.storage.local`/`chrome.runtime` stub injected via
+`page.addInitScript` (the popup has no real extension host in this sandboxed session, so the stub is
+necessary to get past `wxt/storage`'s synchronous "must be loaded in a web extension environment" throw —
+without it the `ErrorBoundary` catches immediately and nothing renders at all). With no `chrome.storage`
+token seeded, the popup correctly resolves to the **disconnected** body — the Auth effect's `catch` block
+holds even without a real extension host — and the screenshot shows the "Connect to Jira" card **visibly
+overhanging the purple chrome gradient by the intended amount, painted cleanly ABOVE it (no clipping, no
+`z-index` glitch, no visible seam)**. This is the exact mechanism (`<main>`'s conditional `-mt-[10px]` +
+the card's own `relative z-[1]`) that also governs the offline/error-banner-absent and loading states — the
+same class, the same stacking context, applied identically.
+
+**Not verified — the banner-present (0px, flush) states.** Seeding `chrome.storage.local` with a fake
+`api-token` auth bundle and pending outbox entries got the popup past the auth gate, but
+`useWeekWorklogs`'s real `fetch` to a non-existent Jira host never settled to an error within a reasonable
+wait budget in this sandbox (TanStack Query's 3-retry exponential backoff plus the fetch/DNS timeout itself
+exceeded what was practical to wait out here), so the popup stayed on the loading skeleton and I did not
+get a screenshot of the offline/error banner's "no overhang" state. **I am not claiming to have visually
+verified that specific state** — it uses the identical `<main>`-level mechanism (simply the ABSENCE of the
+offset class, which is the easier direction to get right and is additionally covered by
+`App.popup-state.test.tsx`'s explicit `-mt-[10px]`-absent assertions and the new grep guard), but the
+reviewer's own instruction was to verify visually, not to infer from the mechanism, so I am recording the
+gap honestly rather than overstating what the screenshot shows. If a genuinely loaded, real extension
+context is available to the next person touching this area, confirming the banner-flush states directly
+would close this out completely.
 
