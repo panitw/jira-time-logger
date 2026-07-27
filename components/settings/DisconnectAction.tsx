@@ -36,7 +36,7 @@ const STRINGS = {
   failed: 'Failed. Try again.',
   dialogTitle: 'Disconnect?',
   dialogBody:
-    'This clears your credentials, every cached worklog, and every setting configured here — catch-all project, time-off subtask, work-day target, daily reminder, and approval cycle. Hours already written to Jira are untouched.',
+    'This clears your credentials, every cached worklog, and every setting configured here — catch-all project, time-off ticket, work-day target, daily reminder, and approval cycle. Hours already written to Jira are untouched.',
   cancel: 'Cancel',
   confirm: 'Disconnect',
 };

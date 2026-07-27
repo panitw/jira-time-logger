@@ -5007,3 +5007,73 @@ another orchestrator pass:
 - **The axe harness caught none of the epic's seven contrast failures.** Every one was found by hand
   computation. Two *intended* non-passes (the guest rail's 1.06:1 white-on-Jira and its 1.27:1 hairline) are
   recorded as verified-not-defects so a future reviewer does not "fix" them.
+
+---
+
+## Post-epic fixes from running the real extension
+
+*Epic 7 closed at `d4b9189`. These come from the owner loading the built extension — the class of defect
+this run repeatedly could not verify, since jsdom does no layout and no real Jira page was available.*
+
+### D-PQ-1 — The unconfigured time-off trigger opens Settings instead of sitting disabled
+**Owner decision.** Shipped in `72e1bb3`.
+
+Two reported defects, one root cause: **this state was never drawn by the Epic 7 design.** Grepping either
+design import for "not configured" returns nothing, so it kept Story 2.5's original treatment while every
+*designed* state around it was revamped — the legacy `text-neutral-500` / `text-accent` classes were the
+tell. **No story owned it**, the same gap that nearly shipped the `font-mono` violations (D-7.7-21f).
+
+1. **The helper wrapped and overlapped.** 54 characters at `text-xs` inside a `w-56` (224 px) box in a 380 px
+   popup — one line was arithmetically impossible. Being `absolute bottom-full` (so it could not grow the
+   fixed-height action bar, Story 7.2 AC4) the second line rode up into the scroll region instead.
+2. **The trigger was dead.** A disabled control beside a paragraph naming the fix is precisely the pattern
+   this epic spent eleven stories removing — D-7.2-5 replaced a placeholder with a working button on exactly
+   this reasoning, and D-7.8-18 refused to ship a button with nothing behind it.
+
+**Both dissolve by making the trigger do the thing it was explaining.** It stays enabled and opens the full
+page on Settings; the paragraph is deleted outright, so nothing remains to wrap or overlap. The hint moved
+to `title` + sr-only text, which never occupies layout. Uses `openFullPage('settings')` — **not**
+`chrome.runtime.openOptionsPage()`, which post-D-7.10-39 only redirects and so opens a duplicate tab (the
+D-7.10-35 bug class). Three RED-proved tests replace the old disabled-state test.
+
+### D-CA-1 — The catch-all picker accepts Sub-task AND Task
+**Owner decision** (asked — it contradicts a PRD functional requirement).
+
+**Verdict.** `lib/catch-all.ts` queries `issuetype IN ("Sub-task", "Task")`. A filter is deliberately
+**kept** rather than dropped, so the catch-all remains the curated shared list FR10 describes instead of
+every issue in the project.
+
+**Situation.** The owner's real catch-all project is built from **Tasks**, not Sub-tasks. The query filtered
+`issuetype = Sub-task`, so it returned **zero rows** — the time-off ticket could never be selected, and
+"Mark today as time off" was permanently unavailable. **A total, silent failure of FR11 with no error
+explaining it**; the popup simply reported "not configured" forever. This is also the true root cause behind
+D-PQ-1's report: the state was unreachable-by-design for that instance.
+
+**The code was faithful to the PRD; the PRD was wrong about the world.** FR6 called subtask-only "the
+org-wide agreement", and FR10 specified "pre-existing shared **subtasks**". A real project contradicted both.
+
+**Why widening is consistent rather than a new direction.** The owner had **already** ruled in **D-7.4-11**
+that search shows every issue type and permits logging directly to a Task/Story/Epic with an amber warning.
+The catch-all's hard filter was therefore already inconsistent with a decision made three stories later.
+
+**The accepted cost, stated plainly.** `lib/hierarchy.ts:45` filters `issuetype?.subtask === true` and Epic
+5's matrix walks subtask → parent → epic, so **hours on a Task do not enter that rollup.** For time off that
+is arguably correct — it is not epic work. For other catch-all items ("Meetings", "Support Production
+Incidents") it means those hours will not appear in an epic column either.
+
+**Consequences.**
+- **`prd.md` FR6 and FR10 are amended in place** with dated notes rather than rewritten — the prohibition
+  becomes a preference, and FR10 now reads "shared **items**".
+- **User-facing copy stops naming the issue type**: "Time-off **ticket**", "Choose a **ticket**", "catch-all
+  **items**", "N **items**". Naming it would assert something false for a Task-based project — the same
+  copy-lies-about-the-data defect D-7.6-38 and D-7.7-20 both had to correct. **Internal identifiers
+  (`ptoSubtaskKeyItem`, storage keys) are unchanged**, per SD-7's copy-only rule.
+- The JQL test asserts the **exact** string, because `toContain('Sub-task')` would still pass if `Task` were
+  dropped again — `"Sub-task"` contains `"Task"`. RED-proved by reverting the query.
+- One test's mock keyed off the old JQL literal (`issuetype=Sub-task`) and so silently stopped matching;
+  re-keyed to `search/jql`. **A mock that matches on a query string is a hidden coupling** — worth watching
+  for elsewhere.
+
+**How we'd know it was wrong.** Catch-all hours going missing from the manager matrix in a way that matters
+to approvals — that would mean the rollup consequence is not acceptable for non-time-off items, and the
+filter needs to distinguish the time-off ticket from general catch-all work.

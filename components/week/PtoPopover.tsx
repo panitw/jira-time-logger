@@ -18,7 +18,7 @@ const STRINGS = {
   halfDay: (h: number) => `Mark half-day time off (${formatHours(h)}h)`,
   addWorklog: 'Add a worklog…',
   currently: (display: string) => `Currently: ${display} logged`,
-  notConfiguredPrefix: 'Time off subtask not configured. Configure in ',
+  notConfiguredPrefix: 'Time off ticket not configured. Configure in ',
   settings: 'Settings',
   postError: 'Couldn’t mark time off — try again',
   pending: 'Pending — will retry',

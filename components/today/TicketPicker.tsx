@@ -30,8 +30,8 @@ const STRINGS = {
   cancel: 'Cancel',
   searchPrompt: 'Type a ticket key or search text',
   catchAllLabel: (projectKey: string) => `Catch-all (${projectKey})`,
-  catchAllEmpty: 'No catch-all subtasks found.',
-  catchAllError: 'Couldn’t load catch-all subtasks.',
+  catchAllEmpty: 'No catch-all items found.',
+  catchAllError: 'Couldn’t load catch-all items.',
 };
 
 const SOURCE_ORDER: HierarchySource[] = ['self', 'manager', 'skip-level'];

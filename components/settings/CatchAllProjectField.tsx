@@ -25,20 +25,26 @@ const STRINGS = {
   keyLabel: 'Catch-all project key',
   keyConsequence: 'Where meetings, standup and time off get logged.',
   checking: 'Checking…',
+  // "item", not "subtask": since D-CA-1 the catch-all accepts Sub-task AND
+  // Task, so naming the issue type here would assert something that is false
+  // for a Task-based project — the exact copy-lies-about-the-data problem
+  // D-7.6-38 and D-7.7-20 both had to correct elsewhere. The internal
+  // identifiers (`ptoSubtaskKeyItem`, storage keys) deliberately keep their
+  // names, per SD-7's copy-only rule.
   validHint: (projectName: string, count: number): string =>
-    `${projectName} — ${count} ${count === 1 ? 'subtask' : 'subtasks'}`,
-  // Finding 16: a failed subtask probe must not be presented as "0
-  // subtasks" — that reads as a fact about the project when it is really a
-  // fact about a failed request.
+    `${projectName} — ${count} ${count === 1 ? 'item' : 'items'}`,
+  // Finding 16: a failed probe must not be presented as "0 items" — that
+  // reads as a fact about the project when it is really a fact about a
+  // failed request.
   subtasksUnavailableHint: (projectName: string): string =>
-    `${projectName} — couldn't load subtasks`,
+    `${projectName} — couldn't load items`,
   invalidHint: 'No project with this key',
-  ptoLabel: 'Time-off subtask',
+  ptoLabel: 'Time-off ticket',
   ptoConsequence: 'Marking a day as time off logs a full day here.',
   ptoWaiting: 'Waiting for a valid project key',
   ptoBlocked: "Can't load — fix the key above",
-  ptoUnavailable: "Can't load — subtasks failed to load",
-  ptoPlaceholder: 'Choose a subtask',
+  ptoUnavailable: "Can't load — items failed to load",
+  ptoPlaceholder: 'Choose a ticket',
 };
 
 type Status = 'idle' | 'validating' | 'valid' | 'invalid';

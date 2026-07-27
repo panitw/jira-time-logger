@@ -41,7 +41,7 @@ function mockProject(key: string, name: string): void {
     if (path.startsWith('rest/api/3/project/')) {
       return { kind: 'not-found' };
     }
-    if (path.includes('issuetype=Sub-task')) {
+    if (path.includes('search/jql')) {
       return {
         kind: 'ok',
         value: {
@@ -68,7 +68,7 @@ describe('CatchAllProjectField', () => {
     expect(
       screen.getByText('Where meetings, standup and time off get logged.'),
     ).toBeTruthy();
-    expect(screen.getByText('Time-off subtask')).toBeTruthy();
+    expect(screen.getByText('Time-off ticket')).toBeTruthy();
     expect(screen.getByText('Marking a day as time off logs a full day here.')).toBeTruthy();
   });
 
@@ -79,7 +79,7 @@ describe('CatchAllProjectField', () => {
 
   it('a settled valid key confirms with the project name and subtask count, no red anywhere', async () => {
     const { container } = render(<CatchAllProjectField />);
-    await waitFor(() => expect(screen.getByText('KKP Non-Project — 2 subtasks')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('KKP Non-Project — 2 items')).toBeTruthy());
     expect(container.innerHTML).not.toMatch(/state-danger|status-error/);
   });
 
@@ -106,10 +106,10 @@ describe('CatchAllProjectField', () => {
 
   it('clearing the key resets the field to idle instead of showing a stale confirmation', async () => {
     render(<CatchAllProjectField />);
-    await waitFor(() => expect(screen.getByText('KKP Non-Project — 2 subtasks')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('KKP Non-Project — 2 items')).toBeTruthy());
     fireEvent.change(screen.getByDisplayValue('KNP'), { target: { value: '' } });
     await waitFor(() =>
-      expect(screen.queryByText('KKP Non-Project — 2 subtasks')).toBeNull(),
+      expect(screen.queryByText('KKP Non-Project — 2 items')).toBeNull(),
     );
     const select = screen.getByRole('combobox');
     expect(select).toBeDisabled();
@@ -118,7 +118,7 @@ describe('CatchAllProjectField', () => {
 
   it('correcting a typo back to the last-good key recovers — does not stay bricked amber (Finding 1)', async () => {
     render(<CatchAllProjectField />);
-    await waitFor(() => expect(screen.getByText('KKP Non-Project — 2 subtasks')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('KKP Non-Project — 2 items')).toBeTruthy());
 
     jiraGetMock.mockImplementation(async (path: string) => {
       if (path.startsWith('rest/api/3/project/')) return { kind: 'not-found' };
@@ -132,27 +132,27 @@ describe('CatchAllProjectField', () => {
     fireEvent.change(screen.getByDisplayValue('ZZZZ'), { target: { value: 'KNP' } });
     await flushDebounce();
 
-    await waitFor(() => expect(screen.getByText('KKP Non-Project — 2 subtasks')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('KKP Non-Project — 2 items')).toBeTruthy());
     const input = screen.getByDisplayValue('KNP');
     expect(input.className).not.toMatch(/border-amber-border|border-state-danger/);
     expect(screen.getByRole('combobox')).not.toBeDisabled();
   });
 
-  it('a failed subtask probe is not presented as "0 subtasks" (Finding 16)', async () => {
+  it('a failed item probe is not presented as "0 items" (Finding 16)', async () => {
     jiraGetMock.mockImplementation(async (path: string) => {
       if (path === 'rest/api/3/project/KNP') {
         return { kind: 'ok', value: { key: 'KNP', name: 'KKP Non-Project' } };
       }
-      if (path.includes('issuetype=Sub-task')) return { kind: 'network', cause: 'boom' };
+      if (path.includes('search/jql')) return { kind: 'network', cause: 'boom' };
       return { kind: 'not-found' };
     });
     render(<CatchAllProjectField />);
     await waitFor(() =>
-      expect(screen.getByText("KKP Non-Project — couldn't load subtasks")).toBeTruthy(),
+      expect(screen.getByText("KKP Non-Project — couldn't load items")).toBeTruthy(),
     );
     // No false COUNT anywhere — the confirmation says the probe failed, not
     // "0 subtasks" (a real, and false, fact about the project).
-    expect(screen.queryByText(/\d+ subtasks?$/)).toBeNull();
+    expect(screen.queryByText(/\d+ items?$/)).toBeNull();
     expect(screen.getByRole('combobox')).toBeDisabled();
   });
 
@@ -169,7 +169,7 @@ describe('CatchAllProjectField', () => {
       if (path === 'rest/api/3/project/FAST') {
         return Promise.resolve({ kind: 'ok', value: { key: 'FAST', name: 'Fast Project' } });
       }
-      if (path.includes('issuetype=Sub-task')) {
+      if (path.includes('search/jql')) {
         return Promise.resolve({ kind: 'ok', value: { issues: [] } });
       }
       return Promise.resolve({ kind: 'not-found' });
@@ -180,7 +180,7 @@ describe('CatchAllProjectField', () => {
     fireEvent.change(screen.getByDisplayValue('SLOW'), { target: { value: 'FAST' } });
     await flushDebounce();
 
-    await waitFor(() => expect(screen.getByText('Fast Project — 0 subtasks')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Fast Project — 0 items')).toBeTruthy());
 
     // Let the stale SLOW request resolve now — it must not clobber the
     // already-settled FAST result.
@@ -190,7 +190,7 @@ describe('CatchAllProjectField', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByText('Fast Project — 0 subtasks')).toBeTruthy();
+    expect(screen.getByText('Fast Project — 0 items')).toBeTruthy();
     expect(screen.queryByText(/Slow Project/)).toBeNull();
   });
 

@@ -185,7 +185,7 @@ describe('PtoPopover', () => {
     const half = screen.getByRole('menuitem', { name: /Mark half-day time off/ }) as HTMLButtonElement;
     expect(full.disabled).toBe(true);
     expect(half.disabled).toBe(true);
-    expect(screen.getByText(/Time off subtask not configured/)).toBeTruthy();
+    expect(screen.getByText(/Time off ticket not configured/)).toBeTruthy();
 
     // Finding 9: switches section IN PLACE — must NOT open a duplicate tab
     // via chrome.runtime.openOptionsPage().

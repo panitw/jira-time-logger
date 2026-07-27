@@ -119,9 +119,9 @@ describe('PtoQuickAction', () => {
       // The hint reaches sighted users via `title` and screen readers via
       // sr-only text — neither is a laid-out paragraph.
       expect(btn.getAttribute('title')).toBe(
-        'Choose a time-off subtask in Settings first',
+        'Choose a time-off ticket in Settings first',
       );
-      expect(btn.textContent).toContain('Choose a time-off subtask in Settings first');
+      expect(btn.textContent).toContain('Choose a time-off ticket in Settings first');
       // The regression guard: no absolutely-positioned helper, and no fixed-width
       // box for the copy to overflow. Both were the shipped defect.
       expect(container.querySelector('p.absolute')).toBeNull();

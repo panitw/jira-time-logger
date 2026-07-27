@@ -25,7 +25,7 @@ const STRINGS = {
   // Replaces the old `notConfiguredPrefix` + `settings` pair. The trigger now
   // opens Settings itself, so this is a hint on the control rather than a
   // paragraph beside it — it never occupies layout and so cannot wrap.
-  setUpHint: 'Choose a time-off subtask in Settings first',
+  setUpHint: 'Choose a time-off ticket in Settings first',
   postError: 'Couldn’t mark time off — try again',
   pending: 'Pending — will retry',
   defaultSummary: 'PTO',

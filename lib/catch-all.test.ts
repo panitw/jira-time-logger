@@ -34,16 +34,42 @@ describe('fetchCatchAllSubtasks', () => {
     }
   });
 
-  it('builds the JQL search URL using /rest/api/3/search/jql with subtask filter', async () => {
+  it('builds the JQL search URL using /rest/api/3/search/jql, accepting Sub-task AND Task', async () => {
     jiraGetMock.mockResolvedValueOnce({ kind: 'ok', value: { issues: [] } });
 
     await fetchCatchAllSubtasks('KNP');
     const calledPath = jiraGetMock.mock.calls[0]![0] as string;
     expect(calledPath).toContain('rest/api/3/search/jql?jql=');
+    // D-CA-1: `Sub-task` alone returned zero rows for a real catch-all project
+    // built from Tasks, so the time-off ticket could never be configured and
+    // "Mark today as time off" was permanently unavailable. Asserting the exact
+    // JQL, not just a substring — a `toContain('Sub-task')` would still pass if
+    // `Task` were dropped again, since "Sub-task" contains "Task".
     expect(calledPath).toContain(
-      encodeURIComponent('project = "KNP" AND issuetype = Sub-task'),
+      encodeURIComponent('project = "KNP" AND issuetype IN ("Sub-task", "Task")'),
     );
     expect(calledPath).toContain('maxResults=50');
+  });
+
+  it('returns Task-typed catch-all issues, not only Sub-tasks', async () => {
+    jiraGetMock.mockResolvedValueOnce({
+      kind: 'ok',
+      value: {
+        issues: [
+          { key: 'KNP-99', fields: { summary: 'PTO' } },
+          { key: 'KNP-12', fields: { summary: 'Meetings' } },
+        ],
+      },
+    });
+
+    const result = await fetchCatchAllSubtasks('KNP');
+    expect(result).toEqual({
+      kind: 'ok',
+      value: [
+        { key: 'KNP-99', summary: 'PTO' },
+        { key: 'KNP-12', summary: 'Meetings' },
+      ],
+    });
   });
 
   it('short-circuits to [] without an HTTP call when project key is blank', async () => {
