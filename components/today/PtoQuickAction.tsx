@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { secondsToHoursDisplay, hoursToSeconds } from '@/lib/hours';
 import { log } from '@/lib/log';
 import { sendMessage } from '@/lib/messages';
+import { openFullPage } from '@/lib/open-full-page';
 import { logFullDayPto, logHalfDayPto } from '@/lib/pto';
 import { enqueue as enqueueOutbox } from '@/lib/storage/outbox';
 import {
@@ -21,8 +22,10 @@ const STRINGS = {
   halfDay: (h: number) => `Half day (${formatHours(h)}h)`,
   fullDayAria: (h: number) => `Mark today as full-day time off (${h}h)`,
   halfDayAria: (h: number) => `Mark today as half-day time off (${formatHours(h)}h)`,
-  notConfiguredPrefix: 'Time off subtask not configured. Configure in ',
-  settings: 'Settings',
+  // Replaces the old `notConfiguredPrefix` + `settings` pair. The trigger now
+  // opens Settings itself, so this is a hint on the control rather than a
+  // paragraph beside it — it never occupies layout and so cannot wrap.
+  setUpHint: 'Choose a time-off subtask in Settings first',
   postError: 'Couldn’t mark time off — try again',
   pending: 'Pending — will retry',
   defaultSummary: 'PTO',
@@ -180,47 +183,49 @@ export function PtoQuickAction({
     setOpen((prev) => !prev);
   }, []);
 
-  function openOptions() {
-    chrome.runtime.openOptionsPage();
-  }
-
   // While settings are still loading (`undefined`), render nothing rather than
-  // flashing the disabled "not configured" state.
+  // flashing the unconfigured state.
   if (ptoKey === undefined) {
     return <div aria-hidden="true" />;
   }
 
-  // ---- Disabled state (AC #7): PTO subtask not configured (null or empty) ----
+  // ---- Unconfigured: no time-off subtask chosen yet ----
+  //
+  // This state was never drawn by the Epic 7 design (grep the round-2 import
+  // for "not configured" — nothing), so it kept Story 2.5's original
+  // treatment: a DISABLED trigger plus a `w-56` paragraph explaining why.
+  // Two defects came out of that, both found by running the real extension
+  // rather than by any test:
+  //
+  //   1. 54 characters at `text-xs` cannot fit 224px, so the helper always
+  //      wrapped to two lines; being `absolute bottom-full` (so it could not
+  //      grow the fixed-height action bar, Story 7.2 AC4) it then rode up and
+  //      collided with the body.
+  //   2. The trigger was dead. A disabled control beside a paragraph naming
+  //      the fix is exactly the pattern this epic kept removing — see D-7.2-5,
+  //      which replaced a placeholder with a working "Open settings" button,
+  //      and D-7.8-18 on not shipping buttons with nothing behind them.
+  //
+  // Both dissolve by making the trigger DO the thing it is explaining: it
+  // stays enabled and opens the full page on Settings, where the subtask is
+  // chosen. No helper paragraph, so nothing to wrap and nothing to overlap.
+  //
+  // `openFullPage` (not `chrome.runtime.openOptionsPage()`): post-D-7.10-39
+  // the options page merely redirects to `fullpage.html?section=settings`, so
+  // calling it opens a duplicate tab — the bug D-7.10-35 fixed at three other
+  // call sites. The popup has no in-place Settings section, so unlike
+  // `PtoPopover` it opens the full page rather than switching section.
   if (!ptoKey) {
     return (
-      <div className="relative inline-block">
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled
-          aria-disabled="true"
-          aria-describedby="pto-disabled-help"
-        >
-          {STRINGS.trigger}
-        </Button>
-        {/* Absolutely positioned above the trigger — a bottom action bar has a
-         * fixed height (Story 7.2 AC4); this transient helper text must never
-         * grow it. */}
-        <p
-          id="pto-disabled-help"
-          className="absolute bottom-full left-0 mb-1 w-56 text-xs text-neutral-500"
-        >
-          {STRINGS.notConfiguredPrefix}
-          <button
-            type="button"
-            onClick={openOptions}
-            className="text-accent hover:underline"
-          >
-            {STRINGS.settings}
-          </button>
-          {'.'}
-        </p>
-      </div>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => openFullPage('settings')}
+        title={STRINGS.setUpHint}
+      >
+        {STRINGS.trigger}
+        <span className="sr-only">{` — ${STRINGS.setUpHint}`}</span>
+      </Button>
     );
   }
 

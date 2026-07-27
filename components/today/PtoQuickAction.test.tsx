@@ -59,8 +59,16 @@ describe('PtoQuickAction', () => {
       kind: 'ok',
       value: { id: 'wl-2', timeSpentSeconds: 14400 },
     });
-    // @ts-expect-error minimal chrome stub
-    globalThis.chrome = { runtime: { openOptionsPage: vi.fn() } };
+    // Minimal chrome stub. Cast rather than `@ts-expect-error`: that only
+    // suppresses the line it precedes, so once `tabs` was added the error moved
+    // inside the object literal and escaped it.
+    globalThis.chrome = {
+      runtime: {
+        openOptionsPage: vi.fn(),
+        getURL: (p: string) => `chrome-extension://test/${p}`,
+      },
+      tabs: { create: vi.fn() },
+    } as unknown as typeof chrome;
   });
 
   it('renders the trigger button', async () => {
@@ -70,17 +78,55 @@ describe('PtoQuickAction', () => {
     );
   });
 
-  it('renders disabled with discoverable explanation + Settings link when PTO unset', async () => {
-    ptoKeyGetValue.mockResolvedValue(null);
-    renderWithProviders(<PtoQuickAction onLogged={vi.fn()} />);
-    await waitFor(() => {
-      const btn = screen.getByText('Mark today as time off').closest('button')!;
-      expect(btn.disabled).toBe(true);
+  // When no time-off subtask is configured the trigger stays ENABLED and opens
+  // Settings itself, rather than sitting disabled beside a paragraph naming the
+  // fix (D-7.2-5 / D-7.8-18: no dead UI). It also removes the two real-browser
+  // defects that treatment shipped with — a 54-character helper that could not
+  // fit its own 224px box, and which then overlapped the body because it was
+  // absolutely positioned to protect the fixed-height action bar.
+  describe('when no time-off subtask is configured', () => {
+    beforeEach(() => {
+      ptoKeyGetValue.mockResolvedValue(null);
     });
-    expect(screen.getByText(/Time off subtask not configured/)).toBeTruthy();
-    const settingsLink = screen.getByText('Settings');
-    fireEvent.click(settingsLink);
-    expect(chrome.runtime.openOptionsPage).toHaveBeenCalled();
+
+    it('keeps the trigger enabled — it is the route to configuring, not a dead control', async () => {
+      renderWithProviders(<PtoQuickAction onLogged={vi.fn()} />);
+      const btn = await waitFor(() =>
+        screen.getByText('Mark today as time off').closest('button')!,
+      );
+      expect(btn.disabled).toBe(false);
+      expect(btn.getAttribute('aria-disabled')).toBeNull();
+    });
+
+    it('opens the full page on Settings — not the options page, which would duplicate the tab', async () => {
+      renderWithProviders(<PtoQuickAction onLogged={vi.fn()} />);
+      const trigger = await screen.findByText('Mark today as time off');
+      fireEvent.click(trigger);
+      // `chrome.tabs.create` via openFullPage; NOT openOptionsPage, which
+      // post-D-7.10-39 only redirects to fullpage.html?section=settings and so
+      // leaves a duplicate tab behind (the D-7.10-35 bug class).
+      expect(chrome.tabs.create).toHaveBeenCalledWith({
+        url: 'chrome-extension://test/fullpage.html?section=settings',
+      });
+      expect(chrome.runtime.openOptionsPage).not.toHaveBeenCalled();
+    });
+
+    it('explains itself without occupying layout, so nothing can wrap or overlap', async () => {
+      const { container } = renderWithProviders(<PtoQuickAction onLogged={vi.fn()} />);
+      const btn = await waitFor(() =>
+        screen.getByText('Mark today as time off').closest('button')!,
+      );
+      // The hint reaches sighted users via `title` and screen readers via
+      // sr-only text — neither is a laid-out paragraph.
+      expect(btn.getAttribute('title')).toBe(
+        'Choose a time-off subtask in Settings first',
+      );
+      expect(btn.textContent).toContain('Choose a time-off subtask in Settings first');
+      // The regression guard: no absolutely-positioned helper, and no fixed-width
+      // box for the copy to overflow. Both were the shipped defect.
+      expect(container.querySelector('p.absolute')).toBeNull();
+      expect(container.querySelector('.w-56')).toBeNull();
+    });
   });
 
   it('opens a popover with Full/Half buttons showing correct hours', async () => {
