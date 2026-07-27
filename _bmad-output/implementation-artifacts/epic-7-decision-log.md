@@ -4950,3 +4950,60 @@ fold-in — documentation only.
 - **D-7.11-46 — Escape during an in-flight submit: closes the Story 3.3 deferred item.** A one-line gate
   on the existing `inflight` flag (`if (inflight) return;`) stops Escape from re-rendering the banner and
   dropping the success confirmation mid-write. Endorsed, D-7.11-31c.
+
+---
+
+## Epic 7 closed — 2026-07-27
+
+**All eleven stories delivered.** `epic-7: done` in `sprint-status.yaml`. Final state: **120 test files /
+1699 passed**, `pnpm compile` / `lint` / `build` clean, with the one known pre-existing
+`ManagerView.test.tsx` unhandled rejection unchanged from the very first baseline. Tests grew **961 → 1699**
+across the epic.
+
+**Commits:** `36b5602` (7.1 + plan) · `53e6e44` (7.2) · `dfccf5a` (7.3) · `2d1c30f` (7.4) · `40de36d` (7.5) ·
+`bbe0645` (7.6) · `162b010` (7.7) · `8332eb3` (7.8) · `84eb41f` + `b434c81` (7.9) · `f7740bc` (7.10) ·
+`9ad1029` (7.11). Fourteen commits ahead of `origin/main`, **never pushed** — and Epic 6.3's in-flight CRX
+work sat uncommitted in the tree throughout without once being staged (SD-5 held for the whole run).
+
+### Two gates that are NOT green — do not let a summary imply otherwise
+
+1. **`docs/a11y-audit-2026-06-27.md` is PENDING HUMAN VERIFICATION.** Items 2–5 are verified, but the
+   **colour-blindness simulation (row 12)** cannot be discharged by any automated check. Epic 7 is complete
+   as *delivery*; it is not certified as accessible until a human runs that simulation.
+2. **`DESIGN.md`'s `icons:` block still lacks `close: X`** (D-7.11-31a) — assigned to the DESIGN.md owner,
+   correctly left open.
+
+### The deferred-work ownership problem, stated plainly
+
+`deferred-work.md` now carries several items whose owner reads *"the next story that touches X."* **Epic 7
+was the last epic with stories queued, so for most of them there is no next story.** That is precisely the
+mechanism that nearly shipped the `font-mono` violations (D-7.7-21f): every story that could have fixed them
+had already shipped, and nothing pointed at them. These need real owners assigned by the product owner, not
+another orchestrator pass:
+
+- **Per-issue `/worklog` pagination** and **`fetchCurrentUserWeekWorklogs`** — the two sibling caps
+  `D-7.8-20` deliberately did not close. Until paged, week-grid and badge totals can silently undercount.
+  **This is the highest-value item on the list.**
+- **`--color-status-clean` == `--color-state-success`** (same hex) — the trap that produced Story 7.6's
+  1.00:1 invisible-text blocker. No target story identified.
+- **`lib/manager-resolution.ts`'s skip-level conflation** — shared with the approval path.
+- `TodayView.tsx:218`'s bare `×`; the `no-monospace` CSS-scan gap; `SectionTabs` focus order; a Settings
+  `aria-live` follow-up.
+
+### What this run should teach the next one
+
+- **A green suite proved nothing five times.** Every blocker that reached review — hours posting to the
+  wrong subtask, a double-DELETE, an audit record naming the report as approver, a self-bricking field,
+  five controls with no accessible name — was found by *mutation*, never by the suite that was passing.
+- **Guards drift out of scope in both directions.** Story 7.3's `shadow-lift` guard was repo-wide where its
+  AC said "in the popup", silently degrading Settings; the banner glyph guard was manager-only, so three
+  text glyphs survived on the Jira rail. Same defect, opposite signs.
+- **Retargeted coverage is removed coverage.** Story 7.10 lost 100% of its Settings axe scan that way, and
+  that is exactly how the accessible-name blocker shipped.
+- **Over-specified instructions produced worse code than the goal would have.** "Reuse the existing chrome
+  tone" would have shipped a second AA failure; "exactly one appended condition" forced the offset onto the
+  wrong axis. Both times, the agent that *checked* rather than complied got the better answer — and both
+  corrections are recorded above rather than quietly fixed.
+- **The axe harness caught none of the epic's seven contrast failures.** Every one was found by hand
+  computation. Two *intended* non-passes (the guest rail's 1.06:1 white-on-Jira and its 1.27:1 hairline) are
+  recorded as verified-not-defects so a future reviewer does not "fix" them.

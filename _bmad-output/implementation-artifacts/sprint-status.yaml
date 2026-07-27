@@ -680,7 +680,11 @@ development_status:
   # Epic 7: UX/UI Revamp — KKP Design System
   # Specs: _bmad-output/planning-artifacts/ux-designs/ux-jira-time-logger-2026-07-25/
   #        DESIGN.md (visual identity) + EXPERIENCE.md (IA, states, flows) — both win over the mockup.
-  epic-7: in-progress
+  # 2026-07-27: epic-7 → done. All 11 stories delivered (7-1 … 7-11), 1699 tests passing.
+  # DELIVERY is complete; the docs/a11y-audit-2026-06-27.md gate is NOT fully green —
+  # its colour-blindness simulation (row 12) is PENDING HUMAN VERIFICATION and no
+  # automated check can stand in for it. See D-7.11-34 in epic-7-decision-log.md.
+  epic-7: done
   # 7-1 landed during the /bmad-ux run itself (tokens + fonts in styles/globals.css and
   # public/fonts/). No story file exists for it — verified by compile + build + full test suite.
   7-1-design-token-foundation-bundled-fonts: done
