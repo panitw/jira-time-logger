@@ -682,6 +682,41 @@ describe('AC11 — no manager-surface STRINGS value contains a banned text glyph
   });
 });
 
+// ---------------------------------------------------------------------------
+// Story 7.11 (TT6): three text glyphs on the guest rail (`●` banner-dom.ts:84,
+// `✕` :114, `✓` :38 — Story 3.3-era) survived AC9's own "never a text glyph"
+// rule because the guard above is scoped to the manager surface ONLY. Widened
+// here to cover the banner surface too — the gap CLOSES rather than moves.
+// Unlike the manager check, this scans the WHOLE banner file source (not
+// just a `STRINGS` block): the banner's glyphs were never confined to one —
+// `lib/banner-dom.ts`'s mark/dismiss glyphs and `entrypoints/content.ts`'s
+// old `STRINGS.check` were three separate call sites, not one object. `↗`
+// and `⏎` are added to the banned set for "Open extension ↗" and "⏎ to log
+// · esc to close", both now hand-inlined lucide icons, never text.
+// ---------------------------------------------------------------------------
+
+describe('Story 7.11 (TT6) — no guest-rail source file contains a banned text glyph anywhere (whole file, not just a STRINGS block)', () => {
+  const BANNER_BANNED_GLYPHS = ['⚠', '✓', '✕', '⚑', '●', '▾', '▴', '→', '↗', '◆', '◔', '⏎'];
+  const BANNER_SURFACE_FILES = [
+    'lib/banner-styles.ts',
+    'lib/banner-dom.ts',
+    'lib/banner-icons.ts',
+    'lib/banner-interactions.ts',
+    'entrypoints/content.ts',
+  ];
+
+  it('no banner source file contains any of ⚠ ✓ ✕ ⚑ ● ▾ ▴ → ↗ ◆ ◔ ⏎', () => {
+    const violations: string[] = [];
+    for (const rel of BANNER_SURFACE_FILES) {
+      const source = stripCommentLines(readFileSync(path.join(ROOT, rel), 'utf-8'));
+      for (const glyph of BANNER_BANNED_GLYPHS) {
+        if (source.includes(glyph)) violations.push(`${rel}: "${glyph}"`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+});
+
 describe('AC6 — internal identifiers survive the rename unchanged (copy-only)', () => {
   it('ptoSubtaskKeyItem / ptoSubtaskSummaryItem still exist in lib/storage/settings.ts', () => {
     const source = readFileSync(

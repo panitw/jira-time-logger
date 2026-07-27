@@ -90,8 +90,7 @@
 - Half-day PTO button lacks the spinner/✓ in-flight feedback the Full-day button shows (both are disabled during the post, so no correctness impact). [components/today/PtoQuickAction.tsx:236]
 ## Deferred from: code review of story-3.3 (2026-06-27)
 
-- SW cold-start can yield no banner on the first Jira page load until the next navigation. Graceful (never crashes), AC #8 permits "no banner", recovery is navigation-gated; a content-side retry is out of scope. [entrypoints/content.ts]
-- Pressing Escape (or an SPA re-render) during an in-flight submit re-renders the banner and drops the ✓ confirmation, though the worklog still posts. Minor UX only; the in-flight guard prevents the double-post hazard and the write is durable. [entrypoints/content.ts:248-250]
+- SW cold-start can yield no banner on the first Jira page load until the next navigation. Graceful (never crashes), AC #8/#11 permits "no banner", recovery is navigation-gated; a content-side retry is out of scope. **RE-DEFERRED by Story 7.11 (D-7.11-31c/E-4, orchestrator-endorsed): this is a service-worker LIFECYCLE defect, not a design defect — nothing in Story 7.11's AC1-AC12 touches it, and fixing it means a retry/backoff in the content script or SW warm-up, a behaviour change with its own test surface. Owner: the next Phase-2 reliability story that touches SW wake/cold-start timing** (no such story exists yet at the time of Story 7.11 — flag it the moment one is created rather than leaving this unowned indefinitely). [entrypoints/content.ts]
 
 ## Deferred from: code review of story-4.4 (2026-06-27)
 

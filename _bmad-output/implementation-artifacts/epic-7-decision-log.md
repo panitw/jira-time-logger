@@ -4699,3 +4699,254 @@ range's upper bound as `D-7.10-19`; only 13 creator decisions were ever recorded
 - **D-7.10-49 — Fact-row metrics follow the design source (`11px 16px`), not `DESIGN.md:145-147`'s
   `list-row`.** The spine's `list-row` describes popup/data lists; the spines are silent on settings row
   metrics, so SD-6 governs. Recorded so it is not read as drift.
+
+---
+
+## Story 7.11 — Inline Jira Banner: the Guest Rail (final story of Epic 7)
+
+*Story file `7-11-inline-jira-banner-guest-rail.md`, `ready-for-dev`, baseline `f7740bc`. Creator decisions
+`D-7.11-1 … D-7.11-12` fold in at finisher stage per D-7.3-11; rulings start at **D-7.11-30**.*
+
+**The story's central tension dissolved on evidence rather than needing a ruling** — worth recording, because
+the orchestrator briefed it as a likely blocker and it was not one:
+- **lucide.** The "18 px purple mark" **was never an icon**. `DESIGN.md:213` specifies it literally as an
+  `18px rounded-5px legacy-purple square with a 5px white dot`, drawn as two nested styled spans
+  (`round2:54, 99, 150`). For genuine icons, `DESIGN.md:222-224` carries an **explicit CSP exception**
+  authorising hand-inlined lucide paths copied at build time from the installed `lucide-react` — so AC1's
+  no-external-request rule holds.
+- **Fonts.** `{typography.guest}` resolves at `DESIGN.md:104-109` to
+  `system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`. The **shipped `SYSTEM_FONT`
+  (`banner-styles.ts:38-39`) is wrong** — it omits `system-ui` and adds `BlinkMacSystemFont`/`Helvetica`/
+  `Arial`. `tabular-nums` is applied **nowhere** today.
+- **Tokens. Raw hex is CORRECT here**, and D-7.3-14 / D-7.7-15 do **not** apply: they presuppose a reachable
+  token, and `globals.css` is never injected into Jira's page, so `var(--color-…)` resolves to nothing.
+  Discipline is preserved by one file owning the literals plus a test pinning each to its `DESIGN.md` value.
+  **A reviewer must not file this as a violation.**
+
+**Also caught:** the `sprint-status.yaml` key was a **stale pre-round-2 slug**
+(`7-11-inline-jira-banner-reconciliation`) while `epics.md:2078` had been retitled — renamed with the audit
+trail preserved. And **three text glyphs violate AC9** (`●` `banner-dom.ts:84`, `✕` `:114`, `✓` `:38`); they
+survived because `day-status-vocabulary.grep.test.ts`'s `BANNED_GLYPHS` is **scoped to the manager surface
+only** (`:659`). That is the third over- or under-scoped guard this epic has surfaced, after D-7.6-43's
+file-level allowlist and 7.10's repo-wide `shadow-lift` guard.
+
+### D-7.11-30 — The rail pushes Jira's page down, with strict save/restore
+**Owner decision** (asked — it mutates a page we do not own).
+
+**Verdict.** Implement AC5. Read any **existing** `body` `padding-top`, add the rail's height, and **restore
+the exact prior value** on teardown, on dismiss, and on SPA navigation. Nothing of Jira's is permanently
+altered.
+
+**Situation.** The creator grep-verified that no `body padding-top` exists today across all four banner
+files: the shipped banner is a `position:fixed` **overlay** that covers part of Jira's header. So AC5 is
+**new behaviour, not a restyle** — the one place in this story where that is true.
+
+**In simple terms.** Right now the rail sits on top of Jira's own header like a sticky note, hiding whatever
+is beneath it. AC5 wants the page to shuffle down instead, so nothing is hidden. Doing that means reaching
+into Jira's page and changing its layout — which is fine while we are there, and must leave no trace when we
+leave.
+
+**Options considered and the risk being accepted.** *Keep the overlay and drop AC5* — zero risk, but ships
+the covering behaviour the AC exists to prevent. *Detect at runtime and push only when it works* — adapts to
+Jira, but two code paths and a heuristic against a page we do not control, untestable here. The owner chose
+to implement, accepting a real risk the creator named honestly: **if Jira's own header is also `fixed`, body
+padding will not move it, so the rail may still overlap and the push will not have solved the problem it
+exists to solve.**
+
+**Consequences.** Save the **prior computed value** (including "unset") before writing, and restore it on
+**every** exit path — teardown, dismiss, SPA re-injection, and error paths. Never assume the prior value was
+empty. Re-entrancy matters: SPA navigation can re-inject the rail while a previous instance is unwinding, so
+adding twice or restoring a value we ourselves wrote must be impossible. A test must prove the exact prior
+value is restored, including the case where Jira had set one. Because **no real Jira page is available in
+this environment**, the geometric outcome is **unverifiable here** — the story must say so plainly rather
+than assert it.
+
+**How we'd know it was wrong.** Jira content still hidden behind the rail (its header is fixed too — the
+push does not help and the overlay question reopens), or Jira's layout left shifted after the rail is
+dismissed (a restore path was missed).
+
+### D-7.11-31 — The remaining four escalations
+**Orchestrator decisions** (routine).
+
+**(a) E-1 — use lucide `X` for dismiss, and add `close: X` to the icon map.** `DESIGN.md`'s map genuinely has
+no dismiss key, and the two nearest are wrong by meaning: `CircleX` denotes **failure** and `Trash2` denotes
+**delete** — a dismiss is neither. *Action for the DESIGN.md owner:* record `close: X`.
+
+**(b) E-2 — use 28 px, NOT the source's 30 px.** *This overrules the creator's recommendation.* The standing
+rule is that the spines win over the mockups, and here the spine is **not silent**: `DESIGN.md:215` says 28
+px and `epics.md` AC4 says 28 px. Two authoritative sources against one mockup value (`round2:112,115`).
+SD-6's "the source supplies the literal answer" applies where the spines are silent or ambiguous — that is
+not this case. *Action for the design owner:* reconcile `round2` to 28 px.
+
+**(c) E-4 — both deferred-item decisions endorsed.** **Escape-during-in-flight closes here** — AC12 names
+that confirmation and the fix is a one-line gate on the existing `inflight` flag. **SW cold-start is
+re-deferred with a named owner** — it is an SW-lifecycle concern rather than a design one, and AC11
+explicitly blesses "no rail" as an outcome.
+
+**(d) E-5 — the red-survivor correction IS in scope.** D-7.3-16 deferred it explicitly *"until a future story
+reconciles them"*, and this is that story — the last one that owns this surface, so deferring again means
+nobody picks it up (the `font-mono` lesson, D-7.7-21f). The creator also corrected the **Story 7.6 audit
+itself**: `banner-dom.ts:154` is right, but `banner-styles.ts:154` is **stale** — the red is at `:157`.
+Substantively, one `errorTextStyle` span is fed **three** strings, and two of them (`parseError`,
+`overLimitError`) are **client-side validation that never reached Jira** — so they are not refused writes
+and must not be red. Apply the same fix D-7.9-18(b) and D-7.10-34 already applied twice: `#dc2626` →
+`error-ink` `#991B1B`, and parse errors to **amber**. The design independently confirms this — its
+format-error is amber (`#EDD3A6` / `#7A3E06`, `round2:1327-1328`).
+
+**(e) Endorsed as recorded.** The two hand-computed non-passes are **correct by design and must not be
+"fixed"**: the white rail on Jira's `#F7F8F9` at **1.06:1** and the hairline at **1.27:1**. `DESIGN.md:500-502`
+*requires* the rail to read as distinct **"without a saturated pixel"**, and WCAG 1.4.11 governs boundaries
+that are the **only** means of identifying a control — which these are not. Darkening the border to chase a
+ratio would break the design's central intent. All thirteen interactive pairs pass: spine 7.11:1, amber ink
+8.46:1, red ink 8.27:1, primary 7.54:1.
+
+Also endorsed: the "Open extension" fork the ACs omit — a **ghost** button on a ticket page (`round2:60`) and
+an **outline** button everywhere else (`:106`). And `banner-styles.test.ts`'s **nine near-tautological
+assertions** (including `'error text is a danger-ish color string'`) are to be **replaced, not extended** —
+this epic's fifteenth toothless-test finding.
+
+### D-7.11-32 — The remaining `content.ts` orchestration is extracted now, not deferred
+**Owner decision** (asked — a scope-vs-defer trade-off on the epic's last story, where deferral has no
+successor to inherit it).
+
+**Verdict.** Continue the pattern already proven in this story: move the submit / error / dismiss
+orchestration out of `entrypoints/content.ts` into testable modules, leaving `content.ts` a **thin wiring
+shell**. All nine unprotected behaviours gain real tests.
+
+**Situation.** The follow-up review ran **18 mutations: 9 red, 9 GREEN** — and the survivors are not
+scattered. **Every one is in `entrypoints/content.ts`**, the single file vitest cannot import
+(`defineContentScript` is a WXT build-time global). That is one structural hole, not nine coincidences.
+
+What is currently unprotected — each of these can be deleted with **all 1677 tests still passing**:
+1. `pageShift.push(RAIL_HEIGHT)` (`:217`) — AC5's page-push never happening at all.
+2. `pageShift.restore()` on the animated removal path (`:153`) — and **dismiss, teardown, caught-up/
+   disconnect and SPA re-injection all funnel through it**, so Jira is left permanently shifted.
+3. `shouldReevaluateOnEscape(inflight)` (`:376`) — the Escape/in-flight gate D-7.11-31c just closed.
+4. `if (inflight) return;` (`:321`) — **the double-post guard on a non-idempotent worklog write.**
+5. The `pending` branch's 600 ms slide-away (`:351`) — AC12 names `ok` **and** `pending`.
+6. `cancelPendingRemoval()` (`:208`) — the removal-cancel guard.
+7. `showError(STRINGS.parseError, 'amber')` → `'red'` (`:326`) — **the exact D-7.11-6 regression this story
+   exists to fix.** The style *objects* are pinned; the *routing* is not.
+8. Dismiss ordering inverted (`:240`) — the race the code's own comment claims to prevent.
+9. `scheduleReeval` made a permanent no-op (`:428`) — SPA re-injection.
+
+**In simple terms.** The tests check that the paint is the right colour but never that anyone picks up the
+brush. Two of these — the double-post guard and the page-restore — are the kind of thing that writes a
+duplicate worklog to Jira or leaves someone's Jira page visibly shifted after our rail is gone, and a
+future edit could remove either without a single test noticing.
+
+**Why now rather than deferred.** This is the **last story of Epic 7**; no later story owns `content.ts`, so
+"deferred with a named owner" would point at nobody in particular. This epic has already demonstrated where
+that leads: every story that could have fixed the `font-mono` violations had shipped, and they nearly
+reached release (D-7.7-21f). The pattern also already works here — `lib/banner-interactions.ts` was verified
+**genuinely wired** into `content.ts`, not a parallel implementation, which is precisely the trap Story
+7.9's `TimeOffCard` fell into.
+
+**The accepted risk, stated plainly.** This is a real refactor at finisher stage, on a file whose behaviour
+**no test currently protects** — so the refactor itself is unguarded while it happens. Mitigation:
+**write the failing test first for each of the nine, then move the code**, so each extraction is proven by
+a test that was red beforehand. Do not move code and then write tests around whatever it now does.
+
+**Consequences.** `content.ts` ends as wiring only. Each extracted module must be **genuinely called** by
+`content.ts` — verified by reading the call site, exactly as the previous extraction was. `lib/banner-sw.ts`
+stays untouched. If any behaviour genuinely cannot be extracted, it is named individually with a reason,
+not left silent.
+
+**How we'd know it was wrong.** A regression in the banner that the new tests do not catch would mean the
+extraction moved the code without moving the behaviour under test.
+
+### D-7.11-33 — The expanded rail regains its dismiss control, and Escape moves to the host
+**Orchestrator decision** (routine — the design source answers it and the current UI makes a false promise).
+
+**Verdict.** Restore a pointer-reachable dismiss control in the **expanded** quick-log, and move the Escape
+handler from the hours `input` to the rail **host** so it fires from anywhere inside the rail.
+
+**Situation.** `banner-dom.ts:207`'s `host.replaceChildren()` wipes all three collapsed buttons, so once
+expanded the only button is `Log` — `host.querySelector('button[aria-label]')` returns `null`. Escape is
+bound at `content.ts:366` on the `input` alone: the reviewer's probe fired Escape from the input and the
+handler ran; fired it from `logBtn` after focusing that button, and it **did not**. Meanwhile the rail
+renders the hint **"⏎ to log · esc to close"** — advertising an exit that is not reachable from every
+control it appears next to.
+
+**In simple terms.** The rail tells you Escape will close it. Tab once to the Log button and Escape does
+nothing, and there is no ✕ to click either. You are left with an expanded panel and no advertised way out.
+
+**Why this is a conformance miss, not inherited behaviour.** The design source is **not silent** —
+`round2.dc.html:123` draws a dismiss `✕` *inside* the `isExpanded` block. And **this story makes it worse**:
+under D-7.11-30 the rail now holds `body padding-top`, so a stuck-expanded rail keeps **Jira's own page
+displaced** while dismiss is unreachable. Rated Major rather than Blocker only because SPA navigation
+self-heals it.
+
+**Consequences.** The dismiss control keeps an accessible name (the collapsed one uses
+`aria-label="Dismiss for today"`). Moving Escape to the host must not swallow keystrokes Jira expects —
+scope it to the rail's own subtree and do not intercept `Tab`. Tests must cover Escape from **both** the
+input and the Log button, and the presence of a reachable dismiss in the expanded state.
+
+### D-7.11-34 — Epic 7 cannot be declared verified on automated evidence alone
+**Orchestrator note**, recorded for epic close.
+
+The reviewer confirmed gate items 2–5 of `docs/a11y-audit-2026-06-27.md` are **verified**, but the audit's
+**human sign-off remains outstanding** — specifically the colour-blindness simulation (row 12), which no
+automated check can stand in for. The story reported this correctly rather than marking it green.
+
+**So epic-7 may be marked `done` on delivery, but the a11y gate is `PENDING HUMAN VERIFICATION` and must be
+reported as such to the owner** — not folded silently into a green summary. Also still open and correctly
+left so: `DESIGN.md`'s `icons:` block lacks `close: X` (D-7.11-31a, assigned to the DESIGN.md owner).
+
+## Story 7.11 — creator decisions folded (D-7.3-11 pattern)
+
+*Folded by the bmad-story-finisher pass that closed Story 7.11 (the final story of Epic 7), per D-7.3-11:
+the story-local creator decisions `D-7.11-1 … D-7.11-12` are renumbered `D-7.11-35 … D-7.11-46` here and
+become canonical, so they do not collide with this story's own orchestrator/owner rulings at
+`D-7.11-30 … D-7.11-34`. Every `D-7.11-1…12` citation in the story file and in source comments
+(`lib/banner-styles.ts`, `lib/banner-dom.ts`, `lib/banner-icons.ts`, `lib/banner-interactions.ts`,
+`entrypoints/content.ts`, `lib/banner-styles.test.ts`, `lib/banner-dom.test.ts`,
+`lib/banner-source.grep.test.ts`, `lib/banner-icons.test.ts`, `lib/banner-interactions.test.ts`,
+`lib/day-status-vocabulary.grep.test.ts`, `_bmad-output/implementation-artifacts/deferred-work.md`,
+`_bmad-output/implementation-artifacts/sprint-status.yaml`, `docs/a11y-audit-2026-06-27.md`) was repointed
+to its `D-7.11-35…46` equivalent in one mechanical pass — none left dangling. No behaviour changed by this
+fold-in — documentation only.
+
+- **D-7.11-35 — Raw hex is correct on the guest rail; D-7.3-14 / D-7.7-15 do NOT apply.** Both rulings
+  presuppose a reachable token, and `styles/globals.css` is never injected into Jira's page — `var(--color-…)`
+  would resolve to nothing. `lib/banner-styles.ts` is the single source of literal hex for this surface;
+  every literal carries a comment naming its `DESIGN.md` token, pinned by `lib/banner-source.grep.test.ts`.
+- **D-7.11-36 — The 18px mark is geometry, not an icon.** `DESIGN.md:213` specifies it literally as an
+  `18px rounded-5px legacy-purple square with a 5px white dot`; it is two nested `<span>`s with inline
+  styles, `aria-hidden`, replacing the pre-story `●` text glyph (AC9 violation).
+- **D-7.11-37 — Icon mapping table; dismiss was the one genuine gap (E-1, resolved by D-7.11-31a: lucide
+  `X`).** `ArrowUpRight` (open-external), `CircleCheck` (met), `Circle` filled (attention),
+  `CircleX` (error), `CornerDownLeft` (submit) are all mapped in `DESIGN.md`'s `icons:` block; only a
+  close/dismiss affordance had no key.
+- **D-7.11-38 — `{typography.guest}` resolves to `DESIGN.md:104-109`; the pre-story `SYSTEM_FONT` was
+  wrong.** It omitted the leading `system-ui` and appended `BlinkMacSystemFont`/`Helvetica`/`Arial`. Fixed
+  to the exact stack; `tabular-nums` applied to every figure-bearing style (previously nowhere).
+- **D-7.11-39 — `lib/banner-styles.ts` stays the single source of literals; one new module,
+  `lib/banner-icons.ts`, holds the hand-inlined lucide path data.** No `createElementNS` calls scattered
+  through `banner-dom.ts`. (A second new module, `lib/banner-interactions.ts`, was added beyond this
+  original scope for the extraction the review's Finding 1 required — see D-7.11-32.)
+- **D-7.11-40 — The red-survivor correction: `errorTextStyle` fed THREE strings, only one a refused
+  write.** `parseError`/`overLimitError` are client-side validation that never reached Jira and must be
+  amber (`#7A3E06`); `logFailedError` alone is the one legitimate red (`#991B1B`, `ERROR_INK`). `DANGER`
+  (`#dc2626`) is deleted. Applies the same `#dc2626` → `error-ink` substitution D-7.9-18(b) and D-7.10-34
+  already made twice this epic. The Story 7.6 audit's own line references had drifted
+  (`banner-styles.ts:154` is `};`, not the red — the red is at `:157`); corrected.
+- **D-7.11-41 — Of the three error strings, only the write-failure copy is re-worded** (`"Couldn't log
+  time — nothing was saved"`, since the button itself becomes "Try again"); the parse and over-limit
+  strings are byte-identical to their pre-story text. The `pending` (outbox) path stays treated as success,
+  never showing the failure copy.
+- **D-7.11-42 — AC10 ("states a number and stops") is machine-checkable: serialized collapsed-rail styles
+  must be byte-identical at `hoursMissing` 1 / 6 / 40.** A real invariant, not a class assertion — the
+  amber of D-7.11-40 is bound to a parse failure, never to `hoursMissing`, so it is not an escalation.
+- **D-7.11-43 — SD-7 ("time off", never "PTO") is clean on this surface and must stay clean.** The rail
+  never renders a Jira subtask summary, only an issue key from `currentTicketFromUrl` — Jira data rendered
+  verbatim (including a `KNP-99` time-off key). No new string may say "PTO".
+- **D-7.11-44 — Motion reuses the existing `matchMedia` guard; hover/focus are the only new axis.**
+  `prefersReducedMotion()`/`transitionFor()` are unchanged. Reduced motion does not disable hover/focus
+  feedback — those are state changes, not motion; only their *transition* is suppressed.
+- **D-7.11-45 — The expand is a content swap, not a height change.** `renderExpandedQuickLog` never writes
+  `host.style.height`; `EXPANDED_HEIGHT` is deleted; `COLLAPSED_HEIGHT` is renamed `RAIL_HEIGHT = '44px'` —
+  one height, one contract.
+- **D-7.11-46 — Escape during an in-flight submit: closes the Story 3.3 deferred item.** A one-line gate
+  on the existing `inflight` flag (`if (inflight) return;`) stops Escape from re-rendering the banner and
+  dropping the success confirmation mid-write. Endorsed, D-7.11-31c.
