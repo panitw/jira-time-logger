@@ -57,14 +57,14 @@ describe('ResumeCard', () => {
 
   it('returns null for status: "none" — no empty card, no wrapper', () => {
     const { container } = renderWithProviders(
-      <ResumeCard resume={{ status: 'none' }} onLogged={vi.fn()} />,
+      <ResumeCard resume={{ status: 'none' }} onLogged={vi.fn()} onDismiss={vi.fn()} />,
     );
     expect(container.innerHTML).toBe('');
   });
 
   it('renders a skeleton in the loading state (no spinner)', () => {
     const { container } = renderWithProviders(
-      <ResumeCard resume={{ status: 'loading' }} onLogged={vi.fn()} />,
+      <ResumeCard resume={{ status: 'loading' }} onLogged={vi.fn()} onDismiss={vi.fn()} />,
     );
     expect(container.querySelectorAll('.animate-skeleton').length).toBeGreaterThan(0);
     expect(container.querySelector('[class*="animate-spin"]')).toBeNull();
@@ -73,7 +73,7 @@ describe('ResumeCard', () => {
 
   // ---- AC1/AC2: anatomy -----------------------------------------------
   it('renders the eyebrow, recency note, ticket key, and summary as separate block nodes', () => {
-    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} />);
+    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} onDismiss={vi.fn()} />);
     expect(screen.getByText('CONTINUE LOGGING')).toBeTruthy();
     const key = screen.getByText('PROJ-1');
     const summary = screen.getByText('Fix the flaky checkout test');
@@ -88,7 +88,7 @@ describe('ResumeCard', () => {
   it('a 200-char summary keeps the key on its own node with line-clamp-2 applied', () => {
     const longSummary = 'x'.repeat(200);
     renderWithProviders(
-      <ResumeCard resume={{ ...READY, summary: longSummary }} onLogged={vi.fn()} />,
+      <ResumeCard resume={{ ...READY, summary: longSummary }} onLogged={vi.fn()} onDismiss={vi.fn()} />,
     );
     const key = screen.getByText('PROJ-1');
     const summary = screen.getByText(longSummary);
@@ -99,7 +99,7 @@ describe('ResumeCard', () => {
 
   // ---- AC3: hour entry row ------------------------------------------------
   it('pre-fills the hour input from prefillSeconds and focuses it on mount', () => {
-    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} />);
+    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} onDismiss={vi.fn()} />);
     const input = screen.getByLabelText('Hours for PROJ-1') as HTMLInputElement;
     expect(input.value).toBe('2.5');
     expect(document.activeElement).toBe(input);
@@ -108,14 +108,14 @@ describe('ResumeCard', () => {
   // ---- Finding 6: class-presence guards for requirements no behavioural
   // assertion can observe under jsdom (no layout/paint engine) ---------------
   it('the card root carries `relative z-[1]` — load-bearing against the relative chrome header (Task 3)', () => {
-    const { container } = renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} />);
+    const { container } = renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} onDismiss={vi.fn()} />);
     const root = container.firstElementChild as HTMLElement;
     expect(root.className).toContain('relative');
     expect(root.className).toContain('z-[1]');
   });
 
   it('the input wrapper carries the 1.5px primary border and focus-within ring (AC3, D-7.3-15)', () => {
-    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} />);
+    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} onDismiss={vi.fn()} />);
     const input = screen.getByLabelText('Hours for PROJ-1');
     const wrapper = input.parentElement as HTMLElement;
     expect(wrapper.className).toContain('border-[1.5px]');
@@ -124,13 +124,13 @@ describe('ResumeCard', () => {
   });
 
   it('the input carries aria-keyshortcuts="Enter" (AC3 keyboard contract)', () => {
-    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} />);
+    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} onDismiss={vi.fn()} />);
     const input = screen.getByLabelText('Hours for PROJ-1');
     expect(input.getAttribute('aria-keyshortcuts')).toBe('Enter');
   });
 
   it('the CornerDownLeft badge is aria-hidden so it is not announced as content', () => {
-    const { container } = renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} />);
+    const { container } = renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} onDismiss={vi.fn()} />);
     const svg = container.querySelector('svg');
     expect(svg).toBeTruthy();
     expect(svg!.getAttribute('aria-hidden')).toBe('true');
@@ -138,7 +138,7 @@ describe('ResumeCard', () => {
 
   it('+0.5/+1/+2 each post exactly that amount immediately, with no confirmation and without mutating the input', async () => {
     const onLogged = vi.fn();
-    renderWithProviders(<ResumeCard resume={READY} onLogged={onLogged} />);
+    renderWithProviders(<ResumeCard resume={READY} onLogged={onLogged} onDismiss={vi.fn()} />);
     const input = screen.getByLabelText('Hours for PROJ-1') as HTMLInputElement;
     const before = input.value;
 
@@ -158,7 +158,7 @@ describe('ResumeCard', () => {
   });
 
   it('+0.5 posts 1800s and +2 posts 7200s', async () => {
-    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} />);
+    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} onDismiss={vi.fn()} />);
 
     fireEvent.click(screen.getByLabelText('Log 0.5 hours to PROJ-1'));
     await waitFor(() =>
@@ -181,7 +181,7 @@ describe('ResumeCard', () => {
   // ---- AC4: Enter to log ---------------------------------------------------
   it('Enter posts the typed value, resets + selects the input, and returns focus to it', async () => {
     const onLogged = vi.fn();
-    renderWithProviders(<ResumeCard resume={READY} onLogged={onLogged} />);
+    renderWithProviders(<ResumeCard resume={READY} onLogged={onLogged} onDismiss={vi.fn()} />);
     const input = screen.getByLabelText('Hours for PROJ-1') as HTMLInputElement;
 
     fireEvent.change(input, { target: { value: '3' } });
@@ -205,13 +205,13 @@ describe('ResumeCard', () => {
   });
 
   it('the popup does not close on Enter — no <form> default-submit path exists', () => {
-    const { container } = renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} />);
+    const { container } = renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} onDismiss={vi.fn()} />);
     expect(container.querySelector('form')).toBeNull();
   });
 
   // ---- D-7.3-16: unparseable → amber, not red ------------------------------
   it('unparseable input renders amber and Enter is a no-op (does not post)', () => {
-    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} />);
+    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} onDismiss={vi.fn()} />);
     const input = screen.getByLabelText('Hours for PROJ-1');
     fireEvent.change(input, { target: { value: 'abc' } });
     const message = screen.getByText('Use formats like 2.5h, 2h 30m, or 2:30');
@@ -223,7 +223,7 @@ describe('ResumeCard', () => {
   // ---- Finding 8: invalid input is programmatically associated and
   // announced, not just visually amber -------------------------------------
   it('an invalid value sets aria-invalid and aria-describedby, and the message is role="alert" (Finding 8)', () => {
-    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} />);
+    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} onDismiss={vi.fn()} />);
     const input = screen.getByLabelText('Hours for PROJ-1');
     expect(input.getAttribute('aria-invalid')).toBeNull();
     expect(input.getAttribute('aria-describedby')).toBeNull();
@@ -238,7 +238,7 @@ describe('ResumeCard', () => {
 
   it('a refused write is described by aria-describedby but does not set aria-invalid (value itself was valid)', async () => {
     postWorklogMock.mockResolvedValueOnce({ kind: 'forbidden' });
-    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} />);
+    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} onDismiss={vi.fn()} />);
     const input = screen.getByLabelText('Hours for PROJ-1');
     fireEvent.keyDown(input, { key: 'Enter' });
     const message = await screen.findByText('Couldn’t log time — try again');
@@ -248,7 +248,7 @@ describe('ResumeCard', () => {
   });
 
   it('over-limit input (>24h) renders amber, not red', () => {
-    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} />);
+    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} onDismiss={vi.fn()} />);
     const input = screen.getByLabelText('Hours for PROJ-1');
     fireEvent.change(input, { target: { value: '25' } });
     const msg = screen.getByText(/Hours per entry/);
@@ -258,7 +258,7 @@ describe('ResumeCard', () => {
 
   it('a refused write renders red (reserved for an actual Jira refusal)', async () => {
     postWorklogMock.mockResolvedValueOnce({ kind: 'forbidden' });
-    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} />);
+    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} onDismiss={vi.fn()} />);
     const input = screen.getByLabelText('Hours for PROJ-1');
     fireEvent.keyDown(input, { key: 'Enter' });
     await waitFor(() => {
@@ -276,7 +276,7 @@ describe('ResumeCard', () => {
   // rather than silently double-announcing.
   it('D-7.9-28: a non-retryable refusal (forbidden) never enqueues to the outbox — disjoint from the banner\'s source', async () => {
     postWorklogMock.mockResolvedValueOnce({ kind: 'forbidden' });
-    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} />);
+    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} onDismiss={vi.fn()} />);
     const input = screen.getByLabelText('Hours for PROJ-1');
     fireEvent.keyDown(input, { key: 'Enter' });
     await screen.findByText('Couldn’t log time — try again');
@@ -285,7 +285,7 @@ describe('ResumeCard', () => {
 
   it('a network failure enqueues the outbox post and shows the pending chip, without stamping the record', async () => {
     postWorklogMock.mockResolvedValueOnce({ kind: 'network', cause: 'offline' });
-    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} />);
+    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} onDismiss={vi.fn()} />);
     const input = screen.getByLabelText('Hours for PROJ-1');
     fireEvent.keyDown(input, { key: 'Enter' });
     await waitFor(() => {
@@ -299,7 +299,7 @@ describe('ResumeCard', () => {
 
   // ---- D-7.4-17 (Story 7.4, Task 8): the `/` collision, both directions ------
   it('the hour input carries data-slash-passthrough="true" (D-7.4-17)', () => {
-    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} />);
+    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} onDismiss={vi.fn()} />);
     const input = screen.getByLabelText('Hours for PROJ-1');
     expect(input.getAttribute('data-slash-passthrough')).toBe('true');
   });
@@ -311,7 +311,7 @@ describe('ResumeCard', () => {
   // guard line removed) and green with it in place.
   it('does not steal focus back from search when the card resolves to "ready" after focus was already claimed elsewhere (D-7.4-17 reverse focus-steal)', () => {
     const { rerender } = renderWithProviders(
-      <ResumeCard resume={{ status: 'loading' }} onLogged={vi.fn()} />,
+      <ResumeCard resume={{ status: 'loading' }} onLogged={vi.fn()} onDismiss={vi.fn()} />,
     );
 
     // Simulate the search field (or any other surface) claiming focus while
@@ -325,7 +325,7 @@ describe('ResumeCard', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     rerender(
       <QueryClientProvider client={client}>
-        <ResumeCard resume={READY} onLogged={vi.fn()} />
+        <ResumeCard resume={READY} onLogged={vi.fn()} onDismiss={vi.fn()} />
       </QueryClientProvider>,
     );
 
@@ -339,7 +339,7 @@ describe('ResumeCard', () => {
 
   // ---- Focus latch ----------------------------------------------------------
   it('a re-render after focus has moved away does not steal it back', () => {
-    const { rerender } = renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} />);
+    const { rerender } = renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} onDismiss={vi.fn()} />);
     const input = screen.getByLabelText('Hours for PROJ-1') as HTMLInputElement;
     expect(document.activeElement).toBe(input);
 
@@ -354,7 +354,7 @@ describe('ResumeCard', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     rerender(
       <QueryClientProvider client={client}>
-        <ResumeCard resume={{ ...READY, startedAt: new Date().toISOString() }} onLogged={vi.fn()} />
+        <ResumeCard resume={{ ...READY, startedAt: new Date().toISOString() }} onLogged={vi.fn()} onDismiss={vi.fn()} />
       </QueryClientProvider>,
     );
 
@@ -375,7 +375,7 @@ describe('ResumeCard', () => {
   // Finding Resolutions for the revert/confirm/restore record).
   it('freezes the write target once the card is ready — an enrichment identity swap does not retarget an in-progress edit (D-7.3-9)', async () => {
     const onLogged = vi.fn();
-    const { rerender } = renderWithProviders(<ResumeCard resume={READY} onLogged={onLogged} />);
+    const { rerender } = renderWithProviders(<ResumeCard resume={READY} onLogged={onLogged} onDismiss={vi.fn()} />);
     const input = screen.getByLabelText('Hours for PROJ-1') as HTMLInputElement;
 
     // The user types a value against the ticket the card first presented.
@@ -396,7 +396,7 @@ describe('ResumeCard', () => {
             prefillSeconds: 7200, // 2h
             startedAt: new Date().toISOString(),
           }}
-          onLogged={onLogged}
+          onLogged={onLogged} onDismiss={vi.fn()}
         />
       </QueryClientProvider>,
     );
@@ -477,5 +477,66 @@ describe('ResumeCard', () => {
     };
     for (const root of roots) walk(root);
     expect(hits).toEqual([path.resolve(process.cwd(), 'components/today/ResumeCard.tsx')]);
+  });
+});
+
+describe('ResumeCard — close affordance', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    postWorklogMock.mockResolvedValue({
+      kind: 'ok',
+      value: { id: 'wl-1', timeSpentSeconds: 9000 },
+    });
+  });
+
+  it('exposes a close control naming the ticket it hides', () => {
+    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} onDismiss={vi.fn()} />);
+    expect(
+      screen.getByRole('button', { name: 'Hide PROJ-1 from Continue logging' }),
+    ).toBeTruthy();
+  });
+
+  it('reports the ticket key on click', () => {
+    const onDismiss = vi.fn();
+    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} onDismiss={onDismiss} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Hide PROJ-1 from Continue logging' }));
+    expect(onDismiss).toHaveBeenCalledWith('PROJ-1');
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('closing is not a write — it posts nothing and stamps no record', () => {
+    renderWithProviders(<ResumeCard resume={READY} onLogged={vi.fn()} onDismiss={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Hide PROJ-1 from Continue logging' }));
+    expect(postWorklogMock).not.toHaveBeenCalled();
+    expect(enqueueOutboxMock).not.toHaveBeenCalled();
+    expect(setLastLoggedTicketMock).not.toHaveBeenCalled();
+  });
+
+  it('reports the LATCHED key, never a key the user was not looking at (D-7.3-9)', () => {
+    // The server-wins override can retarget `resume` after first paint. The
+    // card freezes its identity; the dismissal must report that frozen key,
+    // or closing "PROJ-1" would silently hide a ticket never displayed.
+    const onDismiss = vi.fn();
+    const { rerender } = renderWithProviders(
+      <ResumeCard resume={READY} onLogged={vi.fn()} onDismiss={onDismiss} />,
+    );
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <ResumeCard
+          resume={{ ...READY, key: 'OTHER-9', summary: 'A different ticket' }}
+          onLogged={vi.fn()}
+          onDismiss={onDismiss}
+        />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Hide PROJ-1 from Continue logging' }));
+    expect(onDismiss).toHaveBeenCalledWith('PROJ-1');
+  });
+
+  it('the skeleton carries no close control — there is no key to dismiss yet', () => {
+    renderWithProviders(
+      <ResumeCard resume={{ status: 'loading' }} onLogged={vi.fn()} onDismiss={vi.fn()} />,
+    );
+    expect(screen.queryByRole('button', { name: /Hide/ })).toBeNull();
   });
 });

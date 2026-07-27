@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { format, isSameYear } from 'date-fns';
-import { CornerDownLeft, Clock } from 'lucide-react';
+import { CornerDownLeft, Clock, X } from 'lucide-react';
 import type { LoggedEntry } from '@/components/today/LoggedToday';
 import type { ResumeTicket } from '@/hooks/useResumeTicket';
 import {
@@ -31,6 +31,7 @@ import { formatStartedISO, todayDateString } from '@/lib/worklog-date';
 
 const STRINGS = {
   eyebrow: 'CONTINUE LOGGING',
+  dismissLabel: (key: string) => `Hide ${key} from Continue logging`,
   hoursLabel: (key: string) => `Hours for ${key}`,
   quickLabel: (n: number, key: string) => `Log ${n} hours to ${key}`,
   overLimitError: 'Hours per entry can’t exceed 24. Split into multiple entries if needed.',
@@ -46,6 +47,10 @@ const QUICK_AMOUNTS = [0.5, 1, 2] as const;
 type ResumeCardProps = {
   resume: ResumeTicket;
   onLogged: (entry: LoggedEntry) => void;
+  /** Close the card for this ticket key. The caller owns what "closed"
+   * means and how long it lasts (`hooks/useResumeDismissal.ts`); this card
+   * only reports the click and the key it was showing. */
+  onDismiss: (key: string) => void;
 };
 
 type ReadyTicket = Extract<ResumeTicket, { status: 'ready' }>;
@@ -96,7 +101,11 @@ export function recencyNote(startedAt: string, seconds: number, now: Date = new 
   return `last logged ${format(started, isSameYear(started, now) ? 'MMM d' : 'MMM d, yyyy')}`;
 }
 
-export function ResumeCard({ resume, onLogged }: ResumeCardProps): React.ReactElement | null {
+export function ResumeCard({
+  resume,
+  onLogged,
+  onDismiss,
+}: ResumeCardProps): React.ReactElement | null {
   const inputRef = useRef<HTMLInputElement>(null);
   const focusedRef = useRef(false);
   const seededKeyRef = useRef<string | null>(null);
@@ -286,9 +295,25 @@ export function ResumeCard({ resume, onLogged }: ResumeCardProps): React.ReactEl
     <div className="relative z-[1] flex flex-col gap-[11px] rounded-lg border border-border bg-surface p-[14px] shadow-lift">
       <div className="flex items-center justify-between gap-2">
         <span className="font-chrome text-eyebrow uppercase text-primary">{STRINGS.eyebrow}</span>
-        <span className="tabular text-[11.5px] text-faint">
-          {recencyNote(ticket.startedAt, ticket.prefillSeconds)}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="tabular text-[11.5px] text-faint">
+            {recencyNote(ticket.startedAt, ticket.prefillSeconds)}
+          </span>
+          {/* No confirm, unlike the outbox's discard: closing this destroys
+              nothing — the ticket stays searchable and any logged time is
+              already in Jira. Dismissal is keyed to `ticket.key` (the
+              LATCHED identity, so it can never report a key the user was
+              not looking at), not to whatever `resume` currently holds. */}
+          <button
+            type="button"
+            onClick={() => onDismiss(ticket.key)}
+            title={STRINGS.dismissLabel(ticket.key)}
+            aria-label={STRINGS.dismissLabel(ticket.key)}
+            className="-mr-1 shrink-0 rounded p-1 text-faint hover:text-foreground focus-visible:outline-none focus-visible:border-primary focus-visible:ring-focus"
+          >
+            <X aria-hidden="true" className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-[3px]">

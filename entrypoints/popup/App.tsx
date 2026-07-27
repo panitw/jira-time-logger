@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChromeHeader } from '@/components/shell/ChromeHeader';
 import { OfflineBanner } from '@/components/shell/OfflineBanner';
 import { PopupActionBar } from '@/components/shell/PopupActionBar';
@@ -11,7 +11,8 @@ import { TimeOffCard } from '@/components/today/TimeOffCard';
 import { TodayView } from '@/components/today/TodayView';
 import { Button } from '@/components/ui/button';
 import { useOutboxState } from '@/hooks/useOutboxState';
-import { useResumeTicket } from '@/hooks/useResumeTicket';
+import { useResumeDismissal } from '@/hooks/useResumeDismissal';
+import { useResumeTicket, type ResumeTicket } from '@/hooks/useResumeTicket';
 import { useTimeOffToday, type TimeOffWorklogRef } from '@/hooks/useTimeOffToday';
 import { useTodayTotal } from '@/hooks/useTodayTotal';
 import { log } from '@/lib/log';
@@ -348,7 +349,42 @@ export function App(): React.ReactElement {
     ...sessionTimeOffWorklogs,
   ];
 
-  const resume = useResumeTicket();
+  const rawResume = useResumeTicket();
+  // Destructured: the hook returns a fresh object literal each render, so
+  // depending on it would rebuild the callback below every time.
+  const { dismissedKey, dismiss: dismissResume } = useResumeDismissal();
+
+  // Fold dismissal into the resume status the rest of this component already
+  // branches on, rather than threading a second boolean through every one of
+  // those branches. A dismissed card is indistinguishable from "there is no
+  // resume ticket" everywhere it matters — the card does not render, the
+  // slot collapses, and `SearchPanel` takes the autofocus the hour input
+  // would have had (D-7.4-23, the `resume.status === 'none'` prop below).
+  //
+  // The 'loading' hold is the pop-in guard: until storage says WHETHER this
+  // ticket is dismissed, rendering the resolved card would show it and then
+  // snatch it away. Holding the skeleton costs the same single-digit ms
+  // `useResumeTicket`'s own storage read already costs, and keeps the card's
+  // height identical throughout (the skeleton is height-matched by design —
+  // `ResumeCard.tsx`, Finding 5).
+  const resume = useMemo<ResumeTicket>(() => {
+    if (rawResume.status !== 'ready') return rawResume;
+    if (dismissedKey === undefined) return { status: 'loading' };
+    if (dismissedKey === rawResume.key) return { status: 'none' };
+    return rawResume;
+  }, [rawResume, dismissedKey]);
+
+  // D-7.9-29's seam again: closing the card removes the element focus is
+  // sitting on, so focus must be placed deliberately or it falls to
+  // <body>. Search is where the user goes next by definition — the card
+  // they just declined was the only other producer.
+  const handleDismissResume = useCallback(
+    (key: string): void => {
+      dismissResume(key);
+      handleRequestSearchFocus();
+    },
+    [dismissResume, handleRequestSearchFocus],
+  );
 
   const connected = authState.kind === 'connected';
 
@@ -464,7 +500,11 @@ export function App(): React.ReactElement {
 
             {popupState.body === 'normal' && resume.status !== 'none' && (
               <div className="mb-3">
-                <ResumeCard resume={resume} onLogged={handleResumeLogged} />
+                <ResumeCard
+                  resume={resume}
+                  onLogged={handleResumeLogged}
+                  onDismiss={handleDismissResume}
+                />
               </div>
             )}
 
