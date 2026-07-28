@@ -13,6 +13,7 @@
     "zip": "wxt zip",
     "zip:edge": "wxt zip -b edge",
     "pack:crx": "node scripts/pack-crx.mjs",
+    "ext:id": "node scripts/derive-ext-key.mjs",
     "compile": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

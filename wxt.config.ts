@@ -8,6 +8,11 @@ export default defineConfig({
   srcDir: '.',
   outDir: 'output',
   manifest: {
+    // `key` pins the extension ID (and therefore the OAuth redirect URI) to the
+    // production signing key instead of the install path. Set it to the value
+    // printed by `pnpm ext:id` — see docs/release.md > OAuth callback URL.
+    // Until it is set, unpacked builds get a path-derived ID and OAuth fails
+    // with "redirect_uri is not registered for client".
     name: 'jira-time-logger',
     description:
       "Log Jira time daily, approve monthly. Toolbar badge, inline banner, manager matrix.",

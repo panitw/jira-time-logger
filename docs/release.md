@@ -47,6 +47,55 @@ For each artifact the script prints the **file size**, the **extension ID**
 
 ---
 
+## OAuth callback URL & the pinned extension ID (read before first connect)
+
+`lib/oauth/flow.ts` uses `chrome.identity.getRedirectURL()`, which returns
+`https://<EXTENSION_ID>.chromiumapp.org/`. Atlassian rejects any `redirect_uri`
+not registered for the client, failing with:
+
+```
+unauthorized_client — redirect_uri is not registered for client: https://<id>.chromiumapp.org/
+```
+
+**Without a `key` field in the manifest, Chrome derives an unpacked extension's ID
+by hashing its absolute install path.** That means the ID — and the callback URL —
+changes whenever the checkout moves, the `outDir` changes, or the build is loaded
+on another machine, and it never matches the packed `.crx` or the Edge build.
+
+The fix is to set **`manifest.key`** in `wxt.config.ts` to the **public half of the
+production signing key**. The ID is then derived from the key instead of the path,
+so the unpacked dev build, the Chrome `.crx`, the Edge `.crx`, and every developer
+machine all resolve to **one** ID and **one** registered callback URL. (This also
+retires the Edge/Chrome ID-divergence risk recorded in
+`docs/edge-validation-2026-06-27.md` risk #2.)
+
+### Steps
+
+1. Provision the production signing key into the vault — **HUMAN**, see
+   [AC10](#ac10--provision-the-real-production-signing-key-into-the-team-vault-pending-human).
+2. With the key on disk, print the identity triple:
+   ```
+   CRX_SIGNING_KEY=/absolute/path/to/jira-time-logger.pem pnpm ext:id
+   ```
+   It reports the **manifest `key`**, the **extension ID**, the **callback URL** to
+   register, and a **pin status** telling you whether `wxt.config.ts` currently
+   pins that exact key (`OK` / `STALE` / `MISSING`).
+3. Paste the printed `key` value into `manifest.key` in `wxt.config.ts` and commit
+   it. The `key` is the **public** half — safe to commit to this repo. The `.pem`
+   is not, and stays in the vault.
+4. Register the printed callback URL at
+   [developer.atlassian.com/console](https://developer.atlassian.com/console) →
+   the app for client ID in `lib/env.ts` → **Authorization** → OAuth 2.0 (3LO) →
+   **Configure** → **Callback URL**. The **trailing slash is required** — Atlassian
+   matches exactly.
+5. `pnpm build`, reload the unpacked extension, and re-run `pnpm ext:id` to confirm
+   the pin status reads `OK`.
+
+> Because the ID follows the key, **never rotating the key** (see below) is also
+> what keeps the registered callback URL valid for the life of the extension.
+
+---
+
 ## The signing key & the vault (why this matters)
 
 Chrome/Edge derive the **extension ID from the packing public key**. Reusing the

@@ -16,16 +16,16 @@
 //   CHROME_PATH=/path/to/chrome pnpm pack:crx   (if Chrome is not auto-located)
 
 import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, renameSync, statSync, rmSync } from 'node:fs';
 import { platform } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, resolve } from 'node:path';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const projectRoot = resolve(__dirname, '..');
-
-const DEFAULT_KEY_PATH = join(projectRoot, 'keys', 'jira-time-logger.pem');
+import {
+  projectRoot,
+  resolveSigningKeyPath,
+  publicKeyDerFromPem,
+  deriveExtensionId,
+} from './lib/ext-id.mjs';
 
 /** Print an error and exit non-zero. */
 function fail(message) {
@@ -45,40 +45,14 @@ function readPackageMeta() {
 }
 
 /**
- * Resolve the signing key path from CRX_SIGNING_KEY env or the gitignored
- * default. Fail fast (before any build/pack) if missing, unreadable, or empty.
+ * Resolve the signing key path (shared logic in scripts/lib/ext-id.mjs) and fail
+ * fast — before any build/pack — if missing, unreadable, or empty.
  * Never logs key contents.
  */
 function resolveSigningKey() {
-  const keyPath = process.env.CRX_SIGNING_KEY
-    ? resolve(process.env.CRX_SIGNING_KEY)
-    : DEFAULT_KEY_PATH;
-
-  if (!existsSync(keyPath)) {
-    fail(
-      `Signing key not found at ${keyPath}. Retrieve from the team vault before ` +
-        `packaging — see docs/release.md. (Set CRX_SIGNING_KEY to override the path.)`
-    );
-  }
-
-  let contents;
-  try {
-    contents = readFileSync(keyPath, 'utf8');
-  } catch {
-    fail(
-      `Signing key at ${keyPath} is unreadable. Check permissions and retrieve a ` +
-        `valid key from the team vault — see docs/release.md.`
-    );
-  }
-
-  if (!contents || contents.trim().length === 0) {
-    fail(
-      `Signing key at ${keyPath} is empty. Retrieve a valid key from the team ` +
-        `vault before packaging — see docs/release.md.`
-    );
-  }
-
-  return keyPath;
+  const resolved = resolveSigningKeyPath();
+  if (!resolved.ok) fail(resolved.reason);
+  return resolved.keyPath;
 }
 
 /**
@@ -132,33 +106,6 @@ function build(target) {
   if (target === 'edge') args.push('-b', 'edge');
   info(`Building ${target} (wxt build${target === 'edge' ? ' -b edge' : ''})...`);
   execFileSync('npx', args, { cwd: projectRoot, stdio: 'inherit' });
-}
-
-/**
- * Derive the extension ID from a DER-encoded SPKI public key.
- * ID = first 16 bytes of SHA-256(DER public key), hex-encoded, then each
- * hex nibble 0-9a-f mapped to a-p.
- */
-function deriveExtensionId(derPublicKey) {
-  const hash = createHash('sha256').update(derPublicKey).digest();
-  const first16 = hash.subarray(0, 16);
-  let id = '';
-  for (const byte of first16) {
-    // Each byte → two hex nibbles → two mapped chars.
-    id += String.fromCharCode('a'.charCodeAt(0) + (byte >> 4));
-    id += String.fromCharCode('a'.charCodeAt(0) + (byte & 0x0f));
-  }
-  return id;
-}
-
-/** Extract the DER SPKI public key from a private key PEM using openssl. */
-function publicKeyDerFromPem(keyPath) {
-  // openssl reads the private key and emits the DER-encoded SPKI public key to stdout.
-  return execFileSync(
-    'openssl',
-    ['rsa', '-in', keyPath, '-pubout', '-outform', 'DER'],
-    { cwd: projectRoot, stdio: ['ignore', 'pipe', 'ignore'] }
-  );
 }
 
 /**
