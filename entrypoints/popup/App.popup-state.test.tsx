@@ -268,6 +268,26 @@ describe('App — AC5: disconnected renders no dead UI behind the connect card',
   });
 });
 
+describe('ResumeCard seeding is committed, not deferred (regression: CI-only flake)', () => {
+  it('the hours input is already seeded the first moment it exists — never committed holding the placeholder', async () => {
+    stubConnected();
+    renderApp();
+
+    // Deliberately NO waitFor around the value assertion. The point is that
+    // the input must never be observable holding the pre-seed placeholder:
+    // when seeding lived in a passive effect, the element was committed with
+    // '1' and corrected on a later flush, so anything typed in that window
+    // was silently overwritten by the seed. That is what made the Trap 2 test
+    // below fail on CI and only on CI — a slow machine widens the window.
+    //
+    // Asserting straight off findBy (which resolves as soon as the element is
+    // in the DOM) is what makes this a real guard: add a waitFor and it would
+    // pass against the bug too.
+    const input = (await screen.findByLabelText('Hours for PROJ-1')) as HTMLInputElement;
+    expect(input.value).toBe('2.5'); // READY_TICKET.prefillSeconds = 9000 = 2.5h
+  });
+});
+
 describe('App — D-7.9-26/14 (Trap 2): a mid-session time-off post does not flip the frozen body', () => {
   it('marking today as time off via the action bar mid-session does not swap the body — the resume card stays mounted, untouched', async () => {
     stubConnected();
