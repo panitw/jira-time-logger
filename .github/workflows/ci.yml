@@ -27,8 +27,14 @@ on:
 
 # A superseded PR push has nothing worth finishing; cancel it. Keyed by ref so
 # main and each PR queue independently.
+#
+# `github.workflow` is in the key because a reusable workflow inherits THIS
+# concurrency block, and when release.yml calls it that value becomes the
+# caller's name ("Release"). Without it, the release's verify job and the
+# standalone CI run for the same commit share one group and cancel each other —
+# observed on the first run, where CI was killed mid-flight by the release.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
