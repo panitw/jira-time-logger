@@ -1,0 +1,145 @@
+name: Release
+
+# Every commit that lands on main: bump the patch version, pack signed .crx
+# files for Chrome and Edge, and publish them as a GitHub Release.
+#
+# Two guards decide whether this runs at all, both on the `verify` job and
+# inherited by `release` via `needs:`:
+#
+#   1. Repository guard. This file is pushed to BOTH remotes, but only the
+#      private repo holds CRX_SIGNING_KEY_PEM. Without the guard, every push to
+#      the public mirror would fail this workflow on a missing secret, and a
+#      permanently red mirror trains people to ignore red. It simply does not
+#      run there.
+#   2. Skip marker. The version bump below is itself a push to main, which would
+#      retrigger this workflow and bump again, forever. The bump commit carries
+#      [skip ci] and is filtered here.
+
+on:
+  push:
+    branches: [main]
+
+# Never let two releases interleave — they would race on the version bump and
+# could publish the same tag twice. Unlike CI, an in-flight release is NOT
+# cancelled: it may already have pushed a bump or created a tag.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write # push the version bump, create the tag and the release
+
+jobs:
+  # Same gate as a PR. A commit reaching main should already be green, but "should
+  # be" is not a reason to sign and publish an unverified artifact.
+  verify:
+    if: >-
+      github.repository == 'kkpfg-kkpb/tool-jira-time-logger' &&
+      !contains(github.event.head_commit.message, '[skip ci]')
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    name: Bump, pack, publish
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Default GITHUB_TOKEN credentials are kept so the bump can be pushed
+          # back. Note this means the push is attributed to github-actions[bot].
+          persist-credentials: true
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Bump BEFORE packing: pack:crx reads the version from package.json and
+      # stamps it into both artifact filenames.
+      - name: Bump patch version
+        id: bump
+        run: |
+          npm version patch --no-git-tag-version
+          VERSION="$(node -p "require('./package.json').version")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Bumped to $VERSION"
+
+      # Written via env, not `${{ }}` interpolation into the script body, so the
+      # key cannot be shell-interpreted. Created 0600 BEFORE the write so it is
+      # never briefly world-readable. GitHub strips trailing newlines from
+      # secrets; openssl wants one back.
+      - name: Materialise signing key
+        env:
+          SIGNING_KEY_PEM: ${{ secrets.CRX_SIGNING_KEY_PEM }}
+        run: |
+          if [ -z "$SIGNING_KEY_PEM" ]; then
+            echo "::error::CRX_SIGNING_KEY_PEM is empty or unset. See docs/release.md."
+            exit 1
+          fi
+          install -m 600 /dev/null "$RUNNER_TEMP/signing.pem"
+          printf '%s\n' "$SIGNING_KEY_PEM" > "$RUNNER_TEMP/signing.pem"
+          echo "CRX_SIGNING_KEY=$RUNNER_TEMP/signing.pem" >> "$GITHUB_ENV"
+
+      # pack:crx shells out to a real Chrome binary for CRX3 packing. Installing
+      # it explicitly rather than trusting the runner image to ship one.
+      - name: Install Chrome
+        id: chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
+      # The whole point of manifest.key is that ONE key yields ONE extension id
+      # and therefore one registered OAuth callback URL. A wrong or corrupted
+      # secret would still pack successfully — just under a different id, whose
+      # only symptom is users failing to authenticate after install. ext:id
+      # compares the secret against the key pinned in wxt.config.ts; anything
+      # but OK stops the release here.
+      - name: Verify signing key matches the pinned extension id
+        run: |
+          OUT="$(pnpm ext:id)"
+          echo "$OUT"
+          # Whitespace-tolerant on purpose — the exact column the script pads to
+          # is not a contract worth breaking a release over.
+          if ! echo "$OUT" | grep -qE 'Pin status:[[:space:]]+OK'; then
+            echo "::error::Signing key does not match the key pinned in wxt.config.ts. Refusing to publish under a different extension id."
+            exit 1
+          fi
+
+      - name: Pack signed .crx (Chrome + Edge)
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+        run: pnpm pack:crx
+
+      - name: Commit and tag the version bump
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          # [skip ci] is load-bearing: without it this push retriggers the
+          # workflow and it bumps forever.
+          git commit -am "Release v$VERSION [skip ci]"
+          git tag "v$VERSION"
+          git push origin HEAD:main
+          git push origin "v$VERSION"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          gh release create "v$VERSION" \
+            "jira-time-logger-$VERSION.crx" \
+            "jira-time-logger-edge-$VERSION.crx" \
+            --title "v$VERSION" \
+            --notes "Signed sideload builds for Chrome and Edge, extension id \`npebpnfjmeehmaeekloeiicbkldggmmb\`.
+
+          Install: download the .crx and drag it onto \`chrome://extensions\` (or \`edge://extensions\`) with Developer mode enabled.
+
+          Built from ${{ github.sha }}."

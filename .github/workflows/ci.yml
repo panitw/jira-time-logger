@@ -1,0 +1,70 @@
+name: CI
+
+# Runs on every PR and every push to main. Deliberately references NO secrets,
+# so it is safe on the public mirror (panitw/jira-time-logger) as well as the
+# private repo — a fork PR can run this and gain nothing.
+#
+# Also exposed via `workflow_call` so release.yml can reuse it as its gate
+# instead of duplicating the commands. There is exactly one definition of "does
+# this build".
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+# A superseded PR push has nothing worth finishing; cancel it. Keyed by ref so
+# main and each PR queue independently.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Typecheck, lint, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # No `version:` — action-setup reads `packageManager` from package.json,
+      # so CI and local can never drift onto different pnpm majors.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # --frozen-lockfile makes a stale lockfile a build failure rather than a
+      # silent re-resolve. That matters here: pnpm-workspace.yaml pins security
+      # overrides, and a quiet re-resolve could drop them.
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm compile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
+
+      # Both targets — the Edge build has caught manifest issues the Chrome one
+      # did not, and release.yml packs both.
+      - name: Build (Chrome)
+        run: pnpm build
+
+      - name: Build (Edge)
+        run: pnpm build:edge
+
+      # Cheap regression guard for the advisory work: fails if a dependency
+      # change reintroduces a vulnerability at moderate or above. `audit --prod`
+      # is the one that would affect shipped code, so it is held to zero.
+      - name: Audit (production dependencies)
+        run: pnpm audit --prod
