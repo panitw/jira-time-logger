@@ -7,7 +7,6 @@
     "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
     "types": ["chrome", "node", "vitest/globals"],
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./*"]
     }
