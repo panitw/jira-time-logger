@@ -1330,3 +1330,27 @@ edit. Baseline reconciliation: 82 files/988 passed/1 skipped (reviewed) → 83 f
 +1 new test file (`App.session-total.test.tsx`) and +10 tests across `TicketPicker.test.tsx` (+2),
 `components/week/WeeklyGrid.test.tsx` (+1), `TodayView.test.tsx` (+4), `ChromeHeader.test.tsx` (+1),
 `App.test.tsx` (+1), `App.session-total.test.tsx` (+1, new file) — no test lost, no package regressed.
+
+---
+
+## Delivery Log
+
+> Migrated out of `sprint-status.yaml` on 2026-07-28, where the whole program's log used to
+> accumulate as YAML comments. These are the **orchestrator's** per-stage notes from the
+> `run-dev-cycle` pipeline; they overlap with — and do not replace — the story's own Change Log.
+
+### 2026-07-25 — created (ready-for-dev)
+
+Popup shell, one job / one scroll region. Includes
+ORCHESTRATOR DECISION D-7.2-1: the full-page host shell (new WXT entrypoint, Week/Manager/
+Settings routing, mounting WeekView + ManagerView UNCHANGED) ships in 7-2 because removing
+the popup Tabs orphans them. This satisfies Story 7-7's first AC; 7-7 keeps the full-page
+chrome header, week grid, cell anatomy, totals row and gap dialog.
+
+### 2026-07-26 — done
+
+Code review found 0 blockers / 3 majors / 4 minors / 3 nits; all 9 findings
+FIXED (0 dismissed, 0 deferred) by the story finisher, including giving the double-count
+guard real test teeth (verified by injecting the reviewer's exact hazard, confirming RED,
+then reverting) and restoring the time-off in-popup edit/delete correction path the review
+caught as lost. Final gates: 83 files / 998 passed / 1 skipped, build green.

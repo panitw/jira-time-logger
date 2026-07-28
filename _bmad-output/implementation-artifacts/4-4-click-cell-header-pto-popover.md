@@ -224,3 +224,15 @@ Gates after patches: `npm run test` 50 files / 617 passed / 1 skipped (was 616; 
 ### Change Log
 
 - 2026-06-27: Implemented Story 4.4 (Click Cell/Header → PTO Popover). New `PtoPopover` native day-header popover (full/half-day PTO via `lib/pto.ts` dated to the clicked day, `Add a worklog…` opening the day-scoped picker, `Currently: <Xh> logged` footer, PTO-unconfigured disabled affordance + Settings deep link, outbox-on-transient + pending chip, persistent inline error, Esc/click-outside dismissal + focus return). Wired into `WeeklyGrid` day-name headers; threaded `ptoSubtaskKey`/`targetHours` from `WeekView`. Tests: 50 files / 616 passed / 1 skipped; tsc 0 errors; eslint exit 0. Status → review.
+
+---
+
+## Delivery Log
+
+> Migrated out of `sprint-status.yaml` on 2026-07-28, where the whole program's log used to
+> accumulate as YAML comments. These are the **orchestrator's** per-stage notes from the
+> `run-dev-cycle` pipeline; they overlap with — and do not replace — the story's own Change Log.
+
+### 2026-06-27 — created (ready-for-dev)
+
+

@@ -232,3 +232,15 @@ claude-opus-4-8 (BMad dev-story workflow)
 ### Notable confirmations (no defect)
 
 Checksum self-exclusion, FIELD_SEP = U+001F, 8-hex truncation, fail-closed against all throws (JSON.parse/regex/slice), discriminatedUnion v≠1 handling, ADF single-paragraph round-trip, `Date.parse('+0000')` correctness, async awaiting, and `z.unknown()` body tolerance all verified correct.
+
+---
+
+## Delivery Log
+
+> Migrated out of `sprint-status.yaml` on 2026-07-28, where the whole program's log used to
+> accumulate as YAML comments. These are the **orchestrator's** per-stage notes from the
+> `run-dev-cycle` pipeline; they overlap with — and do not replace — the story's own Change Log.
+
+### 2026-06-27 — created (ready-for-dev)
+
+; Epic 5 → in-progress (first story of Epic 5)

@@ -1144,3 +1144,70 @@ All nine were then restored (confirmed byte-identical to the pre-mutation file v
 | 2026-07-27 | 0.1 | Story created EXPLICITLY at baseline `f7740bc` (117 files / 1567 passed / 0 skipped, one known pre-existing `ManagerView.test.tsx` rejection). FINAL story of Epic 7. 12 ACs transcribed verbatim from `epics.md:2086-2149`. Surface 4 located and read line-by-line at `round2.dc.html:38-192` (+ `bannerNotes` data block `:1310-1342`); every design value cited with a verified file:line. Central tension resolved: the 18px mark is **geometry, not an icon** (`DESIGN.md:213`), so the lucide constraint is met via hand-inlined paths per the explicit CSP exception at `DESIGN.md:222-224`; `{typography.guest}` resolves to `DESIGN.md:106` and the shipped `SYSTEM_FONT` is **wrong**; raw hex is **correct** here and D-7.3-14/D-7.7-15 do **not** apply (D-7.11-35). Found: `body padding-top` (AC5) does **not exist** today — new behaviour (E-3); three text glyphs `●`/`✕`/`✓` violate AC9; the 7.6 red-survivor verdict is **partly wrong** — `errorTextStyle` serves three strings, two of which are not refused writes (D-7.11-40), and `banner-styles.ts:154` is a **stale** line ref (the red is at `:157`). Contrast hand-computed against **Jira's** `#F7F8F9`, incl. two honest non-passes that are correct by design. Deferred items: Escape/in-flight **closed** here, SW cold-start **re-deferred with a named owner**. Five escalations raised (E-1…E-5). Creator decisions `D-7.11-35..46`; **`D-7.11-30+` reserved** for orchestrator/owner. | bmad-story-creator |
 | 2026-07-27 | 1.0 | Implemented per owner/orchestrator rulings D-7.11-30 (strict body-padding save/restore, re-entrancy-safe) and D-7.11-31(a-e). All 20 changes (C1-C20), all 11 tasks (T1-T11), and the AC10/AC9 machine-checkable invariants (D-7.11-42) implemented. `entrypoints/content.ts` confirmed unimportable under this project's vitest config (pre-existing, out of scope) — testable behaviour extracted into new `lib/banner-interactions.ts`. 28px control height applied everywhere per D-7.11-31(b), overruling the story's own E-2 recommendation. D-7.11-40 (amber/red split) and D-7.11-46 (Escape/in-flight gate) implemented and RED-proved. Baseline re-measured: 120 files / 1677 tests passed (was 117/1567), same one pre-existing `ManagerView.test.tsx` rejection, no second. `pnpm compile`/`lint`/`build` all clean. Epic-close gate verified: `docs/a11y-audit-2026-06-27.md` updated (human sign-off remains explicitly outstanding), `no-monospace` `ALLOWLIST` still `{}`, `day-status-vocabulary` allowlists unwidened, Epic 6.3 fenced files confirmed untouched, `deferred-work.md` Story-3.3 items resolved. Status → review. | bmad-story-developer |
 | 2026-07-27 | 1.1 | **Finisher pass — all 8 findings + both Majors resolved, 0 dismissed, 0 deferred** (R-4 left correctly open for the `DESIGN.md` owner, not this story). Per owner ruling D-7.11-32: all nine of the review's surviving `content.ts` mutations closed by extracting `createRemovalScheduler`/`removeBannerViaSlide`/`beginBannerRender`/`commitMount`/`decideSubmitAction`/`isWorklogSuccess`/`dismissAndRemove`/`shouldReevaluateForUrl`/`createDebouncer` into `lib/banner-interactions.ts`, each written test-first and each survivor mutation individually re-proved RED then reverted GREEN; `content.ts` now composes them (verified genuinely wired by reading every call site). Per orchestrator ruling D-7.11-33: `renderExpandedQuickLog` (`lib/banner-dom.ts`) gained a labelled, pointer-reachable `dismissButton`, and the Escape handler moved from the hours input to the rail host (scoped to the rail's subtree, added once at mount, never intercepts Tab). Fixed the `error.style.display = ''` regression that was deleting `applyStyle`'s own `display:flex` (Finding 3) and the missing error/hint mutual-exclusion (Finding 4, via a new `spacer` element reusing `spacerStyle`). Fixed the `<span>`-not-`<label for>` a11y gap (Finding 6, same class as Story 7.10's Blocker). Documentation-only fixes for the focus-ring contrast note and the `FOCUS_RING`/field-idle-ring comment (Findings 5 and 7, folded into one `banner-styles.ts` comment edit) and for the Completion Notes' contrast figures (Finding 8). Folded the creator's `D-7.11-1 … D-7.11-12` into `epic-7-decision-log.md` as `D-7.11-35 … D-7.11-46` (D-7.3-11 pattern); every citation across the story file, source, tests, `sprint-status.yaml`, and `docs/a11y-audit-2026-06-27.md` repointed in one mechanical pass, including a `D-7.11-1..12` ellipsis-shorthand instance the regex's word-boundary form missed and had to be fixed by hand in both `sprint-status.yaml` and this file's own 0.1 Change Log entry. Re-validated: `pnpm compile` clean; `pnpm lint` 0 errors / 12 pre-existing warnings (unchanged baseline); `pnpm test` 120 files / 1699 passed (was 120/1677), same one pre-existing `ManagerView.test.tsx` rejection, no second; `pnpm build` clean, manifest carries no `web_accessible_resources` key. Epic 7's a11y gate remains `PENDING HUMAN VERIFICATION` (R-3 / D-7.11-34) and is reported as such — this story does not and cannot close it. `epic-7: done` is intentionally NOT set here; the orchestrator closes the epic separately. Status → done. | bmad-story-finisher |
+
+---
+
+## Delivery Log
+
+> Migrated out of `sprint-status.yaml` on 2026-07-28, where the whole program's log used to
+> accumulate as YAML comments. These are the **orchestrator's** per-stage notes from the
+> `run-dev-cycle` pipeline; they overlap with — and do not replace — the story's own Change Log.
+
+### 2026-07-27 — created (ready-for-dev)
+
+At baseline f7740bc — the FINAL story of Epic 7. Restyle of Story 3.3's working banner into the 44px
+guest rail; lib/banner-sw.ts untouched. Central tension resolved: the 18px mark is GEOMETRY not an
+icon (DESIGN.md:213), hand-inlined lucide paths per the CSP exception at DESIGN.md:222-224,
+{typography.guest} = DESIGN.md:106 (shipped SYSTEM_FONT is wrong), and RAW HEX IS CORRECT here —
+D-7.3-14/D-7.7-15 do NOT apply since globals.css never reaches Jira's page. Found: body padding-top
+(AC5) does not exist today; three text glyphs violate AC9; the 7.6 red-survivor verdict is partly
+wrong (one style, three strings, two not refused writes). Surface 4 read at round2.dc.html:38-192 +
+:1310-1342. Contrast hand-computed vs Jira's #F7F8F9 with two honest by-design non-passes. E-1..E-5
+need rulings; D-7.11-30+ reserved. Baseline 117 files / 1567 passed / 0 skipped.
+
+### 2026-07-27 — review
+
+Dev pass implemented per owner/orchestrator rulings D-7.11-30 (strict body-padding push/restore,
+re-entrancy-safe via lib/banner-interactions.ts's createPageShift) and D-7.11-31(a-e): lucide X for
+dismiss, 28px control height everywhere (overruling the story's own 30px recommendation),
+Escape-during-inflight closed (D-7.11-46) + SW cold-start re-deferred with a named owner, the
+red-survivor amber/red split (D-7.11-40, DANGER/#dc2626 deleted repo-wide), the two by-design
+contrast non-passes left alone. lib/banner-styles.ts rebuilt as the single literal set; new
+lib/banner-icons.ts hand-inlines 6 lucide shapes; lib/banner-dom.ts rebuilt (18px mark = two spans,
+not an icon; all 3 legacy text glyphs removed; renderExpandedQuickLog never writes
+host.style.height). entrypoints/content.ts confirmed NOT importable under this project's vitest
+config (defineContentScript is a WXT build-time global, no WxtVitest plugin wired in — pre-existing,
+out of scope); testable behaviour (page-shift, Escape gate, focus-ring, hover-colour, amber-clear)
+extracted into new lib/banner-interactions.ts so it stays RED-provable. lib/banner-sw.ts untouched.
+day-status-vocabulary.grep.test.ts's BANNED_GLYPHS coverage widened to the banner surface (was
+manager-only). docs/a11y-audit-2026-06-27.md updated to reflect the rebuilt rail — human sign-off
+explicitly still OUTSTANDING, not silently closed. deferred-work.md: Story 3.3's Escape item closed,
+SW cold-start item re-deferred with a named owner. 7 mutations RED-proved live (page-shift
+re-entrancy x2, Escape gate, glyph-guard widening, amber/red split, C13 non-destructive clear,
+single-height contract) then reverted. Baseline re-measured: 120 files / 1677 passed / 0 skipped
+(was 117/1567), same one known pre-existing ManagerView.test.tsx rejection, no second. pnpm
+compile/lint(0 errors)/build all clean. All fenced Epic 6.3 files confirmed untouched.
+
+### 2026-07-27 — done
+
+EPIC 7'S FINAL STORY CLOSED BY THE FINISHER. All 8 review findings + both Majors resolved (0
+dismissed, 0 deferred; R-4 correctly left open for the DESIGN.md owner). Per owner ruling D-7.11-32:
+all nine of the review's surviving entrypoints/content.ts mutations closed by extracting
+createRemovalScheduler/removeBannerViaSlide/beginBannerRender/commitMount/decideSubmitAction/isWorklogSuccess/dismissAndRemove/shouldReevaluateForUrl/createDebouncer
+into lib/banner-interactions.ts, each written test-first and each survivor mutation individually
+RED-proved then reverted GREEN; content.ts now composes them, verified genuinely wired by reading
+every call site. Per orchestrator ruling D-7.11-33: renderExpandedQuickLog gained a labelled
+pointer-reachable dismissButton, and Escape moved from the hours input to the rail host (scoped to
+the rail's subtree, added once at mount, never intercepts Tab). Fixed the error.style.display=''
+regression deleting applyStyle's own display:flex (Finding 3) and the missing error/hint mutual
+exclusion via a new spacer element (Finding 4). Fixed the span-not-label-for a11y gap (Finding 6,
+same class as Story 7.10's Blocker). Documentation-only fixes for the focus-ring contrast note +
+FOCUS_RING/field-idle-ring comment (Findings 5 and 7) and the Completion Notes contrast figures
+(Finding 8). Folded creator decisions D-7.11-1..12 into epic-7-decision-log.md as D-7.11-35..46
+(D-7.3-11 pattern); every citation repointed, including a D-7.11-1..12 ellipsis-shorthand instance
+the word-boundary regex missed and was fixed by hand. Re-validated: pnpm compile clean; pnpm lint 0
+errors/12 pre-existing warnings; pnpm test 120 files/1699 passed (was 120/1677), same one
+pre-existing ManagerView.test.tsx rejection, no second; pnpm build clean, manifest carries no
+web_accessible_resources key. Epic 7's a11y gate remains PENDING HUMAN VERIFICATION (R-3/D-7.11-34)
+— reported as such, not silently closed; epic-7 itself is intentionally NOT marked done here, the
+orchestrator closes it separately.

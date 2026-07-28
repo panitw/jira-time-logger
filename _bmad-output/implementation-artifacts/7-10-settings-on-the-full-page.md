@@ -1856,3 +1856,139 @@ Full write-ups (root cause, why not fixed here, named owner) are in
 `lib/manager-resolution.ts` skip-level/failure conflation (Finding 13), `lib/no-monospace.grep.test.ts`'s
 CSS-scan gap (M-10), `SectionTabs`' focus order (N-5's remainder), and the live-region announcement gap
 (M-5).
+
+---
+
+## Delivery Log
+
+> Migrated out of `sprint-status.yaml` on 2026-07-28, where the whole program's log used to
+> accumulate as YAML comments. These are the **orchestrator's** per-stage notes from the
+> `run-dev-cycle` pipeline; they overlap with — and do not replace — the story's own Change Log.
+
+### 2026-07-25 — unblocked (Claude Design round 2 delivered)
+
+UNBLOCKED. Claude Design round 2 delivered both surfaces; spines and
+ACs updated from imports/jira-time-logger-round2.dc.html. See reconcile-claude-design-round2.md.
+
+### 2026-07-27 — created (ready-for-dev)
+
+At baseline b434c81 -- Settings on the Full Page.
+Driven EXPLICITLY by number (SD-2); no auto-pickup. A RE-HOME plus a RESTYLE, not a
+rebuild: Epic 1 built all eleven controls, and a grep confirms components/settings/*
+has exactly ONE importer (entrypoints/options/App.tsx), so the blast radius outside
+the settings tree is zero. Two ACs are already met at HEAD (7.2's D-7.2-1/D-7.2-5
+shipped the Settings section AND the working tab row) -- the recurring "AC restates
+shipped work" pattern, third occurrence.
+THE SCOPE TRAP HELD. "Re-authenticate" (round2.dc.html:243) is NOT built and NOTHING
+is substituted for it -- SD-1, EXPERIENCE.md:403-405 and epics.md:2076 all agree, and
+the codebase has only startOAuthFlow/validateApiToken/disconnectAll. D-7.2-5 and
+D-7.8-18 precedent: honest absence beats dead UI, and a plausible-looking substitute
+can be worse than nothing (a "Re-authenticate" that ran Disconnect-then-Connect would
+destroy every local setting behind a button promising a refresh). The Connection
+footer keeps its reassurance copy WITHOUT the button, carries a source comment, and
+the absence is pinned by a grep test.
+OBLIGATION 1 (font-mono) CLOSES THE EPIC-WIDE CONSTRAINT: all four remaining
+no-monospace ALLOWLIST entries belong to this story, so ALLOWLIST becomes {} --
+D-7.7-21f's stated precondition for marking epic-7 done. Nuance found by reading the
+design source: ManagerDisplay's two occurrences go to NOTHING, not `tabular`, because
+round2:257,261 render manager names in the plain BODY face -- `tabular` is Kanit +
+tabular-nums and a person's name is not a numeric. entrypoints/options/App.tsx:143
+disappears with the markup when the file becomes a redirect.
+OBLIGATION 2 (validation reds) CLOSES D-7.6-37's named deferral: Target/Reminder/
+CatchAll go amber; ManagerDisplay:42's red is REMOVED ENTIRELY because AC7 replaces it
+with an honest-failure block. ApiTokenSetup:138 is escalated (E-9) because it is a
+refused READ, not a refused write -- but its 4.42:1 contrast failure is a mandatory
+fix whichever way the fork is ruled.
+OBLIGATION 3: status-clean-on-chrome finally gets its named consumer (D-7.6-40) as
+the DECORATIVE connection dot, with the adjacent text carrying all the meaning.
+SD-6 PAYOFF (Surface 5 read line-by-line, :195-461 + the :1344-1355 data block):
+(a) the design source draws the tab row on Surface 5 ONLY -- Surfaces 2 and 3 were
+checked and have none, which is what D-7.10-38 rests on; (b) the header ring motif is
+byte-identical to WeekChromeHeader.tsx:82-83; (c) the mid-typing key field's
+"1.5px solid #594F74 + 0 0 0 3px rgba(89,79,116,.13)" IS the ring-focus utility plus
+the mandatory 1.5px border, verbatim; (d) two of AC6's three signalling states are
+BYTE-EXACT matches to the frozen DayStatusIndicator registry (met = CircleCheck +
+#15803D; attention = filled Circle + #7A3E06), so AC6 needs NO colour-allowlist
+widening -- which matters because text-status-clean is banned outside the indicator
+and a local status->colour map is exactly what that grep test exists to catch.
+CONTRAST hand-computed for 15 pairs; FOUR failures the axe harness cannot see:
+chrome eyebrow/tabs at rgba(255,255,255,.72) = 4.04:1 and last-synced at .62 = 3.44:1
+(both -> /85 = 4.91:1, the epic's established fix); AC8's opacity:.5 dimmed block =
+3.28:1 / 2.08:1, exactly as the AC itself predicted; plus the inherited ApiTokenSetup
+#DC2626-on-#FEF2F2 4.42:1. That is the seventh, eighth and ninth contrast failure this
+epic, none of them axe-detectable.
+D-7.10-40 catches a REAL BUG nobody had noticed: once entrypoints/options redirects to
+the full page, fullpage/App.tsx:134-142's handleConnect (which calls openOptionsPage)
+opens a new tab that redirects straight back to the page you are already on.
+OPTIONS ENTRYPOINT: REDIRECT, not remove (D-7.10-39) -- wxt.config.ts:25 (a FENCED
+Epic 6.3 file) derives options_ui from the directory's existence, and eight
+openOptionsPage() call sites depend on it, four of them on the time-off write path
+D-7.3-12 protects.
+Creator decisions D-7.10-37..49 recorded in the story file. FIVE ESCALATIONS need
+rulings before/during dev: E-1 (where the tab row lives given Week+Manager own their
+own chrome headers), E-2 (the dimmed logging-defaults block fails AA), E-3 (no
+connected-at timestamp exists for the design's "Signed in - 12 Jun 2026" row),
+E-4 (Disconnect copy understates: storage.local.clear() also wipes every setting),
+E-9 (red vs amber for a refused READ). Orchestrator/owner rulings MUST start at
+D-7.10-30 to avoid the numbering collision this epic hit twice.
+Baseline MEASURED, not copied forward: 109 files / 1514 passed / 1 skipped, exit
+non-zero from the same single known ManagerView.test.tsx unhandled rejection.
+
+### 2026-07-27 — review
+
+Dev pass. New shared SectionTabs (D-7.10-30, owner ruling) composed by all three full-page chrome
+headers, replacing Story 7.2's plain <nav> outright; section/onSectionChange/showManagerTab threaded
+through WeekView->WeekChromeHeader and ManagerView->ManagerMatrix->MatrixChromeHeader. New
+SettingsView/SettingsChromeHeader/SettingsPrimitives/ConnectionBlock/LoggingDefaultsBlock/LoggingDefaultsSilhouette
+compose the five-block AC2/AC3 layout inside a widened max-w-[1180px] shell. ManagerDisplay (AC7
+honest-failure rework), CatchAllProjectField (AC6 four-state, new JiraProjectSchema project-name
+lookup, debounced neutral mid-typing), TargetHoursField/ReminderTimeField/CycleField (AC9 relabel +
+D-7.6-37 amber), DiagnosticsBlock/DisconnectAction (AC5, D-7.10-33 copy pinned against
+disconnectAll()'s actual chrome.storage.local.clear()), ConnectButton/ApiTokenSetup (AC8 restyle +
+E-2 non-interactive silhouette + D-7.10-34 red/amber fork) all reworked. entrypoints/options/App.tsx
+now redirects (D-7.10-39); resolveConnectedMeta moved to lib/connection-meta.ts. THE SCOPE TRAP held
+— no Re-authenticate/renamed stand-in anywhere, RED-proven by new lib/no-reauth.grep.test.ts.
+lib/no-monospace.grep.test.ts ALLOWLIST closed to {} (D-7.7-21f's epic-7-done precondition) —
+repo-wide grep confirms zero survivors outside its own assertions. New
+lib/settings-fact-blocks.grep.test.ts and lib/settings-disconnect-copy.grep.test.ts (strengthened
+mid-pass to check STRINGS.body/STRINGS.dialogBody independently after a whole-file-substring first
+draft proved too weak) — all genuinely RED-proven by temporary violation + revert, not just
+reasoned. Two narrow, reasoned additions to inherited epic-wide guards (text-amber-ink allowlist for
+the three D-7.6-37 extensions; one bg-status-clean-on-chrome vs bg-status-clean substring-collision
+exception mirroring the existing bg-royal-purple/ManagerMatrix precedent); ResumeCard.test.tsx's
+shadow-lift exclusivity invariant respected by using shadow-raised for the Settings shell instead of
+widening it. E-1/E-2/E-3/E-4/E-9 resolved per D-7.10-30..35. Final: pnpm compile clean, pnpm lint 0
+errors/12 warnings (all pre-existing untouched files), pnpm test 114/114 files/1545/1545 tests (same
+one known pre-existing ManagerView.test.tsx rejection, no second), pnpm build clean. All fenced Epic
+6.3 files confirmed untouched.
+
+### 2026-07-27 — done
+
+Finisher triaged 2 Blockers / 16 Majors / 12 Minors / 6 Nits
+(36 findings, header tally said 14 Majors -- a reviewer bookkeeping slip, not a code
+problem) plus the 5 pre-resolved escalations. Both Blockers fixed: the committedKey
+short-circuit now only skips re-validation when status is already 'valid' (a
+statusRef mirror avoids an effect-triggers-itself loop this fix would otherwise
+cause), recovering a typo-then-correct-back round trip; FieldLabel renders a real
+<label htmlFor>, wired at all five Logging-defaults controls. The coverage gap that
+let the accessible-name Blocker ship is closed: SettingsView.test.tsx (new) axe-scans
+the REAL unmocked SettingsView (connected + first-run) plus render coverage for all
+six previously-uncovered components; App.section-routing.test.tsx (new) drives one
+real click through the REAL SectionTabs. Nav restored in the pending-manager and
+disconnected shell states (D-7.10-40's bug class -- three MORE duplicate-tab call
+sites fixed: WeekView/ManagerMatrix/PtoPopover). 1180px shell fixed (measured 1148px;
+the parent's px-4 was the culprit). shadow-lift guard narrowed to the popup surface
+only (Story 7.3 AC1's actual wording); SettingsView now uses shadow-lift, matching the
+design, not the visibly lighter shadow-raised. Correctness: clearing the catch-all key
+no longer leaves a stale valid confirmation; a failed subtask probe no longer renders
+as a false "0 subtasks"; the Skip-level row no longer disappears in the reporting-line
+error state. Guards hardened: no-reauth also blocks importing an auth entry point
+outside its three owners; settings-fact-blocks now scans SettingsPrimitives.tsx (where
+FactRow actually renders); settings-disconnect-copy word-boundaries "setting" and
+checks for a silent reseed. D-7.10-1..13 folded into epic-7-decision-log.md as
+D-7.10-37..49. 2 DISMISS / 3 DEFER with named owners in deferred-work.md (the
+pre-existing lib/manager-resolution.ts skip-level conflation, no-monospace's CSS-scan
+gap, SectionTabs' focus order -- its hover-state gap fixed here). Final: compile clean,
+lint 0 errors/12 pre-existing warnings, test 117/117 files / 1567/1567 passed (same
+one known ManagerView.test.tsx rejection, no second), build clean. Fenced Epic 6.3
+files confirmed untouched.

@@ -263,3 +263,15 @@ _Code review 2026-06-27 (3 parallel layers: Blind Hunter, Edge Case Hunter, Acce
 | ---------- | ---------------------------------------------------------------------- |
 | 2026-06-27 | Story 5.5 implemented: read-only drill-down panel (right-anchored Radix `Dialog` slide-in) with per-ticket evidence list (client-side aggregate of preserved `worklogs[]`, no fetch), header total, defensive skeleton, and the `VisibilityWarning` chip driven by per-Epic `restrictedCount`. `MatrixCell` made a keyboard-operable `<button>` trigger; `ManagerMatrix` owns one panel + `selectedCell`. Added `secondsToFixedHoursDisplay` + extracted `formatCycleTitle` to `lib/cycle-title.ts`. Status → review. |
 | 2026-06-27 | Code review (3 layers): 3 patches applied — header "0 hours" guard for tiny-nonzero totals, focus-return-to-cell on panel close (`handleClosePanel` + `requestAnimationFrame`), `aria-describedby={undefined}` to silence the Radix Description warning; +2 tests. 3 deferred, 8 dismissed. Gates green (68 suites / 871 passed / 1 skipped; tsc 0; eslint 0 errors / 57 baseline warnings; build ok). Status → done. |
+
+---
+
+## Delivery Log
+
+> Migrated out of `sprint-status.yaml` on 2026-07-28, where the whole program's log used to
+> accumulate as YAML comments. These are the **orchestrator's** per-stage notes from the
+> `run-dev-cycle` pipeline; they overlap with — and do not replace — the story's own Change Log.
+
+### 2026-06-27 — created (ready-for-dev)
+
+

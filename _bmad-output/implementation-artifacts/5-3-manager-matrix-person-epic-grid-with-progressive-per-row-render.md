@@ -308,3 +308,15 @@ claude-opus-4-8 (Claude Opus 4.8)
 ## Change Log
 
 - 2026-06-27: Story 5.3 implemented — Manager matrix (person × Epic grid) with progressive per-row TanStack queries, alphabetical Epic-column union, neutral monospace hours / `──` cells, ~100 ms staggered reveal, per-row retry chip, no-reports + no-hours empty states. Replaces the 5.2 `ManagerView` placeholder. Subtask→Epic rollup via report-scoped `worklogAuthor` search + one-level grandparent lookup, unresolvable hours bucketed. Per-ticket worklog records (with `updated`) preserved for 5.4/5.5/5.6. Status → review.
+
+---
+
+## Delivery Log
+
+> Migrated out of `sprint-status.yaml` on 2026-07-28, where the whole program's log used to
+> accumulate as YAML comments. These are the **orchestrator's** per-stage notes from the
+> `run-dev-cycle` pipeline; they overlap with — and do not replace — the story's own Change Log.
+
+### 2026-06-27 — created (ready-for-dev)
+
+

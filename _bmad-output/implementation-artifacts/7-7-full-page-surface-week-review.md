@@ -1506,3 +1506,72 @@ combined `text-status-clean` + `bg-weekend` mutation in the NEW `WeekChromeHeade
 The creator's `D-7.7-1 … D-7.7-14` are renumbered `D-7.7-22 … D-7.7-35` (avoiding collision with the
 orchestrator's `D-7.7-15 … D-7.7-21`) and folded verbatim into `epic-7-decision-log.md` as canonical. Every
 `D-7.7-*` citation in this file and in source comments was repointed to match.
+
+---
+
+## Delivery Log
+
+> Migrated out of `sprint-status.yaml` on 2026-07-28, where the whole program's log used to
+> accumulate as YAML comments. These are the **orchestrator's** per-stage notes from the
+> `run-dev-cycle` pipeline; they overlap with — and do not replace — the story's own Change Log.
+
+### 2026-07-26 — created (ready-for-dev)
+
+At baseline bbe0645 -- full-page surface & week review.
+Explicit-mode creation (NOT auto-picked). Scope is SMALLER than the AC list suggests: AC1 is
+ALREADY MET by Story 7.2 per D-7.2-1 (fullpage entrypoint + section routing + "Open week" all
+exist and are pinned by PopupActionBar.test.tsx:100) -- recorded as verify-don't-rebuild. And
+the grid is ALREADY a semantic <table> with scoped headers (WeeklyGrid.tsx:436-499 +
+DayCell.tsx <td>), so AC3 needs only the 104px column geometry and the announcement content:
+there is NO div->table migration and ZERO blast radius from one. 7.7's real scope is the
+chrome header, grid geometry, cell anatomy, in-place editing, the totals row and the gap
+dialog. All FOUR inherited obligations given ACs + tasks, none dropped: (1) week-gaps.ts:61
+is CLOSED, not re-deferred -- and the fix is a one-line guard deletion, verified safe because
+week-grid.ts:179 already accumulates time-off seconds into dayTotalsSeconds with no category
+filter, so the arithmetic already handles a full day off and a half day correctly once the
+skip is gone (gapSummary's "not marked time off" suffix must go too -- it becomes false for
+exactly the day this surfaces); (2) variant="stacked" gets its real call site in Task 2,
+BEFORE the width/quantisation fixes, per deferred-work.md's refusal to fix it blind;
+(3) size?: 11|12|13 added to DayStatusIndicatorProps AND to D-7.6-3's canonical block;
+(4) the weekend tint applied at header + cell + totals from isWeekend(iso) per D-7.6-46 --
+NOT from status, and NOT on <col> (a col background sits under cell fills and would punch
+holes). Every AC2/AC4 value cross-checked against the vendored design source per SD-6 with
+file:line citations; three exact token matches found (--color-weekend == wk #F1F0F6 :780,
+--color-faint-decorative == the empty-cell middot #ADACB9 :795, ring-focus byte-identical to
+:804), three values the AC omits (#E2E0EE time-off border, dimmed weekend text/middot), and
+one the MOCKUP omits that the spine requires (the 11px Diamond -- :806 has no icon; DESIGN.md
+:469 and NFR12 both demand it, since a purple number on a purple wash is colour-alone).
+Creator decisions D-7.7-1..13 (later renumbered D-7.7-22..34 by the finisher, D-7.3-11);
+orchestrator/owner rulings were meant to reserve D-7.7-30+ to avoid the collision that bit
+7.4/7.5, though in practice they landed at D-7.7-15..21. SIX decisions flagged for the
+orchestrator, THREE blocking:
+D-7.7-28 (three un-tokenised hexes vs D-7.3-14 -- collapsing #EDECF2 onto border-faint would
+erase the designer's cell-border/column-rule distinction, and #F6F5FA has no near token),
+D-7.7-32 (stacked's bg-current renders partial's bar near-black where the design wants royal
+purple #615B99 -- partial is the commonest state in a normal week), and D-7.7-35 (the 7.6
+grep test forbids DayCell importing Diamond, but DayStatusIndicator has no icon-only mode BY
+DESIGN, and "Full-day time off" cannot fit a 104x34px cell -- proposes variant="cell").
+
+### 2026-07-26 — done
+
+Finisher triaged 0 Blockers / 4 Majors / 7 Minors / 4 Nits + 4 escalations.
+17 FIXED, 1 DISMISSED (Finding 13 claimed the design source uses typographic apostrophes;
+byte-verified it uses ASCII throughout -- the implementation was already exact to its source
+of truth, so the suggested fix would have moved AWAY from fidelity). All four escalations
+were pre-ruled (D-7.7-20 owner, D-7.7-21a-e orchestrator) and implemented, not re-litigated:
+dayStatusNote gained a fourth arm so a near-full time-off booking (7.5h/8h) never claims
+"half-day" (D-7.7-20); totals row moved <thead> -> <tfoot> (D-7.7-21a); gapSummary was
+INVESTIGATED first -- the rebuilt gap-dialog evidence row genuinely announces the same info
+(no aria-hidden, role=listitem, clean axe scan), confirmed NOT an a11y regression, then
+deleted as dead code with its 4 vacuous tests (D-7.7-21b); WeekChromeHeader's own copy of the
+stacked-bar quantisation defect fixed in isolation, Story 7.9 obliged to extract the shared
+helper rather than refactoring all three copies here (D-7.7-21c). The two guard-coverage
+holes (STATUS_BAR_CLASS zero grep coverage; bg-weekend missing its per-occurrence companion,
+both reproducing D-7.6-43) closed; all 6 of the reviewer's previously-green mutations
+re-applied and confirmed genuinely RED, then every mutated file restored byte-identical
+(cp + md5/diff, never git checkout). Creator decisions D-7.7-1..14 renumbered D-7.7-22..35
+and folded into epic-7-decision-log.md as canonical (D-7.3-11); 7 drifted design-source
+citations independently re-verified against the vendored source and corrected in both files.
+Tests 1340 -> 1351 (+11 net: several new RED-proved tests minus 4 removed dead gapSummary
+tests), 0 new files, same single pre-existing ManagerView.test.tsx unhandled rejection.
+compile/lint/build all clean.

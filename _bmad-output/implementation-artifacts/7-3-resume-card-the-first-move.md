@@ -1275,3 +1275,24 @@ correction + a dated note explaining the correction).
    reviewer's own text says it's "recorded only for completeness" and the Dev Agent Record already
    discloses it; unrelated to Finding 3's fix (Finding 3 concerns test coverage of the wrapper's
    *conditional*, not the wrapper's existence, which the reviewer confirmed is harmless).
+
+---
+
+## Delivery Log
+
+> Migrated out of `sprint-status.yaml` on 2026-07-28, where the whole program's log used to
+> accumulate as YAML comments. These are the **orchestrator's** per-stage notes from the
+> `run-dev-cycle` pipeline; they overlap with — and do not replace — the story's own Change Log.
+
+### 2026-07-26 — done
+
+Code review found 1 blocker / 3 majors / 4 minors / 2 nits. The owner and
+orchestrator ruled on the three escalations before this pass (epic-7-decision-log.md
+D-7.3-9 froze the server-wins override's identity at first paint; D-7.3-10 time-bounded the
+cold-start skeleton at a named 2000ms constant; D-7.3-11 made the decision log canonical
+D-7.3-* numbering, folding 5 new entries D-7.3-12..16). The finisher implemented all three
+rulings plus every other finding (all FIX; only 4 sub-items of the catch-all Finding 10 were
+dismissed, each with recorded rationale). The Blocker's write-target-retargeting regression
+test and all 4 previously-toothless class-presence tests were proven RED without their fixes
+and green with them, by hand, before commit. Final gates: 86 files / 1049 passed / 1 skipped
+(net +7 tests, 0 new files), lint 0 errors/53 warnings (unchanged), build green.

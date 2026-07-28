@@ -1858,3 +1858,206 @@ pass" section; this table is the at-a-glance index.
 - **AC9, AC10, AC11, AC8 fully met**; AC2's D-7.6-41 protected test survived the full-file rewrite with its assertions intact.
 - **SD-6 citations: 44/44 correct** — a real improvement over 7.7.
 - **Honest self-reporting.** The developer disclosed the RED-proof (b) that initially passed against a real mutation, the render-loop bug, and the `git stash` lapse. Mutation (h)'s conclusion was wrong, but refusing to ship a test that could never fail was the right instinct — the gap is that 7.7 had already solved it.
+
+---
+
+## Delivery Log
+
+> Migrated out of `sprint-status.yaml` on 2026-07-28, where the whole program's log used to
+> accumulate as YAML comments. These are the **orchestrator's** per-stage notes from the
+> `run-dev-cycle` pipeline; they overlap with — and do not replace — the story's own Change Log.
+
+### 2026-07-26 — created (ready-for-dev)
+
+At baseline 162b010 -- manager matrix, silent correctness /
+loud exceptions. Explicit-mode creation (NOT auto-picked). Baseline re-measured:
+97 files / 1352 passed / 1 skipped, exiting non-zero from the ONE known pre-existing
+unhandled rejection in components/manager/ManagerView.test.tsx -- which is inside the very
+file tree this story restyles, so the story states explicitly that fixing it is a bonus and
+can never be used to disguise a new one. SCOPE: Epic 5 (5.3-5.8) already ships the grid,
+union columns, per-row streaming fan-out, cell/dirty status, drill-down, approval fan-out and
+the canonicality gate -- 7.8 is a RESTYLE plus FOUR new behaviours (chrome header, streaming
+progress line, drill-down reason/flags/summary/actions, confirm-dialog caveat copy). AC1's
+"on the full page" is already true (fullpage/App.tsx:201, D-7.7-22 left it undressed on
+purpose) and AC4's streaming + skeleton rows + no-blocking-spinner are ALREADY MET by Story
+5.3's per-report useManagerRow (D-7.8-31) -- same "the AC restates shipped work" pattern as
+7.7's AC1. All FIVE inherited obligations carry ACs and tasks, none dropped: (1) the designed
+#F4F4F7 chip lands and tone="chrome-solid" is REMOVED outright -- its only call site is
+ManagerMatrix.tsx:870, verified -- AC9/D-7.8-26; (2) correct cells stay BARE and
+DayStatusIndicator gains NO silent mode, with ManagerMatrix.test.tsx:502-508 protected as the
+test D-7.6-41 added to stop exactly this regression -- AC2/D-7.8-25; (3) font-mono fixed at
+ManagerMatrix.tsx:373 + DrillDownPanel.tsx:166,171 AND both exact-count ALLOWLIST entries
+deleted in the same change, with the broad grep pasted rather than summarised -- AC10;
+(4) the duplicate-hex trap (status-clean == state-success == #15803D) STAYS DEFERRED but
+loses its only live victim, because deleting STATUS_CLASSES removes the only state-* fill a
+status-* token could disappear into -- D-7.8-27; (5) ManagerMatrix.test.tsx:467's
+neighbourhood re-read line by line: THREE assertions (:470, :546, :548-551) are about to
+become false by design and are given rewrites -- D-7.8-34.
+VERDICT ON UNFREEZING lib/manager-matrix.ts: it STAYS FROZEN, byte-identical. Every AC is
+satisfiable at the render layer, and the two derivations that feed the WRITE path read only
+'approved' (ManagerMatrix.tsx:541-543) and 'dirty' (:551-553), so collapsing gap/on-target/
+neutral to a bare number cannot touch approval correctness; the empty middot needs no
+EMPTY_CELL edit because it is a sentinel the renderer already compares against (:752).
+CellStatus and DayStatus stay SEPARATE axes and the case is stronger after 7.8 (D-7.8-28).
+VERDICT ON THE maxResults=100 SILENT CAP: do NOT paginate -- the identical bug lives in the
+sibling fetchCurrentUserWeekWorklogsByIssue AND the per-issue /worklog page, and fixing one
+of three would make the week grid and the matrix disagree about the same user's hours -- but
+do NOT leave it silent either (D-7.4-14). Proposal: a `truncated` flag set when the search
+page comes back exactly full, plus an amber (never red) row-level note. Needs a ruling
+because it touches lib/jira-client.ts + lib/jira-types.ts; if declined it must be re-deferred
+WITH A NAMED OWNER, which it currently lacks.
+DESIGN SOURCE (SD-6): fourteen values verified by READING each cited line, not counting
+(the 7.7 review found citations drifting +1). ELEVEN already have exact tokens -- amber-soft/
+amber-border/amber-ink (dc.html:528), border + faint (:534), faint-decorative (:525),
+status-clean (:541/:571), cell-border + royal-purple (:564), animate-skeleton at the same
+1.4s ease-in-out (:552/:557), --text-eyebrow 11px/500/.1em (:481), --text-display 26px/600
+(:483), bg-chrome-gradient (:477). Only TWO are missing (#CFCDDE dashed border :531 and
+#F4F4F7 chip fill :534, whose only existing home is a legacy alias slated for deletion) --
+D-7.8-36. ONE DESIGN-SOURCE VALUE REJECTED ON HAND-COMPUTED CONTRAST: dc.html:490's #F5D9AE
+"need attention" measures 4.45:1 against the gradient's LIGHTEST stop #615B99 -- below AA at
+12.5px normal -- and D-7.6-40 independently bans per-status colour on the gradient; replaced
+with text-white/85 at 4.91:1 (D-7.8-30). That is the THIRD AA finding this epic from trusting
+a mockup opacity. Five contrast pairs hand-computed in the story: restricted chip 4.81:1,
+missing chip 5.53:1, row-level approved label 5.02:1, rejected #F5D9AE 4.45:1, accepted
+white/85 4.91:1.
+MONEY-PATH FINDING (D-7.8-35): AC6's "the caveat is recorded in the approval comment" is
+ALREADY SATISFIED -- restrictedCount is per-Epic (approval.ts:167-179) and checksum-covered
+(checksum.ts:26-33). And the obvious "improvement" is catastrophic: the body is ONE ADF
+paragraph with ONE text node (adf.ts:19-30) and parseApprovalComment JSON.parses from the
+first `{` to END OF STRING (comment-schema.ts:124-136), so ANY prose appended after the JSON
+throws -> 'malformed' -> fails closed -> every restricted-Epic approval becomes invisible and
+its cells silently revert to unapproved. approval.ts / comment-schema.ts / checksum.ts /
+adf.ts therefore stay BYTE-IDENTICAL; the clause is discharged by a round-trip test plus a
+NEGATIVE test pinning the append-breaks-parse hazard.
+EIGHT decisions flagged for the orchestrator, THREE BLOCKING: D-7.8-33 (what makes emptiness
+"meaningful" -- our data carries NO signal distinguishing the dashed "no hours" chip from an
+ordinary zero; neither spine defines it; proposal = a report who logged nothing at all this
+cycle, marked once per row), D-7.8-39 (AC4's 3px bar would be the FOURTH copy of
+pctToWidthClass, and D-7.7-21c assigns the extraction to Story 7.9 precisely so a fourth
+never appears -- proposal: 7.8 creates lib/progress-width.ts for its own bar ONLY, touching
+none of the three existing copies, and 7.9's obligation is amended to "migrate them onto it"),
+and D-7.8-32 (gap stops decorating cells -- a row-grain judgment currently inherited by every
+non-empty cell, so one report 10h short paints amber on all six of their cells, which is
+D-7.6-41's inversion one level up; the shortfall moves to the row total). Plus D-7.8-35 as a
+money-path CONFIRMATION, D-7.8-26 (first NARROWING of the frozen D-7.6-3 contract),
+D-7.8-29 (scope of "Change cycle" and "Approve remaining" -- neither may be an inert button;
+Approve remaining must respect the per-row Story 5.8 canonicality gate), D-7.8-36, and the
+pagination-cap ruling. Also caught: FOUR text glyphs on this surface violate DESIGN.md:222-224
+("Never a text glyph") -- ManagerMatrix.tsx:56, ApproveButton.tsx:45 and :57,
+VisibilityWarning.tsx:7 -- all routed through DayStatusIndicator so no grep-guard allowlist
+widens (AC11); and dc.html:602's "Ask Anucha" secondary has no capability behind it in this
+product, so a real action must be substituted rather than shipping a dead button.
+
+### 2026-07-26 — review
+
+All owner rulings applied verbatim (D-7.8-16 truncated flag + amber
+row-level note + approve-dialog caveat, D-7.8-17 row-grain "no hours" chip firing once per
+report with zero hours anywhere, D-7.8-18 no secondary action in the drill-down footer,
+D-7.8-19 a-h routine confirmations). New: MatrixChromeHeader.tsx (chrome header + cycle nav +
+"Approve remaining"), lib/progress-width.ts (7.8's own streaming bar only, Math.floor +
+non-zero-floor, NOT the Math.round defect -- Story 7.9 now migrates the three existing copies
+onto it per D-7.8-19a). ManagerMatrix.tsx rewritten: STATUS_CLASSES/DIRTY_STRIPE_STYLE deleted,
+correct cells (approved/on-target/gap/unapproved-with-hours) are bare tabular numbers, dirty
+is the only per-cell chip (amber, one colour per D-7.8-37), restricted is an independent
+chip on its own #F4F4F7 chip-surface fill regardless of cell status (chrome-solid REMOVED --
+union member, CHROME_SOLID_COLOR_CLASS, branch and tests gone from DayStatusIndicator.tsx;
+D-7.6-3's canonical block updated with this first narrowing), gap's shortfall moved to the
+row total (amber, no fill), row total/action column added with the green bare "Approved"
+label, person cell gets a 24px initials avatar, skeleton rows reshaped to circle+bar per
+cell, streaming line is now the named role="status" live region (moved OFF <tbody>), cycle
+nav (Previous/Next of the SAME cadence) and "Approve remaining" (batches untouched-only rows
+behind one confirm, respecting the Story 5.8 canonicality gate, reusing the row's own
+sendRequest('approve-cycle', ...) contract) both live inside ManagerMatrix.tsx since
+entrypoints/fullpage/App.tsx and ManagerView.tsx are outside this story's file list.
+DrillDownPanel.tsx restyled: header drops the cycle ("{Person} · {EpicKey}"), adds the dirty
+reason ("edited N days after approval", derived from the SAME approval anchor
+isCycleDirty compares), per-ticket changed flags (registry icon + visible "changed" word,
+never a `●` glyph), an honest plain-language summary (count + approval date + changed dates
+only -- never a fabricated hours delta), and ONE reused-ApproveButton action ("Re-approve/
+Approve <ROW total>h", never per-Epic) with NO secondary (D-7.8-18, commented so nobody
+re-adds "Ask Anucha"/"Open in Jira"/"Copy summary"). ApproveButton.tsx: title/body split
+into two strings, commit button now carries the figure ("Approve 158.5h"), restricted
+caveat now counts EPICS not worklogs, new truncated caveat (amber), Done routes through
+DayStatusIndicator (no `✓` glyph), new `triggerLabel` override prop (labels only, per the
+story's own file-scope note). VisibilityWarning.tsx: `⚠` glyph gone, chip now on its own
+chip-surface background via the registry. Two new tokens (--color-chip-dashed-border,
+--color-chip-surface). font-mono allowlist SHRUNK TO ZERO for ManagerMatrix.tsx/
+DrillDownPanel.tsx (both fixed to `tabular`) -- pasted broad grep confirms only Story 7.10's
+four files + the two guard/test files remain. lib/jira-client.ts: `truncated` flag added,
+additive only, no pagination, no change to any other fetcher.
+FROZEN FILES VERIFIED BYTE-IDENTICAL (git diff 162b010, empty on every one): lib/manager-
+matrix.ts, lib/approval.ts, lib/comment-schema.ts, lib/checksum.ts, lib/adf.ts, lib/parser.ts,
+lib/dirty-detect.ts, lib/canonical-manager.ts, hooks/useCanApprove.ts, hooks/useManagerRow.ts,
+hooks/useEpicApprovals.ts, lib/hierarchy.ts, lib/storage/pinned-tickets.ts,
+lib/ticket-search.ts, components/today/SearchPanel.tsx, components/today/ResumeCard.tsx,
+entrypoints/popup/App.tsx, components/shell/ChromeHeader.tsx,
+components/week/WeekChromeHeader.tsx, entrypoints/fullpage/App.tsx,
+components/manager/ManagerView.tsx. D-7.8-35's clause discharged by a round-trip test (the
+existing restrictedCount:3 default payload already proves the restricted-Epic case) PLUS a
+new negative test proving appended prose breaks the parse -- comment-schema.ts/approval.ts/
+checksum.ts/adf.ts untouched.
+TESTS: 97 -> 98 files (+1, lib/progress-width.test.ts), 1352 -> 1391 passed (+39), 1 skipped
+unchanged, still exactly ONE unhandled rejection (the same known ManagerView.test.tsx one).
+RED-proved via mutate + cp/diff-restore (never git checkout): (a) bg-state-success fill back
+on an approved cell, (b) restricted chip's own chip-surface background dropped -- the FIRST
+attempt at this exposed a test that checked the wrong DOM node and could never have failed;
+fixed the test, then RED-proved for real, (c) re-adding tone="chrome-solid" is now a TypeScript
+compile error (stronger than a test), (d) "need attention" coloured amber, (e) streaming
+line's role="status" deleted, (f) one font-mono occurrence restored, (g) VisibilityWarning's
+`⚠` glyph restored. Mutation (h) (backdrop-dismissible confirm dialog) was investigated and
+found NOT provable in jsdom -- a throwaway probe confirmed Radix's outside-click dismissal
+does not fire from any jsdom-synthetic pointer/mouse/click event, with or without
+onInteractOutside wired -- so no test was shipped for it rather than one that could never
+fail; onInteractOutside stays wired in source. A genuine render-loop bug was found and fixed
+while adding coverage: a fresh mock object constructed INSIDE mockImplementation on every
+render defeated the resolved-map's reference-equality dedupe, looping until OOM -- fixed by
+hoisting to stable per-account consts (the SAME convention already used by the file's own
+pre-existing mixed-row tests). compile/lint/build all clean.
+
+### 2026-07-27 — done
+
+Finisher triaged 1 Blocker / 11 Majors / 15 Minors / 7 Nits (34 findings)
+from 47 mutations (20 red, 26 green) + 3 escalations, all three pre-ruled by the orchestrator
+(D-7.8-20 REVERSES D-7.8-16, D-7.8-21, D-7.8-22) before this pass began. 32 FIX, 4 dissolved
+outright by D-7.8-20 (Findings 3/15/16/17 -- entirely about the now-deleted `truncated`
+machinery). D-7.8-20: fetchReportCycleWorklogsByEpic + fetchCurrentUserWeekWorklogsByIssue now
+share ONE bounded, LOUD-failing token-paging helper (fetchAllSearchPages, lib/jira-client.ts,
+walks nextPageToken/isLast) -- the truncated flag/note/caveat are DELETED from jira-types.ts/
+ManagerMatrix.tsx/ApproveButton.tsx/DrillDownPanel.tsx, not left dormant. D-7.8-21 closed the
+Blocker's remaining half: "Approve remaining" now renders an aggregate restricted caveat
+(same epic-counting convention as the per-row dialog), Story 5.8's gate reconfirmed unaffected.
+Money-path coverage closed: drill-down user/by payload (Finding 5, mirrors
+ManagerMatrix.test.tsx:771), Story 5.8 gate on the panel action (Finding 6), D-7.8-18's guard
+made structural not name-scoped (Finding 7), the no-hours chip's 4 directions PLUS its wrong
+trigger predicate -- it compared Epic-group count, not seconds (Findings 4/33, plus the
+batch's zero-second exclusion, Finding 34), a REAL backdrop-dismiss test replacing the
+"unprovable in jsdom" claim via Story 7.7's deferred-setTimeout(0)-tick pattern (Major 2), a
+silent mid-batch-failure fix (per-report result tracking, log.info/error, visible amber
+summary) + re-entrancy guard disabling the HEADER button not just the dialog (Findings 9/22),
+the vacuous cycle-mock test that dropped cycleId before the spy could see it (Finding 12), and
+a structural border/single-text-node guard replacing two literal word checks (Finding 11).
+D-7.8-22: icon-allowlist narrower reading confirmed; the UNDISCLOSED colour-allowlist widening
+corrected in the Completion Notes (a THIRD scope-widened claim in three stories -- 7.6
+font-mono, 7.7 frozen files, now this, each caught by one grep) and hardened with stale-entry
+detection that immediately caught ApproveButton.tsx's entry going stale from the SAME change;
+the two new chip tokens gained a strict guard and BANNED_ICONS is now derived from and
+asserted equal to DayStatusIndicator.tsx's own STATUS_ICON map. Drill-down polish: date-
+attribution bug fixed via a SEPARATE changedAtMs tracked apart from the general representative
+date (Finding 10), noun "entries"->"tickets" + calendar-day dedupe + chronological sort
+(Finding 21), an honest "another Epic changed" line for a row-dirty-but-Epic-clean drill-down
+(Finding 20), the footer's w-full actually implemented via a new ApproveButton className
+passthrough (Finding 18). Nits: NaN->w-0 in progress-width.ts (Finding 14), has/have grammar
+(Finding 26), vitest.config.ts pinned to TZ=UTC (Finding 29), ring-2 ring-accent -> the house
+ring-focus utility at 5 sites (Finding 28), an aria-live tbody tripwire (Finding 31). DEFERRED
+with named owners in deferred-work.md (D-7.8-24): hooks/useCurrentUser.ts's displayName
+plumbing (Finding 13's larger option -- touching this shared seam speculatively is exactly how
+this epic keeps getting burned), the per-issue /worklog page cap (a THIRD pagination shape,
+offset not token, D-7.8-20 didn't reach it), and the flat fetchCurrentUserWeekWorklogs
+sibling's identical /search/jql cap. D-7.8-27 (formerly D-7.8-3)'s "loses its only live
+victim" verdict recorded. All 24 frozen money-path paths reverified byte-identical against
+162b010. D-7.8-1..15 folded into epic-7-decision-log.md as D-7.8-25..39 (after the
+orchestrator's own D-7.8-16..24, in numeric document order); every citation across the story
+file, sprint-status.yaml and 8 source files repointed, none left dangling. TESTS: 98 -> 98
+files (+0), 1391 -> 1419 passed (+28), 1 skipped unchanged, same single known
+ManagerView.test.tsx rejection. compile/lint (0 errors, 40 pre-existing import/order warnings,
+none in touched files)/build all clean.

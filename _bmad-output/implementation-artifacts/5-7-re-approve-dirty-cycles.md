@@ -218,3 +218,15 @@ Dismissed as noise (2): timezone/future-date/whitespace handling in `formatPrior
 | Date | Version | Description |
 |---|---|---|
 | 2026-06-27 | 0.1 | Story 5.7 implemented: dirty-aware "Re-approve" mode on `ApproveButton` (secondary tier, supersede dialog line, reused 5.6 `approve-cycle` write path unchanged) + `ManagerMatrix` wiring (derive `anyDirty`, thread prior `at`). 72 suites / 929 passed / 1 skipped; tsc 0; eslint 0 errors. Status → review. |
+
+---
+
+## Delivery Log
+
+> Migrated out of `sprint-status.yaml` on 2026-07-28, where the whole program's log used to
+> accumulate as YAML comments. These are the **orchestrator's** per-stage notes from the
+> `run-dev-cycle` pipeline; they overlap with — and do not replace — the story's own Change Log.
+
+### 2026-06-27 — created (ready-for-dev)
+
+

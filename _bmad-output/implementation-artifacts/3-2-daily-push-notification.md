@@ -208,3 +208,15 @@ Fresh adversarial code review (BMad code-review workflow, 2026-06-22) — parall
 | 2026-06-22 | Story 3.2 created — Daily Push Notification (FR16). Reuses Story 1.6 `daily-reminder` alarm + `reminderTimeItem`/`targetHoursItem`, Story 3.1 `fetchCurrentUserWeekWorklogs` + `weekMarkedDone` defensive read. Adds `lib/notification.ts` + SW onAlarm/onClicked/storage.onChanged wiring. Status → ready-for-dev. |
 | 2026-06-22 | Story 3.2 implemented — added `lib/notification.ts` (+ tests), wired `daily-reminder` onAlarm branch, `notifications.onClicked`, and `storage.onChanged` reminder-time re-register in `entrypoints/background.ts`; exported `isCurrentWeekMarkedDone` from `lib/badge.ts`. All gates green (475 pass/1 skip, tsc clean, eslint 0 errors). Status → review. |
 | 2026-06-22 | Code review (adversarial 3-layer). Applied patches: removed the clear-then-create alarm re-register gap (single atomic `create`); added `HH:MM` range validation to `nextReminderOccurrence` (no midnight/past-epoch fire on bad storage) + 4 tests; softened DST comment. Deferred pre-existing `onAlarm` error-isolation (out of scope). Surfaced the always-"0h" body as a product/UX question. Gates: 478 pass/1 skip, tsc clean, eslint 0 errors. Status → done. |
+
+---
+
+## Delivery Log
+
+> Migrated out of `sprint-status.yaml` on 2026-07-28, where the whole program's log used to
+> accumulate as YAML comments. These are the **orchestrator's** per-stage notes from the
+> `run-dev-cycle` pipeline; they overlap with — and do not replace — the story's own Change Log.
+
+### 2026-06-22 — created (ready-for-dev)
+
+

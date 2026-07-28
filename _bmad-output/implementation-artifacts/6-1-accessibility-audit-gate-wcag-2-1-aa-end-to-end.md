@@ -242,3 +242,15 @@ Code review (2026-06-27): 3 layers (Blind Hunter, Edge Case Hunter, Acceptance A
 | Date       | Change                                                                                                                  |
 | ---------- | ----------------------------------------------------------------------------------------------------------------------- |
 | 2026-06-27 | Story 6.1 implemented: stood up the `vitest-axe` WCAG 2.1 AA scan harness across popup/options/banner; fixed AC4 disabled-Approve reachability (`aria-disabled` + `aria-describedby`); removed the contradictory matrix `Lock` `role="img"`+`aria-hidden`; gated `LoggedToday` slide-in + `TicketPicker` skeletons with `motion-safe:`; fixed two Critical findings the scan surfaced (options form label/control associations; `TicketPicker` listbox→tree); wrote the release-gate audit doc + deviations doc. Status → review. |
+
+---
+
+## Delivery Log
+
+> Migrated out of `sprint-status.yaml` on 2026-07-28, where the whole program's log used to
+> accumulate as YAML comments. These are the **orchestrator's** per-stage notes from the
+> `run-dev-cycle` pipeline; they overlap with — and do not replace — the story's own Change Log.
+
+### 2026-06-27 — created (ready-for-dev)
+
+; Epic 6 → in-progress (first story of Epic 6)

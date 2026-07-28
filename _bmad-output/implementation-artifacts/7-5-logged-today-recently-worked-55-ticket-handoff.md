@@ -1308,3 +1308,65 @@ heuristic; both Nits were cheap and directly actionable. No new escalations were
 D-7.5-14 (the pre-ruled owner/orchestrator decisions) were implemented as written by the developer and are
 unaffected by this pass. The "Checked and explicitly NOT filed" items and the "Escalations needing an
 owner ruling: None" verdict both stand as the reviewer recorded them.
+
+---
+
+## Delivery Log
+
+> Migrated out of `sprint-status.yaml` on 2026-07-28, where the whole program's log used to
+> accumulate as YAML comments. These are the **orchestrator's** per-stage notes from the
+> `run-dev-cycle` pipeline; they overlap with — and do not replace — the story's own Change Log.
+
+### 2026-07-26 — created (ready-for-dev)
+
+At baseline 2d1c30f — removes TicketPicker's 2-level
+browse tree from the popup, replacing it with "Recently worked" + a handoff row to 7.4's
+search. Investigated inline and recorded as D-7.5-1..10 in the story file:
+(1) lib/storage/pinned-tickets.ts SURVIVES — TicketPicker is its ONLY writer AND reader,
+and WeeklyGrid still renders TicketPicker, so the store keeps both. KEPT unchanged and
+deliberately NOT repurposed (it means "recently reached via search", carries no duration;
+D-7.3-2 already rejected it). Writing to it from popup code would be a 4th shared-seam leak.
+(2) "Recently worked" ranks off the ALREADY-FETCHED ['week-worklogs', weekOf] query —
+same key as useTodayTotal + useResumeTicket — so ZERO extra network.
+(3) Removing the picker takes up to THREE Jira searches (lib/hierarchy.ts self/manager/
+skip-level) OFF the popup's first-paint path — an NFR1 win.
+THREE ESCALATIONS need an orchestrator/owner ruling BEFORE dev starts:
+  E1 (D-7.5-2) AC1's "exactly four rows" is not always satisfiable from the current-week-only
+     free source. Recommend "up to four"; widening = new first-paint network cost (D-7.3-5).
+  E2 (D-7.5-3) AC2's "N more assigned tickets" needs an assigned COUNT that no longer exists
+     on the hot path. Recommend dropping N (free) or a count-only maxResults=0 query mounted
+     OFF first paint. Do not silently re-add network cost.
+  E3 (D-7.5-5) EXPERIENCE.md:140 "each with a + that seeds the resume card" DIRECTLY conflicts
+     with owner ruling D-7.3-9. Recommend the + open the existing QuickLogForm instead
+     (also keeps QuickLogForm from becoming dead code once the picker goes).
+D-7.5-4 settles delete/undo as DEFERRED (not optimistic + compensating re-post) because a
+Jira worklog DELETE is irreversible; teardown flushes to the Story 2.7 outbox. D-7.5-5a
+inverts 7.4's data-slash-passthrough polarity for Cmd/Ctrl+Z. 7.4's deferred truncation
+off-by-one deliberately NOT adopted (D-7.5-10) — it lives in the search seam this story
+must not touch. Baseline re-measured at 2d1c30f: 89 files / 1115 passed / 1 skipped,
+exits non-zero from ONE known ManagerView.test.tsx unhandled rejection; any drop below
+1115 or a second unhandled rejection is the developer's regression.
+
+### 2026-07-26 — done
+
+Code review found 1 blocker / 2 majors / 1 minor / 2 nits; all 6 FIXED
+(0 dismissed, 0 deferred) by the story finisher. The Blocker: LoggedToday.tsx's delete/undo
+timer cleared its `pending` state BEFORE dispatching the async DELETE, so the row (and the
+chrome header total) visibly reappeared for the whole Jira round-trip and a second click
+could issue a duplicate irreversible DELETE — reproduced with the reviewer's own
+never-settling-promise probe, RED-proved, then fixed with a `committingIds` set that stays
+populated from dispatch through settle. The same mechanism closed a related Minor (Undo
+staying functional after a teardown flush had already queued the delete to the outbox). Both
+Majors were "correct code, zero test teeth" on the App.tsx/TodayView.tsx pending-deletion
+seconds filters — fixed with tests that assert the RENDERED chrome-header figure via the
+real composition root (not the callback, which is exactly the trap the reviewer named) and a
+`toHaveBeenCalledWith` → `toHaveBeenLastCalledWith` correction. Both Nits fixed: a
+test-comment overclaim (given a `clearTimeout` spy instead) and a factually wrong story claim
+about ⌘Z's listener scope (corrected, plus the two missing test cases the reviewer suggested,
+added via the composition root). The story's own local D-7.5-1..10/D-7.5-5a were folded into
+epic-7-decision-log.md as canonical D-7.5-15..25 (D-7.3-11 fold-in pattern); every citation
+outside the reviewer's frozen section was repointed. Every FIX was proved with a genuine
+RED→GREEN round-trip (cp-backup/inverse-Edit, md5-verified restoration, never `git
+checkout` on uncommitted work). Final gates: 92 files / 1174 passed / 1 skipped (dev baseline
+92/1169/1 + 5 tests, 0 new files), lint 0 errors/42 warnings (unchanged), build green, all 11
+byte-identity claims on the untouched week surface re-confirmed empty-diff against 2d1c30f.

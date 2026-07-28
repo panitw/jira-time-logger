@@ -1675,3 +1675,79 @@ in Debug Log References (finisher pass) at the end of this section.
 - **The Blocker 1 fix, verified directly:** rendering `ManagerMatrix` with an `approved` epic now produces a cell whose only content is a bare `<span>{64}</span>` inheriting the `<td>`'s `text-white` — no second `<span>` with its own `text-status-clean` class, no `<svg>`. The 1.00:1 pairing is structurally impossible now, not just visually improved (pinned by the new "no icon, no status label" test in `ManagerMatrix.test.tsx`).
 - **A residual, NARROWER contrast sub-issue was found during verification, initially deferred, then FIXED per D-7.6-49 (owner override):** an `approved` cell that ALSO has `restrictedCount > 0` rendered its `EyeOff`+`hidden` overlay in `text-faint` (`#6B6B72`) against `bg-state-success` (`#15803D`) — hand-computed at ≈1.05:1, independent of the `approved`/`on-target` revert (the `restricted` overlay is gated by `locked`, not `status`, so it rendered regardless of the Blocker 1/2 fix). This is the SAME `#6B6B72`-on-`#15803D` pairing Blocker 1's own evidence table cited, but D-7.6-42's stated mechanism ("the indicator stops rendering in those cells at all") only applied to the STATUS indicator, not this separate overlay. **First triaged as DEFER** (a real fix needing either a new on-dark-surface token or a structural change felt like Story 7.8's territory). **D-7.6-49 overruled that deferral**: this is a regression Story 7.6 itself introduced (pre-story, the bare `Lock` inherited the `<td>`'s ambient `text-white` at 5.02:1), and the epic's "no story may regress WCAG 2.1 AA" constraint is a hard gate that cannot ship deferred. **Fixed** by adding a third `tone` value, `'chrome-solid'` (full-opacity `text-white` — the same white already used throughout `ChromeHeader.tsx`; distinct from `tone="chrome"`'s 85%-opacity variant, which was calibrated for the purple gradient and only hand-computes to ≈4.09:1 against this darker green — not enough), applied via `tone={status === 'approved' ? 'chrome-solid' : 'data'}`, scoped to the one cell background that needs it. **Hand-computed result: 5.02:1** — exactly the pre-story figure. Pinned by two new `ManagerMatrix.test.tsx` tests (approved+restricted → `text-white`, never `text-faint`; a non-approved restricted cell keeps the default `text-faint`), RED-proved by reverting the `tone` override and confirming the pinning test fails (`expected '... text-faint ...' to contain 'text-white'`), then restored byte-identical (`cp` + `diff`, never `git checkout`). Story 7.8 still owns the DESIGNED chip (`imports/jira-time-logger.dc.html:534` — its own light `#F4F4F7`/`#E4E3EC` background+border, which composes safely over any cell fill and lets the `tone="chrome-solid"` workaround be removed) — recorded with the design citation in `deferred-work.md`. The underlying duplicate-hex trap (`status-clean` == `state-success` == `#15803D`) remains open, also in `deferred-work.md`.
 
+---
+
+## Delivery Log
+
+> Migrated out of `sprint-status.yaml` on 2026-07-28, where the whole program's log used to
+> accumulate as YAML comments. These are the **orchestrator's** per-stage notes from the
+> `run-dev-cycle` pipeline; they overlap with — and do not replace — the story's own Change Log.
+
+### 2026-07-26 — created (ready-for-dev)
+
+Day-status vocabulary & the time off rename, at baseline
+40de36d. Driven EXPLICITLY for 7.6 per SD-2 (no auto-pick). This is the story SD-2 and
+D-7.3-6 both single out: 7.7's week totals row and 7.8's matrix rows BOTH consume the shared
+component it builds, so D-7.6-3 records the 7.7/7.8 API contract as a required DELIVERABLE,
+not an implementation detail — and resolves the "silent mode" fork against a `silent` prop
+(7.8's correct approved cell renders NO indicator at all; silence is the absence of the
+component). Investigation found ONE day-status derivation today (lib/week-grid.ts:220) with
+THREE hard-coded renderers (WeeklyGrid totals, DayCell tint, ChromeHeader note) — those
+three unify; lib/week-gaps.ts and lib/manager-matrix.ts's CellStatus stay separate axes and
+lib/manager-matrix.ts is NOT modified. Carries creator decisions D-7.6-1..12 with D-7.6-30+
+RESERVED for orchestrator/owner rulings (the D-7.3-11 / D-7.4-17 collision lesson). FIVE
+ESCALATIONS are flagged rather than guessed: D-7.6-7 a future empty workday (epics.md's
+literal AC paints four amber cells on Monday, contradicting EXPERIENCE.md:211's "amber
+appears once in a normal week"); D-7.6-8 whether this is the story that reconciles the
+validation reds D-7.3-16 explicitly deferred (QuickLogForm, DayCell); D-7.6-9 HALF-DAY TIME
+OFF — the five states cannot express it, and lib/week-gaps.ts:61 additionally lets a 4h
+half-day week be marked done (recorded, NOT fixed here — 7.7 owns that write path);
+D-7.6-10 the toolbar badge's #dc2626 deficit red (lib/badge.ts:25,49) which EXPERIENCE.md:32
+calls "Unchanged" but AC1 calls a violation; D-7.6-31 `status-clean-on-chrome` is defined in
+DESIGN.md but ABSENT from styles/globals.css, and the popup header's chrome tone needs it.
+
+### 2026-07-26 — review
+
+Implemented per D-7.6-1..12 + owner/orchestrator rulings D-7.6-35..39
+already recorded in epic-7-decision-log.md. Both jobs done: shared 5-state day-status
+vocabulary (lib/day-status.ts + components/shared/DayStatusIndicator.tsx, D-7.6-3's API
+contract implemented verbatim) unifies WeeklyGrid/DayCell/ChromeHeader/ManagerMatrix,
+removing every time-related red; PTO -> "time off" copy rename (16 strings), zero internal
+identifiers renamed, AC7 verbatim-Jira-summary trap explicitly tested. Tests 1174 -> 1240
+(+66), zero regressions, same single pre-existing unhandled rejection. Four load-bearing
+behaviours RED-proved (elapsed/future boundary, half-day note, AC8 icon-deleted-readability,
+badge hex). Deviations flagged in the story's Completion Notes, not silently guessed:
+dayStatusFor/computeDayStatuses return DayStatus | null (not a sixth union member) for
+D-7.6-35's "no status yet" case; AC3's grep test scopes text-amber-ink around its
+pre-existing Story 7.3 validation-colour usage; LoggedToday.tsx's AC4 comment requirement
+only partially satisfied (2 of 7 locations are validation states left untouched per the
+story's own "leave these" instruction, a pre-existing D-7.6-37 inconsistency, flagged not
+fixed); status-clean-on-chrome's hand-computed contrast clears AA where it actually renders
+but is below AA in the theoretical worst case at the gradient's 0% stop — flagged for
+DESIGN.md's owner, value used verbatim.
+
+### 2026-07-26 — done
+
+Finisher triaged 26 findings + 2 escalations against orchestrator
+rulings D-7.6-40..47: 22 fixed, 3 deferred (deferred-work.md: stacked-variant shape
+defects, no `size` prop, pre-existing categorize() prefix bug), 1 no-change-needed (chrome
+tone is white-only by design, D-7.6-40). Both Blockers closed via the D-7.6-41/42 revert --
+correct/approved matrix cells render a bare number again, removing the 1.00:1 invisible-text
+collision at the root and un-pre-empting Story 7.8. All 5 of the reviewer's guard-test
+mutations re-applied and confirmed to redden, then restored byte-identical (cp + md5/diff,
+never git checkout). A narrower residual AA sub-issue (approved+restricted cell overlay
+still ~1.05:1) was found independently during verification and recorded, not silently
+fixed or ignored. Tests 1240 -> 1271 (+31, 0 new files), same single pre-existing unhandled
+rejection. compile/lint/build all clean.
+
+### 2026-07-26 — follow-up (post-done)
+
+Per D-7.6-49/SD-6/SD-7. The restricted+approved contrast deferral was
+overruled -- it is a regression this story introduced (5.02:1 pre-story -> 1.05:1), and no
+story may regress WCAG AA, so it cannot ship deferred. Fixed with a new tone="chrome-solid"
+value (full-opacity white, scoped to the one approved/dark-fill cell); hand-computed result
+5.02:1, matching pre-story exactly. Pinned by 2 new tests, RED-proved by reverting the fix.
+Also corrected: deferred-work.md was mistakenly created at the repo root; merged into the
+pre-existing canonical `_bmad-output/implementation-artifacts/deferred-work.md` and the root
+copy deleted (not recreated). Tests 1271 -> 1273 (+2). compile/lint/build all clean, same
+single pre-existing unhandled rejection. Commit amended, not a second commit.

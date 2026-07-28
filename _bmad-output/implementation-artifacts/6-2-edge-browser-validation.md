@@ -209,3 +209,15 @@ _Code review 2026-07-11 (fresh independent reviewer context; baseline `fddb79d`;
 - Acceptance Auditor (diff + spec): PASS. AC1–AC6 independently re-verified as genuinely satisfied; AC7 correctly left as an open human gate (not claimed).
 
 **Status decision:** LEFT `in-progress` (not `done`). The step-04 default "no unresolved findings → done" is overridden here because AC7 is an explicit, honestly-open HUMAN-ONLY gate an agent cannot complete. `in-progress` is the correct terminal state for the automated (Part A) portion. No git commit performed.
+
+---
+
+## Delivery Log
+
+> Migrated out of `sprint-status.yaml` on 2026-07-28, where the whole program's log used to
+> accumulate as YAML comments. These are the **orchestrator's** per-stage notes from the
+> `run-dev-cycle` pipeline; they overlap with — and do not replace — the story's own Change Log.
+
+### 2026-06-27 — created (ready-for-dev)
+
+Edge browser validation

@@ -205,3 +205,15 @@ Chrome/Edge derive the extension ID from the packing public key. Reusing the ONE
 | Date       | Change                                                          |
 | ---------- | --------------------------------------------------------------- |
 | 2026-07-11 | Story 6.3 created (ready-for-dev). CRX packaging split into Part A (AUTOMATABLE: `scripts/pack-crx.mjs` + `pnpm pack:crx` using local Chrome `--pack-extension` — no new dep; key read from `CRX_SIGNING_KEY` env / gitignored default; fail-fast on missing key/Chrome; version-stamped Chrome+Edge `.crx`; prints size/ext-ID/version; `.gitignore` adds `*.pem`/`*.crx`/`keys/`; `docs/release.md` vault runbook; dry-run proof with a THROWAWAY self-signed key NOT committed) and Part B (HUMAN-ONLY, PENDING HUMAN: provision REAL production key into 1Password/team vault; post `.crx` to Microsoft Teams). Confirmed at creation: actual build paths are `output/chrome-mv3/`+`output/edge-mv3/` (epic's `.output/…` is stale); no `pack:crx` script yet; `*.pem`/`*.crx`/`keys/` NOT yet gitignored; Node v24 + Chrome present. Agent must NOT mint/commit a real production key or publish. |
+
+---
+
+## Delivery Log
+
+> Migrated out of `sprint-status.yaml` on 2026-07-28, where the whole program's log used to
+> accumulate as YAML comments. These are the **orchestrator's** per-stage notes from the
+> `run-dev-cycle` pipeline; they overlap with — and do not replace — the story's own Change Log.
+
+### 2026-07-11 — created (ready-for-dev)
+
+CRX packaging script & signing key vault (Part A automatable; Part B real-key provisioning + Teams publish PENDING HUMAN)

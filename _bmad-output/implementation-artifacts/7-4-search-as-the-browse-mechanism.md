@@ -1165,3 +1165,62 @@ or a dedicated follow-up if it becomes user-visible.
 Both are recorded above as Finding 1 and Finding 2's resolutions — the owner's rulings, not this
 finisher's judgement calls. See `epic-7-decision-log.md`'s **D-7.4-15** and **D-7.4-16** for the
 owner's full reasoning (situation / options considered / why it wins), preserved there verbatim.
+
+---
+
+## Delivery Log
+
+> Migrated out of `sprint-status.yaml` on 2026-07-28, where the whole program's log used to
+> accumulate as YAML comments. These are the **orchestrator's** per-stage notes from the
+> `run-dev-cycle` pipeline; they overlap with — and do not replace — the story's own Change Log.
+
+### 2026-07-26 — created (ready-for-dev)
+
+Search as the browse mechanism, at baseline dfccf5a.
+Carries ORCHESTRATOR DECISIONS D-7.4-1..D-7.4-10. Notably: D-7.4-1 resolves the `/`-shortcut
+collision with 7.3's autofocus latch in BOTH directions (a `data-slash-passthrough` opt-in on
+the hour input, plus an already-claimed guard so a late `'loading' → 'ready'` resolve cannot
+steal focus back out of search); D-7.4-2 forbids unmounting `TodayView` for AC3's list swap
+(unmounting wipes `loggedEntries` and re-fires `onTotalChange(0)`, corrupting the chrome
+figure) — it is hidden with the HTML `hidden` attribute instead, which jsdom can actually
+assert; D-7.4-3 fixes the ARIA shape as combobox + listbox + option and moves the inline hour
+input OUT of `role="option"` (an ARIA-invalid mockup construction), recorded as a deviation;
+D-7.4-5 reuses the existing `lib/ticket-search.ts` seam and `JiraHierarchySearchSchema`
+rather than adding either; D-7.4-7 closes Story 7.3's carried-forward AC5 half as this
+story's AC7. Six escalations raised for the orchestrator (mockup fork, non-subtask logging,
+JQL scope, maxResults=20, pinnedTickets after 7.5, an EXPERIENCE.md self-contradiction).
+
+### 2026-07-26 — review
+
+Owner rulings applied exactly: D-7.4-11 (no issue-type filter, log
+directly, amber plain-language warning at row + write point), D-7.4-12 (listbox not grid,
+per-row inputs dropped), D-7.4-13 (JQL widened to `text ~`, statusCategory/updated filters
+dropped, mitigated by ranking not filtering), D-7.4-14 (truncation stated in text, never
+silent). Two deviations flagged: `JiraHierarchyIssueSchema` gained `status`/`updated` beyond
+D-7.4-5's own field list (forced by D-7.4-13's ranking mitigation); the results `listbox` was
+made a PERSISTENT container across every search state (not results-only) so AC6's
+`aria-busy="true"` has a stable element to toggle on. Three tests explicitly proven RED then
+restored green: the D-7.4-1 reverse-focus-steal guard and the D-7.4-2 hidden-vs-conditional-
+render hazard. D-7.4-2/D-7.3-9 integration tests placed in `App.session-total.test.tsx`
+instead of `App.test.tsx` (the latter mocks `TodayView` away and cannot observe the hazard).
+Final gates: 88 files / 1099 passed / 1 skipped (baseline 86/1049/1 + 50 new tests, 2 new
+files), lint 0 errors, build green.
+
+### 2026-07-26 — done
+
+Code review found 0 blockers / 3 majors / 3 minors / 4 nits; all 10
+findings resolved (9 FIX outright, 1 FIX-with-a-deferred-sub-item, 0 dismissed) by the story
+finisher. The two Major escalations were owner-ruled before this pass as D-7.4-15 (scope the
+widened JQL to an opt-in — `searchTickets` now takes `{ widen: true }` explicitly; `TicketPicker`
+proven byte-identical to dfccf5a via a new jiraGet-mocked test) and D-7.4-16 (scroll the active
+option into view + duplicate the non-subtask warning into the always-visible header strip). The
+finisher also fixed a reintroduced reverse focus-steal hazard on SearchPanel's own autofocus
+(RED-proven), extended the failure/in-flight live-region announcements, reframed a toothless
+D-7.3-9-via-search test to cite ResumeCard.test.tsx as its real pin instead of a claim it
+couldn't back, and fixed four Nits (slash-passthrough parity, token discipline, empty-hour
+messaging, a NaN-comparator guard — the matching truncation off-by-one was deferred as a
+reviewer-acknowledged safe-direction inaccuracy, not worth the wire-contract change for a Nit).
+The story creator's local D-7.4-1..10 were folded into epic-7-decision-log.md as canonical
+D-7.4-17..26 (D-7.3-11's fold-in pattern); every citation in the story file and source comments
+was repointed. Final gates: 89 files / 1115 passed / 1 skipped (delta +1 file / +16 tests over
+the reviewed baseline of 88/1099/1), lint 0 errors/53 warnings (unchanged), build green.

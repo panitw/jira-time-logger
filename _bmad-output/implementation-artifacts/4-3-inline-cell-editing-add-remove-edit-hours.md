@@ -218,3 +218,15 @@ Code review (adversarial, three parallel layers: Blind Hunter, Edge Case Hunter,
 
 - 2026-06-27: Story 4.3 created (ready-for-dev). Editable week-grid cells (POST/PUT/DELETE via existing helpers), multi-worklog-per-cell read-only default, row Remove-from-week, body-cell color carry-through (deferred from 4.2). Reuses hours parser, worklog-date, outbox enqueue, badge broadcast, and Story 2.6 edit/menu patterns.
 - 2026-06-27: Story 4.3 implemented (→ review). Extended `lib/week-grid.ts` per-cell worklog model (`cells`/`cellEditability`, mirrors kept); new `DayCell` editable-cell component (POST/PUT/DELETE, validation + 24h block, pending/error chips, multi read-only, carry-through tint); `WeeklyGrid` wired with `DayCell` + `RowActions` (`Remove from week`) + duplicate-pick focus jump; `WeekView` invalidates the week query via `onMutated`. Gates: vitest 49/601 passed/1 skipped, tsc 0 errors, eslint 0 errors.
+
+---
+
+## Delivery Log
+
+> Migrated out of `sprint-status.yaml` on 2026-07-28, where the whole program's log used to
+> accumulate as YAML comments. These are the **orchestrator's** per-stage notes from the
+> `run-dev-cycle` pipeline; they overlap with — and do not replace — the story's own Change Log.
+
+### 2026-06-27 — created (ready-for-dev)
+
+
