@@ -1,14 +1,24 @@
 name: Release
 
-# Every commit that lands on main: bump the patch version, pack signed .crx
-# files for Chrome and Edge, and publish them as a GitHub Release.
+# Every commit that lands on main packs signed .crx files for Chrome and Edge
+# and publishes them as a GitHub Release. Work happens on `develop`; main is
+# protected and advances only through a pull request, so this fires once per
+# develop -> main merge.
 #
-# Work happens on `develop`; main is protected and advances only through a pull
-# request, so in practice this fires once per develop -> main merge. The bump
-# and tag below are a DIRECT push to that protected branch — it works because
-# github-actions[bot] is registered as a bypass actor on main's protection.
-# Removing that bypass breaks the release at the push step, not before it, so
-# the version would be bumped and the artifacts packed before it failed.
+# NOTHING here writes to main. That is deliberate and not merely tidy: GitHub
+# will not grant github-actions[bot] push access to a protected branch — the
+# classic `restrictions.apps` list silently drops it, and a ruleset bypass actor
+# is refused with "GitHub Actions integration must be part of the ruleset source
+# or owner organization". Any design where CI pushes to main therefore needs a
+# PAT or GitHub App token, i.e. another long-lived secret that expires.
+#
+# So the version is NOT bumped here. main is published exactly as it stands,
+# which keeps package.json, the tag and the artifact filenames in agreement, and
+# the next development version is opened on `develop` afterwards — develop is
+# unprotected, so the bot can push there. The practical consequence: a
+# develop -> main merge must carry a version not already tagged, which the
+# "Read version to publish" step enforces rather than discovering halfway
+# through a publish.
 #
 # Two guards decide whether this runs at all, both on the `verify` job and
 # inherited by `release` via `needs:`:
@@ -135,30 +145,32 @@ jobs:
             exit 1
           fi
 
-      # Bump BEFORE packing: pack:crx reads the version from package.json and
-      # stamps it into both artifact filenames.
-      - name: Bump patch version
+      # Publish whatever version main already carries. Nothing is bumped here,
+      # so main's package.json, the tag, and the artifact filenames always agree
+      # — and main is never written to, which is what lets it stay protected.
+      - name: Read version to publish
         id: bump
         run: |
-          npm version patch --no-git-tag-version
           VERSION="$(node -p "require('./package.json').version")"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Bumped to $VERSION"
+          echo "Publishing v$VERSION"
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null 2>&1; then
+            echo "::error::Tag v$VERSION already exists — main was merged without a version bump on develop. Bump the version on develop and merge again."
+            exit 1
+          fi
 
       - name: Pack signed .crx (Chrome + Edge)
         run: pnpm pack:crx
 
-      - name: Commit and tag the version bump
+      # Tags are not branches: branch protection does not apply to them, so the
+      # bot can push this even though it cannot push to main itself.
+      - name: Tag the released commit
         env:
           VERSION: ${{ steps.bump.outputs.version }}
         run: |
           git config user.name  'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          # [skip ci] is load-bearing: without it this push retriggers the
-          # workflow and it bumps forever.
-          git commit -am "Release v$VERSION [skip ci]"
           git tag "v$VERSION"
-          git push origin HEAD:main
           git push origin "v$VERSION"
 
       # gh is preinstalled on the runner and is not an action, so it sidesteps
@@ -178,3 +190,24 @@ jobs:
           Install: download the .crx and drag it onto \`chrome://extensions\` (or \`edge://extensions\`) with Developer mode enabled.
 
           Built from $SHA."
+
+      # Open the next development cycle on develop, which is unprotected and so
+      # CAN be pushed to. Skipped when develop has already moved past the
+      # released version — someone bumping by hand should not be clobbered.
+      - name: Prepare next development version on develop
+        env:
+          RELEASED: ${{ steps.bump.outputs.version }}
+        run: |
+          git fetch origin develop
+          git checkout -B develop origin/develop
+          CURRENT="$(node -p "require('./package.json').version")"
+          if [ "$CURRENT" != "$RELEASED" ]; then
+            echo "develop is on $CURRENT, released $RELEASED — already moved on, leaving it alone."
+            exit 0
+          fi
+          npm version patch --no-git-tag-version
+          NEXT="$(node -p "require('./package.json').version")"
+          # [skip ci] keeps a version-only commit from spending a CI run.
+          git commit -am "Prepare next development version $NEXT [skip ci]"
+          git push origin develop
+          echo "develop opened on $NEXT"
