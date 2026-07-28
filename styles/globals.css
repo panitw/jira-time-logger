@@ -192,6 +192,16 @@
   --color-chip-surface: #f4f4f7;
 
   /* ---------------------------------------------------------------------
+   * Week-grid "add a subtask" popup (dc.html:854). Per D-7.7-15, a
+   * design-specified value with no token is TOKENISED rather than inlined.
+   * Deliberately NOT collapsed onto --color-border (#e4e3ec): the design
+   * draws the grid card and this floating result popup with different
+   * edges, and the popup's is the heavier of the two — collapsing them
+   * would flatten a deliberate elevation cue (D-7.3-14).
+   * ------------------------------------------------------------------- */
+  --color-popover-border: #dedce9;
+
+  /* ---------------------------------------------------------------------
    * Legacy aliases — remapped onto KKP values so the ~330 existing
    * `text-neutral-*` / `bg-accent-*` / `text-state-*` usages inherit the
    * KKP palette without a class rename. Remove each alias as its component

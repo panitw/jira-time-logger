@@ -180,6 +180,10 @@ describe('AC3 — no surface hard-codes a day-status icon (source-level grep)', 
       'components/today/PtoQuickAction.tsx',
       'components/today/LoggedToday.tsx',
       'components/today/TicketPicker.tsx',
+      // The week grid's add-a-subtask popup — an in-flight SEARCH spinner,
+      // the identical use (and identical `useTicketSearch` state) that
+      // allowlists `SearchPanel.tsx` above. Never a day status.
+      'components/week/AddSubtaskRow.tsx',
     ],
     CircleX: ['components/shell/WriteErrorBanner.tsx'],
   };
@@ -561,10 +565,21 @@ describe('AC3 — no surface hard-codes a day-status colour token (source-level 
   // exclusive to the manager surface (D-7.8-36: purpose-built tokens, not
   // reused elsewhere), so a strict "nowhere but their owners" check is safe,
   // the same reasoning as `text-status-clean` above.
-  it('no file other than ManagerMatrix.tsx / VisibilityWarning.tsx / globals.css contains bg-chip-surface or border-chip-dashed-border', () => {
+  // The "genuinely exclusive to the manager surface" premise above no longer
+  // holds. The week grid's add-a-subtask affordance is drawn with the SAME
+  // two values in the design source: the dashed opener at `:842`
+  // (`border:1px dashed #CFCDDE`) and the ✕ button's hover at `:851`
+  // (`background:#F4F4F7`). Reaching for the existing tokens is the correct
+  // move — minting a second token at an identical hex is precisely the
+  // near-neighbour duplication D-7.3-14 forbids — so `AddSubtaskRow.tsx`
+  // joins the allowlist rather than inlining or cloning them. The guard's
+  // real job (these values never spread UNGOVERNED) is unchanged: every new
+  // consumer still has to be named here deliberately.
+  it('no file other than ManagerMatrix.tsx / VisibilityWarning.tsx / AddSubtaskRow.tsx / globals.css contains bg-chip-surface or border-chip-dashed-border', () => {
     const allowlist = new Set([
       'components/manager/ManagerMatrix.tsx',
       'components/manager/VisibilityWarning.tsx',
+      'components/week/AddSubtaskRow.tsx',
       'styles/globals.css',
     ]);
     const violations: string[] = [];

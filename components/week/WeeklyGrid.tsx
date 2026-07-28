@@ -3,8 +3,8 @@ import { format, parseISO } from 'date-fns';
 import { MoreHorizontal } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { DayStatusIndicator } from '@/components/shared/DayStatusIndicator';
-import { TicketPicker } from '@/components/today/TicketPicker';
 import { Button } from '@/components/ui/button';
+import { AddSubtaskRow } from '@/components/week/AddSubtaskRow';
 import { DayCell } from '@/components/week/DayCell';
 import { PtoPopover } from '@/components/week/PtoPopover';
 import { dayStatusNote, isWeekend } from '@/lib/day-status';
@@ -168,7 +168,7 @@ function TotalsCell({
       // inherited the larger body size).
       className={`px-1 py-1 text-right tabular text-xs motion-safe:transition-colors motion-safe:duration-200 ${weekendTint}`}
       // Finding 21: include the figure, not just the note — several notes
-      // (`Weekend`, `Target met — Xh logged`, `Full-day time off`) contain
+      // (`Weekend`, `Target met`, `Full-day time off`) contain
       // no digits of their own, so a screen reader announcing only
       // `${dayName}, ${note}` on THOSE statuses dropped the hours entirely
       // (a real regression from the pre-story `neutral` days, which carried
@@ -492,6 +492,12 @@ export function WeeklyGrid({
   const allRows = [...grid.rows, ...localGridRows].filter(
     (r) => !hiddenKeys.has(r.key),
   );
+  // What the user can actually SEE as a row right now — the predicate behind
+  // the picker's "already in week" label. Deliberately `allRows`, not
+  // `existingKeys` (server rows only): a row added locally this session, or
+  // one removed via "Remove from week", is present/absent on screen well
+  // before a refetch agrees, and the label has to match the screen.
+  const visibleKeys = new Set(allRows.map((r) => r.key));
   // Finding 10: moved out of the render body into a layout effect — see
   // `allRowsRef`'s own comment above for why.
   useLayoutEffect(() => {
@@ -637,18 +643,23 @@ export function WeeklyGrid({
         </tfoot>
       </table>
 
-      <div className="mt-2">
-        {picking !== false ? (
-          <TicketPicker onSelect={handlePick} />
-        ) : (
-          <button
-            type="button"
-            onClick={() => setPicking(true)}
-            className="rounded px-1 py-1 text-sm text-neutral-500 hover:text-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-          >
-            {STRINGS.addSubtask}
-          </button>
-        )}
+      {/* Design source `:839-883`: the add affordance lives INSIDE the grid
+          card's footer band, in the subtask column, not floating below the
+          card. `AddSubtaskRow` owns both of its states (dashed button →
+          search + result popup); `picking` still decides whether it starts
+          open, because the day-header "Add a worklog…" path opens the search
+          directly and carries a target day. */}
+      <div className="mt-2 flex min-w-0 flex-col">
+        <AddSubtaskRow
+          // Remount when the entry point changes so `startOpen` is re-read:
+          // arriving from a day header must open the search even if the
+          // dashed button is what is currently on screen.
+          key={picking === false ? 'idle' : 'open'}
+          startOpen={picking !== false}
+          existingKeys={visibleKeys}
+          onAdd={handlePick}
+          onCancel={() => setPicking(false)}
+        />
       </div>
     </div>
   );

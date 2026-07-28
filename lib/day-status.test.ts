@@ -429,8 +429,14 @@ describe('dayStatusNote — D-7.7-20 / Finding 4: "half-day" is reserved for an 
   });
 });
 
-describe('dayStatusNote — Finding 10: "met" states the actual hours logged, verbatim per D-7.6-12', () => {
-  it('"Target met — Xh logged", using the day\'s actual logged seconds', () => {
+// Supersedes Finding 10 / D-7.6-12's "met states the actual hours logged".
+// That clause restated the figure rendered directly above it ("8.0 / 8h") and
+// wrapped the note to a second line in a 104px column to do so. The hours are
+// NOT lost by dropping it — every surface that renders this note renders that
+// figure beside it, including the over-target case ("10.0 / 8h"), which is the
+// only case where the clause ever carried a number the figure did not.
+describe('dayStatusNote — "met" is the verdict alone; the hours live in the adjacent figure', () => {
+  it('states the verdict with no restated hours', () => {
     const note = dayStatusNote({
       status: 'met',
       loggedSeconds: TARGET,
@@ -439,7 +445,32 @@ describe('dayStatusNote — Finding 10: "met" states the actual hours logged, ve
       iso: '2026-06-15',
       today: '2026-06-17',
     });
-    expect(note).toBe('Target met — 8h logged');
+    expect(note).toBe('Target met');
+  });
+
+  it('says the same thing when the day ran OVER target — no "10h logged" tail', () => {
+    const note = dayStatusNote({
+      status: 'met',
+      loggedSeconds: TARGET * 1.25,
+      timeOffSeconds: 0,
+      targetSeconds: TARGET,
+      iso: '2026-06-15',
+      today: '2026-06-17',
+    });
+    expect(note).toBe('Target met');
+  });
+
+  it('never wraps: the note is short enough to sit on one line in a grid column', () => {
+    const note = dayStatusNote({
+      status: 'met',
+      loggedSeconds: TARGET,
+      timeOffSeconds: 0,
+      targetSeconds: TARGET,
+      iso: '2026-06-15',
+      today: '2026-06-17',
+    });
+    // The regression this replaced was 22 characters; the column fits ~14.
+    expect(note.length).toBeLessThanOrEqual(14);
   });
 });
 

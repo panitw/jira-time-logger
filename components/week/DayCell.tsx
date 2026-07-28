@@ -124,6 +124,34 @@ export function DayCell({
   // while a mutation is in flight).
   const mountedRef = useRef(true);
 
+  // The value this cell has COMMITTED but the server-derived `cell` prop has
+  // not reported back yet. `null` = trust the prop.
+  //
+  // Without this the number visibly disappears on every save: `commit()`
+  // closes the editor synchronously, display mode reads `cell.seconds` — a
+  // prop derived from the last fetch — and that still holds the OLD value
+  // until `onMutated()`'s refetch lands. A cell going 3.0 → `──` → 3.0 reads
+  // as "my entry was lost", which is the one thing a time logger must never
+  // imply. The write is already in flight and the button is `disabled`
+  // meanwhile, so showing the committed value is a promise the cell is
+  // actually keeping — not a guess about the server.
+  const [optimisticSeconds, setOptimisticSeconds] = useState<number | null>(null);
+  // `cell.seconds` as it was when we committed, so the effect below can tell
+  // "the refetch landed" from "nothing has changed yet".
+  const committedFromRef = useRef<number | null>(null);
+
+  // Hand back to the prop once it can speak for itself: either it now agrees
+  // with us, or it has moved to some THIRD value (a concurrent edit elsewhere,
+  // a server-side correction) — in which case the server wins outright and
+  // the optimistic value has no business overriding it.
+  useEffect(() => {
+    if (optimisticSeconds === null) return;
+    if (cell.seconds === optimisticSeconds || cell.seconds !== committedFromRef.current) {
+      setOptimisticSeconds(null);
+      committedFromRef.current = null;
+    }
+  }, [cell.seconds, optimisticSeconds]);
+
   const baseAria = `${dayName}, ${rowKey} ${rowSummary}`;
   const editAria = `Hours for ${baseAria}`;
   const multiAria = `${cell.worklogs.length} entries for ${baseAria} — edit in the Today view`;
@@ -178,11 +206,25 @@ export function DayCell({
         return;
       }
       log.warn('week.cell.failed', { key: rowKey, op: vars.op, kind: result.kind });
-      if (mountedRef.current) setChip({ kind: 'error', message: errorMessageFor(vars.op) });
+      // Jira REFUSED this write — nothing was stored and nothing will retry,
+      // so the optimistic value must go. Holding it next to the red chip
+      // would show a number that exists nowhere but this screen. The
+      // transient branch above deliberately KEEPS it: that write is durably
+      // queued in the outbox and will land, which is what its amber
+      // "Pending — will retry" chip says.
+      if (mountedRef.current) {
+        setOptimisticSeconds(null);
+        committedFromRef.current = null;
+        setChip({ kind: 'error', message: errorMessageFor(vars.op) });
+      }
     },
     onError: (e) => {
       log.error('week.cell.error', { key: rowKey, error: String(e) });
-      if (mountedRef.current) setChip({ kind: 'error', message: errorMessageFor('post') });
+      if (mountedRef.current) {
+        setOptimisticSeconds(null);
+        committedFromRef.current = null;
+        setChip({ kind: 'error', message: errorMessageFor('post') });
+      }
     },
   });
 
@@ -234,9 +276,13 @@ export function DayCell({
     if (isMulti) return;
     resolvedRef.current = false;
     setChip(null);
-    setHoursInput(cellInputValue(cell.seconds));
+    // Seed from what is ON SCREEN, not from the prop. After a transient
+    // failure the cell shows the queued value with a "will retry" chip and is
+    // re-editable; seeding from `cell.seconds` there would open the editor on
+    // a number the user cannot see and never typed.
+    setHoursInput(cellInputValue(optimisticSeconds ?? cell.seconds));
     setEditing(true);
-  }, [isMulti, cell.seconds]);
+  }, [isMulti, cell.seconds, optimisticSeconds]);
 
   // Expose the editor-open action to the parent (day-scoped "Add a worklog…").
   useEffect(() => {
@@ -271,6 +317,10 @@ export function DayCell({
       if (single) {
         resolvedRef.current = true;
         setEditing(false);
+        // A delete commits to EMPTY — so the cell must show the empty glyph
+        // immediately, not keep rendering the old hours until the refetch.
+        committedFromRef.current = cell.seconds;
+        setOptimisticSeconds(0);
         mutate({ op: 'delete', worklogId: single.id });
       } else {
         // Clearing an already-empty cell is a no-op.
@@ -283,6 +333,8 @@ export function DayCell({
 
     resolvedRef.current = true;
     setEditing(false);
+    committedFromRef.current = cell.seconds;
+    setOptimisticSeconds(validation.seconds);
     if (single) {
       mutate({
         op: 'put',
@@ -293,7 +345,18 @@ export function DayCell({
     } else {
       mutate({ op: 'post', seconds: validation.seconds });
     }
-  }, [isPending, isMulti, hoursInput, cell.worklogs, mutate, cancelEdit, dayISO]);
+  }, [
+    isPending,
+    isMulti,
+    hoursInput,
+    cell.worklogs,
+    // Read when stamping `committedFromRef` — the baseline the
+    // optimistic-value effect compares the next prop against.
+    cell.seconds,
+    mutate,
+    cancelEdit,
+    dayISO,
+  ]);
 
   const handleBlur = useCallback(() => {
     if (resolvedRef.current) return;
@@ -410,7 +473,13 @@ export function DayCell({
   // and — for a time-off day — its OWN fill/text/border triple (D-7.7-15),
   // no icon (D-7.7-17: the filled Diamond belongs to the totals row, not
   // this cell).
-  const hasValue = cell.seconds > 0;
+  // The value the user is looking at: what they just committed while it is
+  // still in flight, otherwise the server's. Every downstream derivation
+  // (`hasValue`, the fill/border/text triple, the spoken hours, the rendered
+  // figure) reads THIS, so the cell can never show a number and an
+  // "empty cell" treatment at the same time.
+  const displaySeconds = optimisticSeconds ?? cell.seconds;
+  const hasValue = displaySeconds > 0;
   const isTimeOff = status === 'time-off';
   // D-7.7-26/D-7.7-15: a WEEKEND cell holding a value dims its text to
   // `text-muted` (#6B6678) rather than the ordinary `text-foreground`
@@ -445,7 +514,7 @@ export function DayCell({
       // point zero"). Empty cells carry no such label; the button's own
       // `editAria` ("Hours for …") still serves them.
       {...(hasValue
-        ? { 'aria-label': `${dayName}, ${rowKey}, ${hoursPhrase(cell.seconds)}` }
+        ? { 'aria-label': `${dayName}, ${rowKey}, ${hoursPhrase(displaySeconds)}` }
         : {})}
     >
       <button
@@ -458,7 +527,7 @@ export function DayCell({
         disabled={isPending}
         className={boxClass}
       >
-        {hasValue ? secondsToCellDisplay(cell.seconds) : EMPTY_CELL_GLYPH}
+        {hasValue ? secondsToCellDisplay(displaySeconds) : EMPTY_CELL_GLYPH}
       </button>
       {chip?.kind === 'pending' && (
         <span

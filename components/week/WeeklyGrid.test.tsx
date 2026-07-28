@@ -8,19 +8,36 @@ import { hoursToSeconds } from '@/lib/hours';
 import { scan, criticalOrSerious } from '@/lib/test/axe';
 import type { DayStatus, WeekGrid, WeekGridCell } from '@/lib/week-grid';
 
-vi.mock('@/components/today/TicketPicker', () => ({
-  TicketPicker: ({
-    onSelect,
+// Stands in for the real search + result popup (its own suite covers that),
+// but keeps the TWO-STATE contract WeeklyGrid actually integrates against:
+// a dashed opener that becomes the picker, closing again once a row is
+// added. A mock that rendered only the picker would let a regression in
+// that handshake pass here unnoticed.
+vi.mock('@/components/week/AddSubtaskRow', () => ({
+  AddSubtaskRow: ({
+    onAdd,
+    startOpen,
   }: {
-    onSelect: (k: string, s: string) => void;
-  }) => (
-    <button
-      type="button"
-      onClick={() => onSelect('NEW-1', 'A new ticket')}
-    >
-      mock-pick
-    </button>
-  ),
+    onAdd: (k: string, s: string) => void;
+    startOpen?: boolean;
+  }) => {
+    const [open, setOpen] = React.useState(!!startOpen);
+    return open ? (
+      <button
+        type="button"
+        onClick={() => {
+          setOpen(false);
+          onAdd('NEW-1', 'A new ticket');
+        }}
+      >
+        mock-pick
+      </button>
+    ) : (
+      <button type="button" onClick={() => setOpen(true)}>
+        + Add a subtask to this week
+      </button>
+    );
+  },
 }));
 
 const postWorklogMock = vi.fn();
@@ -144,20 +161,19 @@ beforeEach(() => {
 });
 
 describe('WeeklyGrid', () => {
-  // Story 7.2 Finding 2: `TicketPicker` is mocked out above, so no behavioral
-  // test in this file can observe whether WeeklyGrid's usage of it has
-  // (incorrectly) opted into the popup-only `unbounded` prop, which would
-  // silently re-introduce the scroll-region leak the finding caught. A
-  // source-level grep on the exact `<TicketPicker` call site closes that gap
-  // cheaply, without unmocking the picker's own heavy dependency tree.
-  it('does not opt the inline ticket picker into the popup-only `unbounded` variant', () => {
+  // Supersedes Story 7.2 Finding 2's `unbounded`-prop grep. That test guarded
+  // ONE way the popup's `TicketPicker` could leak its nested scroll region
+  // into the week surface; the week grid no longer uses that component at all
+  // (the design specifies a live-search popup here, not a hierarchy tree), so
+  // the guarantee is now structural. Asserting the IMPORT is absent is
+  // strictly stronger than asserting one prop was not passed — reintroducing
+  // the tree in any form, with any props, fails here.
+  it('does not render the popup surface’s TicketPicker — no nested scroll region can leak in', () => {
     const source = readFileSync(
       path.resolve(process.cwd(), 'components/week/WeeklyGrid.tsx'),
       'utf-8',
     );
-    const match = source.match(/<TicketPicker\b[^>]*\/>/);
-    expect(match).toBeTruthy();
-    expect(match![0]).not.toMatch(/\bunbounded\b/);
+    expect(source).not.toMatch(/TicketPicker/);
   });
 
   it('renders a semantic table with Mon..Sun column headers', () => {
@@ -224,12 +240,12 @@ describe('WeeklyGrid', () => {
     renderGrid(
       <WeeklyGrid grid={gridWithOneRow()} dayStatuses={statuses} today="2026-06-20" />,
     );
-    // Finding 10: the note states the actual hours logged, verbatim per
-    // D-7.6-12 ("Target met — 8h logged") — gridWithOneRow's Monday total is
-    // 4h, so the note reads "Target met — 4h logged". Finding 21: the
-    // aria-label now also carries the figure itself ("4.0"), not just the
-    // note.
-    const cell = screen.getByLabelText('Monday, 4.0, Target met — 4h logged');
+    // The note is the verdict alone now (superseding Finding 10 / D-7.6-12's
+    // restated hours — see `lib/day-status.test.ts`). Nothing is lost for
+    // screen-reader users either: Finding 21 already put the figure itself
+    // ("4.0") into this aria-label, which is exactly where the dropped
+    // "— 4h logged" clause used to duplicate it.
+    const cell = screen.getByLabelText('Monday, 4.0, Target met');
     expect(cell).toBeTruthy();
     expect(cell.querySelector('svg')).toBeTruthy(); // lucide CircleCheck
     expect(cell.querySelector('span')?.className).toContain('text-status-clean');
@@ -480,7 +496,7 @@ describe('WeeklyGrid', () => {
       renderGrid(
         <WeeklyGrid grid={gridWithOneRow()} dayStatuses={statuses} today="2026-06-20" />,
       );
-      const cell = screen.getByLabelText('Monday, 4.0, Target met — 4h logged');
+      const cell = screen.getByLabelText('Monday, 4.0, Target met');
       expect(cell.querySelector('svg')?.getAttribute('width')).toBe('11');
     });
 

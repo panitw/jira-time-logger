@@ -188,7 +188,13 @@ export function dayStatusNote(input: {
 
   switch (status) {
     case 'met':
-      return `Target met — ${formatHoursLabel(loggedSeconds)}h logged`;
+      // Just the verdict. The hours are ALREADY on screen immediately above
+      // this note ("8.0 / 8h"), so "— 8h logged" restated them and, in a
+      // 104px grid column, wrapped the note onto a second line to do it.
+      // Every other arm below earns its clause by adding something the
+      // figure does not carry (a shortfall, a full/half claim, the real
+      // time-off hours); "met" has nothing left to add.
+      return 'Target met';
     case 'partial':
       return future ? 'in progress' : shortfallLabel(targetSeconds - loggedSeconds);
     case 'attention':

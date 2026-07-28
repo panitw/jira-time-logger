@@ -515,3 +515,187 @@ describe('DayCell', () => {
     });
   });
 });
+
+// The reported bug: entering hours and tabbing out made the number VANISH
+// (back to the empty-cell middot) for the whole in-flight window, then
+// reappear when the refetch landed. Display mode reads the server-derived
+// `cell` prop, which still held the old value — so a cell went 3.0 → · → 3.0
+// on every single save. In a time logger that reads as "my entry was lost".
+describe('committed hours survive the in-flight window (no disappearing value)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    postWorklogMock.mockResolvedValue({ kind: 'ok', value: { id: 'new-1', timeSpentSeconds: 10800 } });
+    updateWorklogMock.mockResolvedValue({ kind: 'ok', value: { id: 'w-1', timeSpentSeconds: 10800 } });
+    deleteWorklogMock.mockResolvedValue({ kind: 'ok', value: undefined });
+  });
+
+  it('keeps the typed hours on screen after Tab, while the POST is still in flight', () => {
+    // A POST that never settles — the entire window under test.
+    postWorklogMock.mockReturnValue(new Promise(() => {}));
+    renderCell(emptyCell());
+    fireEvent.click(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'));
+    const input = screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid');
+    fireEvent.change(input, { target: { value: '3' } });
+    fireEvent.blur(input);
+
+    // The cell prop is STILL the empty one — no refetch has happened.
+    const btn = screen.getByRole('button');
+    expect(btn.textContent).toBe('3.0');
+    expect(btn.textContent).not.toBe('·');
+  });
+
+  it('dresses the cell as value-bearing, not as empty, while in flight', () => {
+    // The regression was not only the digits: `hasValue` drove the fill,
+    // border and text colour too, so the box also lost its white/bordered
+    // treatment for the same window.
+    postWorklogMock.mockReturnValue(new Promise(() => {}));
+    renderCell(emptyCell());
+    fireEvent.click(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'));
+    fireEvent.change(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'), {
+      target: { value: '3' },
+    });
+    fireEvent.blur(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'));
+
+    const btn = screen.getByRole('button');
+    expect(btn.className).toContain('bg-surface');
+    expect(btn.className).toContain('border-cell-border');
+    expect(btn.className).not.toContain('text-faint-decorative');
+  });
+
+  it('speaks the committed hours too — the accessible name never lags the screen', () => {
+    postWorklogMock.mockReturnValue(new Promise(() => {}));
+    const { container } = renderCell(emptyCell());
+    fireEvent.click(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'));
+    fireEvent.change(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'), {
+      target: { value: '3' },
+    });
+    fireEvent.blur(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'));
+
+    expect(container.querySelector('td')?.getAttribute('aria-label')).toBe(
+      'Monday, PROJ-1, 3 hours',
+    );
+  });
+
+  it('hands back to the server once the refetched prop agrees', async () => {
+    const { rerender } = renderCell(emptyCell());
+    fireEvent.click(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'));
+    fireEvent.change(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'), {
+      target: { value: '3' },
+    });
+    fireEvent.blur(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'));
+    await waitFor(() => expect(postWorklogMock).toHaveBeenCalled());
+
+    // The refetch lands carrying the same value — no flicker either way.
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <table>
+          <tbody>
+            <tr>
+              <DayCell
+                rowKey="PROJ-1"
+                rowSummary="Build the grid"
+                dayIndex={0}
+                dayName="Monday"
+                dayISO="2026-06-15"
+                cell={singleCell(hoursToSeconds(3))}
+                status={null}
+                onMutated={vi.fn()}
+              />
+            </tr>
+          </tbody>
+        </table>
+      </QueryClientProvider>,
+    );
+    expect(screen.getByRole('button').textContent).toBe('3.0');
+  });
+
+  it('clears to the empty glyph immediately on a delete — not the stale hours', () => {
+    deleteWorklogMock.mockReturnValue(new Promise(() => {}));
+    renderCell(singleCell(hoursToSeconds(4)));
+    fireEvent.click(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'));
+    fireEvent.change(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'), {
+      target: { value: '' },
+    });
+    fireEvent.blur(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'));
+
+    expect(screen.getByRole('button').textContent).toBe('·');
+  });
+
+  it('KEEPS the value on a transient failure — it is queued and will land', async () => {
+    postWorklogMock.mockResolvedValue({ kind: 'network', cause: 'offline' });
+    renderCell(emptyCell());
+    fireEvent.click(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'));
+    fireEvent.change(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'), {
+      target: { value: '3' },
+    });
+    fireEvent.blur(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'));
+
+    await waitFor(() => expect(enqueueOutboxMock).toHaveBeenCalled());
+    // The outbox owns it now, and the chip says so — the number must agree.
+    expect(screen.getByRole('button').textContent).toBe('3.0');
+  });
+
+  it('DROPS the value when Jira refuses — a refused write exists nowhere but this screen', async () => {
+    postWorklogMock.mockResolvedValue({ kind: 'forbidden' });
+    renderCell(emptyCell());
+    fireEvent.click(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'));
+    fireEvent.change(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'), {
+      target: { value: '3' },
+    });
+    fireEvent.blur(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
+    expect(screen.getByRole('button').textContent).toBe('·');
+    expect(enqueueOutboxMock).not.toHaveBeenCalled();
+  });
+
+  it('re-opening after a transient failure seeds the editor from what is on screen', async () => {
+    postWorklogMock.mockResolvedValue({ kind: 'rate-limited', retryAfterMs: 1000 });
+    renderCell(emptyCell());
+    fireEvent.click(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'));
+    fireEvent.change(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'), {
+      target: { value: '3' },
+    });
+    fireEvent.blur(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'));
+    await waitFor(() => expect(enqueueOutboxMock).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole('button'));
+    // Seeded from the queued 3.0, never from the stale empty prop.
+    expect(
+      (screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid') as HTMLInputElement).value,
+    ).toBe('3');
+  });
+
+  it('yields to a THIRD value from the server — a concurrent change wins outright', async () => {
+    const { rerender } = renderCell(emptyCell());
+    fireEvent.click(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'));
+    fireEvent.change(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'), {
+      target: { value: '3' },
+    });
+    fireEvent.blur(screen.getByLabelText('Hours for Monday, PROJ-1 Build the grid'));
+    await waitFor(() => expect(postWorklogMock).toHaveBeenCalled());
+
+    // Someone logged 5h to this cell elsewhere; the refetch reports THAT.
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <table>
+          <tbody>
+            <tr>
+              <DayCell
+                rowKey="PROJ-1"
+                rowSummary="Build the grid"
+                dayIndex={0}
+                dayName="Monday"
+                dayISO="2026-06-15"
+                cell={singleCell(hoursToSeconds(5))}
+                status={null}
+                onMutated={vi.fn()}
+              />
+            </tr>
+          </tbody>
+        </table>
+      </QueryClientProvider>,
+    );
+    expect(screen.getByRole('button').textContent).toBe('5.0');
+  });
+});
