@@ -2,7 +2,7 @@
   "name": "jira-time-logger",
   "description": "Chrome extension that turns Jira's worklog into an ambient, behavior-changing daily-logging + monthly-approval tool.",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "packageManager": "pnpm@10.32.1",
   "scripts": {
