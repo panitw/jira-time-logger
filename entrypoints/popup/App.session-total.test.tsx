@@ -666,32 +666,13 @@ describe('App — ⌘Z falls through to native undo from the resume card and sea
 });
 
 // ---- Story 7.5, D-7.5-17: the measured NFR1 win ----------------------------
-describe('App — removing TicketPicker takes fetchHierarchy off the first-paint path (Story 7.5, D-7.5-17)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    fetchByIssueMock.mockResolvedValue({ kind: 'ok', value: PRE_LOG_WORKLOGS });
-    mockUseTicketSearch.mockReturnValue({ kind: 'idle' });
-    // @ts-expect-error minimal chrome stub
-    globalThis.chrome = { runtime: { openOptionsPage: vi.fn() }, tabs: { create: vi.fn() } };
-  });
-
-  it('never calls fetchHierarchy on a connected, real-composition-root popup render', async () => {
-    // `lib/hierarchy.ts` is NOT mocked in this file — if `fetchHierarchy`
-    // (via the now-deleted popup `TicketPicker` → `useHierarchyTickets`
-    // chain) were still reachable, it would call the ALSO-unmocked
-    // `jiraGet`, which this file's `@/lib/jira-client` mock does not even
-    // export — an immediate TypeError. A direct spy is the explicit
-    // measurement the story asks for, rather than relying on that crash.
-    const hierarchy = await import('@/lib/hierarchy');
-    const fetchHierarchySpy = vi.spyOn(hierarchy, 'fetchHierarchy');
-
-    const { container } = renderApp();
-    await waitFor(() => expect(figureText(container)).toMatch(/^1\.0/));
-    // "Recently worked" mounts fully (it is the section that replaced the
-    // tree) — give any lazy/deferred hierarchy mount a beat to fire, if one
-    // still existed.
-    await screen.findByText('Recently worked');
-
-    expect(fetchHierarchySpy).not.toHaveBeenCalled();
-  });
-});
+//
+// The spy-on-`fetchHierarchy` test that lived here is gone with its subject.
+// It proved the popup never pulls the ticket hierarchy on first paint by
+// watching a function that no longer exists: `lib/hierarchy.ts`,
+// `hooks/useHierarchyTickets.ts` and the `TicketPicker` that was their only
+// caller were all deleted once the week grid stopped using the tree. The
+// guarantee it measured is now structural rather than asserted — there is no
+// hierarchy fetch in the codebase to put back on the first-paint path, and
+// reintroducing one would mean re-adding the module the test imported.
+// Nothing weaker replaced it; a test that can only ever pass is noise.

@@ -5,8 +5,10 @@
  * proves nothing ELSE quietly re-hardcoded an icon, a colour, or "PTO".
  *
  * Precedent for a source-level grep test in this codebase:
- * `components/week/WeeklyGrid.test.tsx:131` (the `TicketPicker` `unbounded`
- * check). This file generalises the technique across the whole tree instead
+ * `components/week/WeeklyGrid.test.tsx` (originally the `TicketPicker`
+ * `unbounded` check; now the no-TicketPicker-import guard that replaced it
+ * when that component was deleted).
+ * This file generalises the technique across the whole tree instead
  * of one component, because AC1/AC3/AC6 are inherently cross-cutting.
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -179,7 +181,6 @@ describe('AC3 — no surface hard-codes a day-status icon (source-level grep)', 
       'components/today/QuickLogForm.tsx',
       'components/today/PtoQuickAction.tsx',
       'components/today/LoggedToday.tsx',
-      'components/today/TicketPicker.tsx',
       // The week grid's add-a-subtask popup — an in-flight SEARCH spinner,
       // the identical use (and identical `useTicketSearch` state) that
       // allowlists `SearchPanel.tsx` above. Never a day status.

@@ -10,8 +10,10 @@ import { scan, criticalOrSerious } from '@/lib/test/axe';
  * `useRecentlyWorked`. This file's `useHierarchyTickets`/`pinned-tickets`/
  * `ticket-search`/`create-subtask`/`catch-all` mocks from Story 7.2–7.4 are
  * gone with it: none of those modules are reachable from `TodayView` any
- * more (see `components/today/TicketPicker.tsx`, still used only by
- * `WeeklyGrid`, and Task 9's byte-identical proof in the story).
+ * more. `TicketPicker.tsx` has since been deleted outright — the week grid,
+ * its last consumer, now uses `components/week/AddSubtaskRow.tsx` — and
+ * `useHierarchyTickets`/`lib/hierarchy`/`pinned-tickets`/`create-subtask`
+ * went with it.
  */
 
 const mockUseRecentlyWorked = vi.fn();

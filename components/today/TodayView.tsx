@@ -14,8 +14,10 @@ import { catchAllProjectKeyItem } from '@/lib/storage/settings';
  * SAME `QuickLogForm`/`handleSelect` flow `TicketPicker` used to feed
  * (D-7.5-11) — never the resume card (D-7.3-9 stays absolute).
  *
- * `TicketPicker.tsx` itself is untouched — `components/week/WeeklyGrid.tsx`
- * still uses it (D-7.5-23).
+ * `TicketPicker.tsx` has since been deleted outright. D-7.5-23 kept the file
+ * alive for `components/week/WeeklyGrid.tsx`, its last consumer; the week
+ * grid now uses `components/week/AddSubtaskRow.tsx` (live Jira search, per
+ * the design source) instead of the hierarchy tree, so nothing imported it.
  */
 
 const STRINGS = {

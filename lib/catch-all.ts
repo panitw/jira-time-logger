@@ -28,8 +28,9 @@
  * Consequence, accepted: the list is no longer inherently the curated
  * "shared subtasks" set FR10 describes — it is whatever the project holds,
  * capped and ordered by recency. And Epic 5's matrix rolls up subtask ->
- * parent -> epic (`lib/hierarchy.ts:45` filters `issuetype?.subtask ===
- * true`), so hours on a non-subtask do not enter that walk. For time off
+ * parent -> epic (the deleted `lib/hierarchy.ts` filtered
+ * `issuetype?.subtask === true`), so hours on a non-subtask do not enter
+ * that walk. For time off
  * that is arguably correct; it is not epic work.
  */
 import { jiraGet } from '@/lib/jira-client';

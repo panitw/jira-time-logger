@@ -10,7 +10,7 @@ const WEEK_STALE_TIME = 60_000; // AR23 — 60s, matches the popup QueryClient d
 
 /**
  * Fetch the current user's per-issue worklogs for the week containing `weekOf`
- * (the Monday ISO date). Mirrors `useHierarchyTickets`: the queryFn throws the
+ * (the Monday ISO date). The queryFn throws the
  * non-`ok` `Result` so TanStack's `error` carries the discriminated `JiraError`
  * and the view branches on `error.kind`.
  *

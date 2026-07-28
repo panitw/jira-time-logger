@@ -31,11 +31,18 @@ function buildSearchUrl(jql: string, fields: string): string {
 // `WeeklyGrid.tsx` on the week surface — carrying every downside of the
 // widening (done tickets, stale tickets, a broader index hit) and NONE of
 // the compensating ranking, which lives only in `hooks/useTicketSearch.ts`.
-// The widened behaviour is now an explicit OPT-IN so any caller that does
-// not ask for it — today, only `TicketPicker.tsx` — gets the exact query
-// `dfccf5a` sent, byte-for-byte. See `lib/ticket-search.test.ts` for the
-// byte-identical proof and `components/today/TicketPicker.search-jql.test.tsx`
-// for the end-to-end proof at TicketPicker's own call site.
+// The widened behaviour is an explicit OPT-IN so any caller that does not ask
+// for it gets the exact query `dfccf5a` sent, byte-for-byte
+// (`lib/ticket-search.test.ts` holds that proof).
+//
+// NOTE: `TicketPicker.tsx` — the reason the opt-in exists, and the only
+// caller that ever declined to widen — has been deleted, along with the
+// end-to-end proof that lived in `TicketPicker.search-jql.test.tsx`. Every
+// remaining production caller passes `{ widen: true }`, so the conservative
+// branch below is currently reachable only from its own unit tests. It is
+// kept rather than collapsed because D-7.4-15's boundary is the thing that
+// stops the widened JQL from silently becoming the default again; delete it
+// deliberately, not as a side effect.
 function buildJql(trimmed: string, widen: boolean): string {
   if (TICKET_KEY_RE.test(trimmed)) {
     return `key = "${trimmed.toUpperCase()}"`;
