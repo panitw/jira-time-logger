@@ -3,6 +3,13 @@ name: Release
 # Every commit that lands on main: bump the patch version, pack signed .crx
 # files for Chrome and Edge, and publish them as a GitHub Release.
 #
+# Work happens on `develop`; main is protected and advances only through a pull
+# request, so in practice this fires once per develop -> main merge. The bump
+# and tag below are a DIRECT push to that protected branch — it works because
+# github-actions[bot] is registered as a bypass actor on main's protection.
+# Removing that bypass breaks the release at the push step, not before it, so
+# the version would be bumped and the artifacts packed before it failed.
+#
 # Two guards decide whether this runs at all, both on the `verify` job and
 # inherited by `release` via `needs:`:
 #

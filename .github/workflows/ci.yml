@@ -1,8 +1,12 @@
 name: CI
 
-# Runs on every PR and every push to main. Deliberately references NO secrets,
-# so it is safe on the public mirror (panitw/jira-time-logger) as well as the
-# private repo — a fork PR can run this and gain nothing.
+# Runs on every PR and every push to develop or main. `develop` is where work
+# actually lands — main is protected and only advances through a PR — so develop
+# is the branch this gate exists to protect.
+#
+# Deliberately references NO secrets, so it is safe on the public mirror
+# (panitw/jira-time-logger) as well as the private repo — a fork PR can run this
+# and gain nothing.
 #
 # Also exposed via `workflow_call` so release.yml can reuse it as its gate
 # instead of duplicating the commands. There is exactly one definition of "does
@@ -21,7 +25,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
   workflow_call:
 
