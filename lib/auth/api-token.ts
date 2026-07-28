@@ -29,6 +29,7 @@ import {
 
 export type ApiTokenError =
   | { kind: 'invalid-credentials' }
+  | { kind: 'invalid-site-url' }
   | { kind: 'network'; cause: string }
   | { kind: 'parse-error'; issue: unknown }
   | { kind: 'forbidden' };
@@ -41,28 +42,67 @@ export const MyselfSchema = z.object({
 
 export type MyselfResponse = z.infer<typeof MyselfSchema>;
 
+/** The only host suffix this extension will send credentials to. */
+const ALLOWED_HOST_SUFFIX = '.atlassian.net';
+
 /**
  * Accept user input in any of these shapes and produce a canonical site URL:
- *   "acme"                      → https://acme.atlassian.net
- *   "acme.atlassian.net"        → https://acme.atlassian.net
+ *   "acme"                       → https://acme.atlassian.net
+ *   "acme.atlassian.net"         → https://acme.atlassian.net
  *   "https://acme.atlassian.net" → https://acme.atlassian.net
- *   "https://acme.atlassian.net/" → https://acme.atlassian.net (strip trailing /)
+ *   "https://acme.atlassian.net/" → https://acme.atlassian.net
+ *
+ * Returns `''` for anything that does not resolve to an `https://` host under
+ * `.atlassian.net` — the caller MUST treat that as a refusal.
+ *
+ * SECURITY: this is a credential boundary, not a convenience formatter. The
+ * value returned here is persisted and then reused by `lib/jira-client.ts`
+ * (`getBaseUrl`) as the base for EVERY subsequent request, each carrying
+ * `Authorization: Basic base64(email:apiToken)` — and base64 is encoding, not
+ * encryption. Before this guard the function passed through any host and
+ * preserved a plaintext `http://` scheme, so a single mistyped or phished
+ * entry ("acme.atlassian.net.evil.com", "http://evil.com") exfiltrated a live
+ * Jira credential on the validation call and on every call after it. Host
+ * permissions are not a backstop: a cross-origin request carrying an
+ * `Authorization` header triggers a CORS preflight, and an attacker's own
+ * server answers it permissively.
+ *
+ * The allowlist deliberately mirrors `wxt.config.ts`'s `host_permissions`
+ * (`https://*.atlassian.net/*`). A self-hosted Jira Server/Data Center host
+ * could never have worked through this extension anyway — it holds no
+ * permission for such an origin, and the request would fail CORS — so this
+ * rejects only inputs that were already non-functional, plus the hostile ones.
  */
 export function normalizeSiteUrl(input: string): string {
-  let s = input.trim();
-  if (s.length === 0) return '';
+  const trimmed = input.trim().replace(/\/+$/, '');
+  if (trimmed.length === 0) return '';
 
-  // Strip surrounding whitespace and trailing slashes.
-  s = s.replace(/\/+$/, '');
+  // A bare slug ("acme") becomes a site host; everything else must already
+  // carry (or be given) a scheme so `new URL` can parse it authoritatively.
+  // Hand-rolled prefix matching is what let `acme.atlassian.net.evil.com`
+  // through before — only a real URL parse knows where the host ends.
+  const candidate =
+    !trimmed.includes('.') && !/^https?:\/\//i.test(trimmed)
+      ? `https://${trimmed}${ALLOWED_HOST_SUFFIX}`
+      : /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)
+        ? trimmed
+        : `https://${trimmed}`;
 
-  // If no dot and no scheme, treat as bare slug.
-  if (!s.includes('.') && !s.startsWith('http')) {
-    s = `${s}.atlassian.net`;
+  let url: URL;
+  try {
+    url = new URL(candidate);
+  } catch {
+    return '';
   }
-  if (!/^https?:\/\//i.test(s)) {
-    s = `https://${s}`;
-  }
-  return s;
+
+  // Plaintext would put the Basic credential on the wire in the clear.
+  if (url.protocol !== 'https:') return '';
+  if (!url.hostname.toLowerCase().endsWith(ALLOWED_HOST_SUFFIX)) return '';
+
+  // Rebuild from the parsed hostname alone: this drops any userinfo, port,
+  // path, query or fragment, so nothing the user pasted can redirect the
+  // request away from the host that was just checked.
+  return `https://${url.hostname.toLowerCase()}`;
 }
 
 export type ValidateInput = {
@@ -78,7 +118,16 @@ export type ValidateInput = {
 export async function validateApiToken(
   input: ValidateInput,
 ): Promise<Result<MyselfResponse, ApiTokenError>> {
+  // Re-normalize rather than trusting the caller's string. This function is
+  // the last point before a credential goes on the wire, and it is exported
+  // — a future caller that skips the UI's normalization must not be able to
+  // aim the Basic header at an arbitrary host. Fails closed BEFORE `fetch`,
+  // so a rejected host is never contacted at all.
   const siteUrl = normalizeSiteUrl(input.siteUrl);
+  if (siteUrl === '') {
+    log.warn('apitoken.validate.rejected-site-url', {});
+    return { kind: 'invalid-site-url' };
+  }
   const url = `${siteUrl}/rest/api/3/myself`;
   const credentials = btoa(`${input.email}:${input.apiToken}`);
 

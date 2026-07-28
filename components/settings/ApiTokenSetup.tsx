@@ -24,6 +24,12 @@ const STRINGS = {
   errorForbidden:
     'Your account is recognized but lacks API access. Ask your Jira admin to grant API access to your role.',
   errorNetwork: "Can't reach the site. Check the URL is correct and your network is up.",
+  // Names what IS accepted rather than what was wrong — the rejected input is
+  // often a phishing lure or a typo the user cannot see (a trailing
+  // ".evil.com", an "http://"), and re-showing it would only make it look
+  // legitimate.
+  errorSiteUrl:
+    'That doesn’t look like an Atlassian Cloud site. Enter the host only — for example acme.atlassian.net.',
   errorParse: 'Unexpected response from Jira. Try again or use a different site URL.',
 };
 
@@ -169,6 +175,8 @@ function errorMessageFor(kind: string): string {
   switch (kind) {
     case 'invalid-credentials':
       return STRINGS.errorInvalid;
+    case 'invalid-site-url':
+      return STRINGS.errorSiteUrl;
     case 'forbidden':
       return STRINGS.errorForbidden;
     case 'parse-error':
@@ -181,7 +189,9 @@ function errorMessageFor(kind: string): string {
 /**
  * D-7.10-34 (owner ruling): red for a genuine Jira refusal
  * (`invalid-credentials` / `forbidden` — Jira answered and said no), amber
- * for "it never got there" (`network` / `parse-error`). Independent of this
+ * for "it never got there" (`network` / `parse-error`, and `invalid-site-url`
+ * — which we refuse to send AT ALL, the strongest form of never got there:
+ * the credential stayed in the browser). Independent of this
  * fork, the ink is `error-ink`/`amber-ink` either way (§ Contrast) —
  * `#DC2626` on `#FEF2F2` was 4.42:1 and failed AA.
  */

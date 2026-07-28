@@ -7,6 +7,26 @@
  *   - Routes through scheduler for rate limiting
  *   - Refreshes OAuth token on 401
  *   - Parses responses with Zod schemas from jira-types.ts
+ *
+ * SECURITY — every `fetch` below passes `credentials: 'omit'`, without
+ * exception. `lib/auth/api-token.ts` established this as CRITICAL and said in
+ * so many words that it "applies to every future Jira API call in Story 1.4's
+ * jira-client wrapper"; it was applied there and nowhere else, leaving all
+ * eight calls here (GET/POST/PUT/DELETE plus their 401-retry twins) on the
+ * default credentials mode. Ambient `*.atlassian.net` session cookies riding
+ * along would let Jira authenticate the request by COOKIE and ignore the
+ * header we sent, which breaks the auth model in two ways:
+ *
+ *   - a revoked or wrong API token keeps working, so auth failure never
+ *     surfaces and the outbox/`auth-expired` paths never fire; and
+ *   - in OAuth mode the Bearer token stops being the ceiling on what this
+ *     extension can do — a cookie session carries the user's FULL authority,
+ *     regardless of the scopes they granted at consent.
+ *
+ * If cookies were never actually attached (modern `fetch` defaults to
+ * `same-origin`, and these are cross-origin from an extension context), this
+ * is a no-op. It is correct either way, which is the point: the auth model
+ * should not depend on a browser default that is invisible at this call site.
  */
 import { type z } from 'zod';
 import { type AdfDoc } from '@/lib/adf';
@@ -87,7 +107,7 @@ export async function jiraGet<T>(
 
       log.debug('jira.get.request', { path });
 
-      let res = await fetch(url, { headers });
+      let res = await fetch(url, { headers, credentials: 'omit' });
 
       if (res.status === 401 && bundle.kind === 'oauth') {
         log.info('jira.get.401-refreshing', { path });
@@ -96,7 +116,7 @@ export async function jiraGet<T>(
           const newBundle = await getAuth();
           if (!newBundle) return authExpired();
           headers.Authorization = getAuthHeader(newBundle);
-          res = await fetch(url, { headers });
+          res = await fetch(url, { headers, credentials: 'omit' });
         } else {
           return authExpired();
         }
@@ -206,6 +226,7 @@ export async function jiraPost<T>(
         method: 'POST',
         headers,
         body: JSON.stringify(body),
+        credentials: 'omit',
       });
 
       if (res.status === 401 && bundle.kind === 'oauth') {
@@ -219,6 +240,7 @@ export async function jiraPost<T>(
             method: 'POST',
             headers,
             body: JSON.stringify(body),
+            credentials: 'omit',
           });
         } else {
           return authExpired();
@@ -296,6 +318,7 @@ export async function jiraPut<T>(
         method: 'PUT',
         headers,
         body: JSON.stringify(body),
+        credentials: 'omit',
       });
 
       if (res.status === 401 && bundle.kind === 'oauth') {
@@ -309,6 +332,7 @@ export async function jiraPut<T>(
             method: 'PUT',
             headers,
             body: JSON.stringify(body),
+            credentials: 'omit',
           });
         } else {
           return authExpired();
@@ -380,7 +404,7 @@ export async function jiraDelete(path: string): Promise<Result<void, JiraError>>
 
       log.debug('jira.delete.request', { path });
 
-      let res = await fetch(url, { method: 'DELETE', headers });
+      let res = await fetch(url, { method: 'DELETE', headers, credentials: 'omit' });
 
       if (res.status === 401 && bundle.kind === 'oauth') {
         log.info('jira.delete.401-refreshing', { path });
@@ -389,7 +413,7 @@ export async function jiraDelete(path: string): Promise<Result<void, JiraError>>
           const newBundle = await getAuth();
           if (!newBundle) return authExpired();
           headers.Authorization = getAuthHeader(newBundle);
-          res = await fetch(url, { method: 'DELETE', headers });
+          res = await fetch(url, { method: 'DELETE', headers, credentials: 'omit' });
         } else {
           return authExpired();
         }
