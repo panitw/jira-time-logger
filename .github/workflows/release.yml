@@ -14,6 +14,10 @@ name: Release
 #   2. Skip marker. The version bump below is itself a push to main, which would
 #      retrigger this workflow and bump again, forever. The bump commit carries
 #      [skip ci] and is filtered here.
+#
+# ACTIONS ALLOWLIST: see the note in ci.yml. Chrome is located on the runner
+# rather than installed by an action, because browser-actions/setup-chrome is
+# not permitted by org policy.
 
 on:
   push:
@@ -51,24 +55,45 @@ jobs:
           # back. Note this means the push is attributed to github-actions[bot].
           persist-credentials: true
 
-      - uses: pnpm/action-setup@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
+
+      # Pinned by `packageManager` in package.json. Not corepack — it is being
+      # removed from Node (already absent in v26). See the note in ci.yml.
+      - name: Install pnpm (version pinned by package.json)
+        run: |
+          npm install -g "$(node -p "require('./package.json').packageManager")"
+          pnpm --version
 
       - run: pnpm install --frozen-lockfile
 
-      # Bump BEFORE packing: pack:crx reads the version from package.json and
-      # stamps it into both artifact filenames.
-      - name: Bump patch version
-        id: bump
+      # pack:crx shells out to a real Chrome binary for CRX3 packing. The ubuntu
+      # runner images ship Chrome, but that is an image detail rather than a
+      # guarantee, so locate it explicitly and fall back to installing Chromium.
+      # Failing here with a clear message beats failing inside pack:crx.
+      - name: Locate a Chrome binary
         run: |
-          npm version patch --no-git-tag-version
-          VERSION="$(node -p "require('./package.json').version")"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Bumped to $VERSION"
+          for c in /usr/bin/google-chrome /usr/bin/google-chrome-stable \
+                   /usr/bin/chromium /usr/bin/chromium-browser; do
+            if [ -x "$c" ]; then
+              echo "CHROME_PATH=$c" >> "$GITHUB_ENV"
+              echo "Using $c — $("$c" --version 2>&1 | head -1)"
+              exit 0
+            fi
+          done
+          echo "No preinstalled Chrome found; installing chromium-browser."
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq chromium-browser
+          for c in /usr/bin/chromium /usr/bin/chromium-browser; do
+            if [ -x "$c" ]; then
+              echo "CHROME_PATH=$c" >> "$GITHUB_ENV"
+              echo "Using $c — $("$c" --version 2>&1 | head -1)"
+              exit 0
+            fi
+          done
+          echo "::error::Could not find or install a Chrome/Chromium binary; pack:crx cannot sign without one."
+          exit 1
 
       # Written via env, not `${{ }}` interpolation into the script body, so the
       # key cannot be shell-interpreted. Created 0600 BEFORE the write so it is
@@ -86,20 +111,12 @@ jobs:
           printf '%s\n' "$SIGNING_KEY_PEM" > "$RUNNER_TEMP/signing.pem"
           echo "CRX_SIGNING_KEY=$RUNNER_TEMP/signing.pem" >> "$GITHUB_ENV"
 
-      # pack:crx shells out to a real Chrome binary for CRX3 packing. Installing
-      # it explicitly rather than trusting the runner image to ship one.
-      - name: Install Chrome
-        id: chrome
-        uses: browser-actions/setup-chrome@v1
-        with:
-          chrome-version: stable
-
       # The whole point of manifest.key is that ONE key yields ONE extension id
       # and therefore one registered OAuth callback URL. A wrong or corrupted
       # secret would still pack successfully — just under a different id, whose
       # only symptom is users failing to authenticate after install. ext:id
       # compares the secret against the key pinned in wxt.config.ts; anything
-      # but OK stops the release here.
+      # but OK stops the release before anything is published.
       - name: Verify signing key matches the pinned extension id
         run: |
           OUT="$(pnpm ext:id)"
@@ -111,9 +128,17 @@ jobs:
             exit 1
           fi
 
+      # Bump BEFORE packing: pack:crx reads the version from package.json and
+      # stamps it into both artifact filenames.
+      - name: Bump patch version
+        id: bump
+        run: |
+          npm version patch --no-git-tag-version
+          VERSION="$(node -p "require('./package.json').version")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Bumped to $VERSION"
+
       - name: Pack signed .crx (Chrome + Edge)
-        env:
-          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
         run: pnpm pack:crx
 
       - name: Commit and tag the version bump
@@ -129,10 +154,13 @@ jobs:
           git push origin HEAD:main
           git push origin "v$VERSION"
 
+      # gh is preinstalled on the runner and is not an action, so it sidesteps
+      # the allowlist entirely.
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.bump.outputs.version }}
+          SHA: ${{ github.sha }}
         run: |
           gh release create "v$VERSION" \
             "jira-time-logger-$VERSION.crx" \
@@ -142,4 +170,4 @@ jobs:
 
           Install: download the .crx and drag it onto \`chrome://extensions\` (or \`edge://extensions\`) with Developer mode enabled.
 
-          Built from ${{ github.sha }}."
+          Built from $SHA."

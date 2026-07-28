@@ -7,6 +7,17 @@ name: CI
 # Also exposed via `workflow_call` so release.yml can reuse it as its gate
 # instead of duplicating the commands. There is exactly one definition of "does
 # this build".
+#
+# ACTIONS ALLOWLIST: the kkp org runs `allowed_actions: selected` with
+# `github_owned_allowed: false`, so only explicitly-listed actions may be used.
+# `actions/checkout@v4` and `actions/setup-node@v4` are listed;
+# `pnpm/action-setup` and `actions/cache` are NOT. Hence pnpm is installed from
+# the `packageManager` pin and there is no dependency cache. Adding an action
+# that is not on the
+# allowlist does not fail the run — the workflow silently never triggers at all,
+# which is a genuinely confusing failure mode. Check the policy before adding
+# one:
+#   gh api repos/kkpfg-kkpb/tool-jira-time-logger/actions/permissions/selected-actions
 
 on:
   push:
@@ -32,14 +43,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # No `version:` — action-setup reads `packageManager` from package.json,
-      # so CI and local can never drift onto different pnpm majors.
-      - uses: pnpm/action-setup@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
+
+      # Installs the EXACT pnpm pinned by `packageManager` in package.json, so
+      # CI and local can never drift — the same guarantee pnpm/action-setup
+      # gives, without needing an action the allowlist forbids.
+      #
+      # Deliberately not corepack: it is being removed from Node (already absent
+      # in v26), so `corepack enable` would keep working until a routine Node
+      # bump silently broke every workflow.
+      - name: Install pnpm (version pinned by package.json)
+        run: |
+          npm install -g "$(node -p "require('./package.json').packageManager")"
+          pnpm --version
 
       # --frozen-lockfile makes a stale lockfile a build failure rather than a
       # silent re-resolve. That matters here: pnpm-workspace.yaml pins security
@@ -64,7 +82,6 @@ jobs:
         run: pnpm build:edge
 
       # Cheap regression guard for the advisory work: fails if a dependency
-      # change reintroduces a vulnerability at moderate or above. `audit --prod`
-      # is the one that would affect shipped code, so it is held to zero.
+      # change reintroduces a vulnerability in anything that ships.
       - name: Audit (production dependencies)
         run: pnpm audit --prod
