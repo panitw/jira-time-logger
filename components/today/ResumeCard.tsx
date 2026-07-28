@@ -141,12 +141,27 @@ export function ResumeCard({
   // Seed the input from the latched record exactly once per popup session —
   // `ticket` cannot change identity once latched, so this can never fight an
   // enrichment re-render the way keying off `resume` directly used to.
-  useEffect(() => {
-    if (!ticket) return;
-    if (seededKeyRef.current === ticket.key) return;
+  //
+  // Seeded DURING RENDER, not in an effect. As an effect this was a passive
+  // one, so the input was committed to the DOM holding the placeholder '1'
+  // and only corrected on the next flush. That window was user-visible as a
+  // 1 -> 2.5 flicker, and anything typed inside it was silently overwritten
+  // by the seed — the input is focused on open, so a fast typist is exactly
+  // who would hit it. It also made every test that types into this card
+  // racy: the element resolves as soon as it is in the DOM, which can be
+  // before the seed lands (observed as a CI-only failure in
+  // App.popup-state.test.tsx, where a typed 3.5 came back as the 2.5 seed).
+  //
+  // Adjusting state during render is React's documented fix for deriving
+  // state from props: the re-render happens before the browser sees anything,
+  // so the input is never committed with the wrong value. Same pattern the
+  // popup already uses for its `frozenIsTimeOff` latch, and guarded the same
+  // way — `seededKeyRef` makes the condition false after it fires once, so
+  // this converges rather than looping.
+  if (ticket && seededKeyRef.current !== ticket.key) {
     seededKeyRef.current = ticket.key;
     setHoursInput(prefillDisplayValue(ticket.prefillSeconds));
-  }, [ticket]);
+  }
 
   // Focus latch (D-7.3-4 / AC3): fires at most once per popup session. A
   // later enrichment re-render (Task 2's week-query refinement) must never
