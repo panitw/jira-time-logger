@@ -1,0 +1,58 @@
+<!--
+  Extension icon — master artwork (48 / 96 / 128 px).
+
+  Mark: a clock (log time) with a check knocked out of the bottom-right
+  corner (approve) — the product's two verbs in one glyph. Stroke geometry
+  follows lucide-react, the icon set the UI already uses, so the toolbar
+  icon and the in-app icons read as one family.
+
+  Palette is the KKP brand ramp from styles/globals.css: the gradient runs
+  royal-purple (#615b99) toward purple-deep (#4a4163), with primary
+  (#594f74) as the optical midpoint. White is primary-foreground.
+  (Token names are spelled without their CSS prefix: an XML comment may not
+  contain a double hyphen, and sips refuses to parse the file if it does.)
+
+  The 16/32 px sizes use icon-small.svg instead: the check does not survive
+  a 16 px raster, and toolbar legibility outranks cross-size fidelity.
+
+  Regenerate the PNGs with `pnpm icons` after editing. Do not hand-edit
+  public/icon/*.png — they are build output.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#665c88" />
+      <stop offset="1" stop-color="#4a4163" />
+    </linearGradient>
+    <!-- Knockout so the check reads as a separate token rather than
+         overlapping the dial. Radius is 1px wider than the check's stroke
+         envelope, which is the gap that survives downsampling to 48px. -->
+    <mask id="check-gap">
+      <rect width="128" height="128" fill="#ffffff" />
+      <circle cx="94" cy="94" r="26" fill="#000000" />
+    </mask>
+  </defs>
+
+  <rect width="128" height="128" rx="28" fill="url(#tile)" />
+
+  <g mask="url(#check-gap)">
+    <circle cx="57" cy="57" r="33" fill="none" stroke="#ffffff" stroke-width="9" />
+    <path
+      d="M57 37 V57 H74"
+      fill="none"
+      stroke="#ffffff"
+      stroke-width="9"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+  </g>
+
+  <path
+    d="M80 94 l9 9 17 -21"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="10"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

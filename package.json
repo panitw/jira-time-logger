@@ -14,6 +14,7 @@
     "zip:edge": "wxt zip -b edge",
     "pack:crx": "node scripts/pack-crx.mjs",
     "ext:id": "node scripts/derive-ext-key.mjs",
+    "icons": "node scripts/gen-icons.mjs",
     "compile": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
