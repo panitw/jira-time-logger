@@ -9,10 +9,21 @@ export default defineConfig({
   outDir: 'output',
   manifest: {
     // `key` pins the extension ID (and therefore the OAuth redirect URI) to the
-    // production signing key instead of the install path. Set it to the value
-    // printed by `pnpm ext:id` — see docs/release.md > OAuth callback URL.
-    // Until it is set, unpacked builds get a path-derived ID and OAuth fails
-    // with "redirect_uri is not registered for client".
+    // production signing key instead of the install path, so the unpacked dev
+    // build, the Chrome .crx, the Edge .crx, and every developer machine all
+    // resolve to ONE id and ONE registered callback URL.
+    //
+    // This is the PUBLIC half of the signing key — safe to commit. The .pem it
+    // derives from is not, and lives only in the team vault. Regenerate this
+    // value with `pnpm ext:id`; see docs/release.md > OAuth callback URL.
+    //
+    // Pinned id:       npebpnfjmeehmaeekloeiicbkldggmmb
+    // Registered URI:  https://npebpnfjmeehmaeekloeiicbkldggmmb.chromiumapp.org/
+    //
+    // DO NOT change this value. The extension id is derived from it, so a new
+    // key orphans every existing install as a duplicate rather than updating it
+    // in place, and invalidates the callback URL registered with Atlassian.
+    key: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAt0hb5Tskw49OXWji01uv8Hi/jfJe34DRkPts2lyhincNF/ronkKvKNPSzZUkmnLM+KQdLfkYxfPVCbkgF3FZ8DzeblZeKOz78Xlc1EEDEKwODiCMGmNsCEAAkW6n3ltit4WSTDpie9710HistyoVXxaTHNR/NLubu6daPn4pUwl2xHr5m1tkbcBRMb+mo3XGjf9+pHSq0WH337SBTL9v/ZiblCxfZfyjRpkuP9nmvefFo/RewNuumeDA0ceTxd5uYpwnc35R6Udz0vq9cHEn9lvdbDVCAxfnY7EJeJQUpj09FtgQJCiijeAxGst76GYVn0h9I4wTPuX1vuCRZD1AMwIDAQAB',
     name: 'jira-time-logger',
     description:
       "Log Jira time daily, approve monthly. Toolbar badge, inline banner, manager matrix.",

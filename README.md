@@ -73,14 +73,24 @@ machine, and OAuth fails with:
 unauthorized_client — redirect_uri is not registered for client
 ```
 
-Set `manifest.key` in [wxt.config.ts](wxt.config.ts) to the public half of the signing
-key. `pnpm ext:id` prints the key, the resulting extension ID, and the exact callback URL
-to register at developer.atlassian.com. Full walkthrough in
-[docs/release.md](docs/release.md).
+`manifest.key` in [wxt.config.ts](wxt.config.ts) fixes this: it pins the ID to the signing
+key rather than the path, so the dev build, the Chrome `.crx`, the Edge `.crx`, and every
+machine resolve to one ID. It is **already set**, and the pinned identity is:
 
-> At the time of writing `manifest.key` is **not yet set** — it needs the production
-> signing key, which lives in the team vault. Until then, expect OAuth to fail on a fresh
-> checkout.
+```
+extension id   npebpnfjmeehmaeekloeiicbkldggmmb
+callback URL   https://npebpnfjmeehmaeekloeiicbkldggmmb.chromiumapp.org/
+```
+
+That callback URL must be registered at developer.atlassian.com/console → your app →
+Authorization → OAuth 2.0 (3LO) → Callback URL, **trailing slash included** — Atlassian
+matches exactly. `pnpm ext:id` reprints the triple and reports whether `wxt.config.ts`
+still pins the right key. Full walkthrough in [docs/release.md](docs/release.md).
+
+> The `key` is the public half and is committed deliberately. The `.pem` it derives from
+> must live only in the team vault and on a releaser's untracked local path — never in
+> this repo. **Do not regenerate it:** the extension ID follows the key, so a new one
+> orphans every install as a duplicate and invalidates the registered callback URL.
 
 ## Scripts
 
