@@ -563,10 +563,14 @@ describe('SearchPanel', () => {
 
   // ---- Finding 2 (Major) / D-7.4-16: scroll the active option into view --------
   describe('Finding 2/D-7.4-16: the active option is scrolled into view', () => {
-    let scrollIntoViewMock: ReturnType<typeof vi.fn>;
+    // Typed to the method it replaces. Vitest 4 infers a bare `vi.fn()` as
+    // `Mock<Procedure | Constructable>`, which is not assignable to
+    // `scrollIntoView`'s signature; naming the signature keeps the assignment
+    // below honest instead of casting it away.
+    let scrollIntoViewMock: ReturnType<typeof vi.fn<typeof Element.prototype.scrollIntoView>>;
 
     beforeEach(() => {
-      scrollIntoViewMock = vi.fn();
+      scrollIntoViewMock = vi.fn<typeof Element.prototype.scrollIntoView>();
       Element.prototype.scrollIntoView = scrollIntoViewMock;
       // Mirrors production: `hasResults` is false until a query exists, so
       // the transition this effect depends on actually happens (a static

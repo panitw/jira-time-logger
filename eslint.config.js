@@ -1,7 +1,14 @@
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
-import importPlugin from 'eslint-plugin-import';
+// `eslint-plugin-import-x`, not `eslint-plugin-import`: the latter calls
+// `sourceCode.getTokenOrCommentAfter`, removed in ESLint 10, and its latest
+// release (2.32.0) still declares a peer range topping out at ESLint 9. We need
+// ESLint 10 because ESLint 9 pins minimatch ^3, which pins brace-expansion ^1 —
+// and the fix for the brace-expansion OOM advisory (GHSA, vulnerable <=5.0.7
+// across ALL majors) exists only in 5.0.8. import-x is the maintained fork and
+// a drop-in for the one rule we use; `import/order` is spelled `import-x/order`.
+import importX from 'eslint-plugin-import-x';
 import globals from 'globals';
 
 export default tseslint.config(
@@ -26,7 +33,7 @@ export default tseslint.config(
     },
     plugins: {
       'react-hooks': reactHooks,
-      import: importPlugin,
+      'import-x': importX,
     },
     rules: {
       // === No defaults, no any, no console.log ===
@@ -60,7 +67,7 @@ export default tseslint.config(
       ],
 
       // === Import order ===
-      'import/order': [
+      'import-x/order': [
         'warn',
         {
           groups: [
